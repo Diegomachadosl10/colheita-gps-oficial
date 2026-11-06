@@ -12,7 +12,6 @@ import android.graphics.*
 import android.graphics.pdf.PdfRenderer
 import android.location.LocationListener
 import android.location.LocationManager
-import android.net.Uri
 import android.os.Bundle
 import android.os.ParcelFileDescriptor
 import android.provider.OpenableColumns
@@ -28,302 +27,301 @@ import kotlin.math.*
 
 class MainActivity : Activity() {
 
-    private lateinit var mapa: MapaView
-    private lateinit var titulo: TextView
-    private lateinit var gpsTexto: TextView
-    private lateinit var mensagem: TextView
-    private lateinit var ferramentas: LinearLayout
-    private lateinit var acoes: LinearLayout
+    private val verde = Color.rgb(20, 139, 81)
+    private val escuro = Color.rgb(23, 32, 29)
+    private val claro = Color.rgb(244, 247, 245)
 
-    private val verde = Color.rgb(39, 118, 70)
-    private val fundo = Color.rgb(22, 30, 27)
-    private val arquivos = mutableListOf<Pair<String, String>>()
+    private lateinit var raiz: FrameLayout
+    private lateinit var mapa: MapaView
 
     private var mapaAtual = ""
+    private var nomeAtual = ""
     private var gpsManager: LocationManager? = null
     private var gpsListener: LocationListener? = null
-    private var ultimaLat: Double? = null
-    private var ultimaLon: Double? = null
+    private var ultimaLocalizacao: android.location.Location? = null
+    private var gpsStatus: TextView? = null
 
-    private fun dp(n: Int): Int =
-        (n * resources.displayMetrics.density).toInt()
+    private fun dp(v: Int): Int =
+        (v * resources.displayMetrics.density).toInt()
 
     private fun texto(
         valor: String,
-        tamanho: Float = 14f
-    ): TextView = TextView(this).apply {
+        tamanho: Float = 15f,
+        cor: Int = escuro
+    ) = TextView(this).apply {
         text = valor
         textSize = tamanho
-        setTextColor(Color.WHITE)
+        setTextColor(cor)
         gravity = Gravity.CENTER_VERTICAL
     }
 
     private fun botao(
         nome: String,
         acao: () -> Unit
-    ): Button = Button(this).apply {
+    ) = Button(this).apply {
         text = nome
-        textSize = 12f
+        textSize = 13f
         isAllCaps = false
         setTextColor(Color.WHITE)
-        backgroundTintList =
-            ColorStateList.valueOf(verde)
+        backgroundTintList = ColorStateList.valueOf(verde)
+        setOnClickListener { acao() }
+    }
+
+    private fun circulo(
+        simbolo: String,
+        acao: () -> Unit
+    ) = TextView(this).apply {
+        text = simbolo
+        textSize = 29f
+        gravity = Gravity.CENTER
+        setTextColor(Color.WHITE)
+        background = android.graphics.drawable.GradientDrawable().apply {
+            shape = android.graphics.drawable.GradientDrawable.OVAL
+            setColor(verde)
+        }
+        elevation = dp(8).toFloat()
         setOnClickListener { acao() }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        window.statusBarColor = escuro
+        window.navigationBarColor = Color.BLACK
+        mostrarBiblioteca()
+    }
 
-        window.statusBarColor = fundo
-        window.navigationBarColor = fundo
+    private fun pasta(): File =
+        File(filesDir, "mapas").apply { mkdirs() }
 
-        val raiz = FrameLayout(this).apply {
-            setBackgroundColor(fundo)
+    private fun preferencias() =
+        getSharedPreferences("mapas", MODE_PRIVATE)
+
+    private fun listaMapas(): List<File> =
+        pasta().listFiles()
+            ?.filter { it.extension.equals("pdf", true) }
+            ?.sortedBy {
+                preferencias().getString(it.nameWithoutExtension, it.name)
+                    ?.lowercase()
+            } ?: emptyList()
+
+    private fun criarRaiz(): FrameLayout {
+        raiz = FrameLayout(this)
+        raiz.setBackgroundColor(claro)
+        return raiz
+    }
+
+    private fun margemSegura(): Int = dp(24)
+
+    private fun mostrarBiblioteca() {
+        mapaAtual = ""
+        gpsStatus = null
+
+        val tela = criarRaiz()
+
+        val coluna = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
         }
 
-        mapa = MapaView(this)
-        raiz.addView(
-            mapa,
+        val topo = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(20), dp(20), dp(18))
+            setBackgroundColor(escuro)
+        }
+
+        topo.addView(
+            texto("COLHEITA GPS", 23f, Color.WHITE)
+        )
+        topo.addView(
+            texto("Meus mapas de colheita", 14f, 0xFFB6DCC6.toInt())
+        )
+
+        coluna.addView(topo)
+
+        val lista = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(15), dp(12), dp(15), dp(100))
+        }
+
+        val mapas = listaMapas()
+
+        if (mapas.isEmpty()) {
+            val vazio = texto(
+                "Nenhum mapa importado.\n\nToque no botão + para adicionar seu primeiro PDF.",
+                16f,
+                0xFF66746B.toInt()
+            ).apply {
+                gravity = Gravity.CENTER
+                setPadding(dp(18), dp(70), dp(18), dp(30))
+            }
+            lista.addView(vazio)
+        } else {
+            lista.addView(
+                texto(
+                    "${mapas.size} mapa(s) disponível(is)",
+                    13f,
+                    0xFF65756B.toInt()
+                ).apply {
+                    setPadding(dp(4), dp(6), 0, dp(12))
+                }
+            )
+        }
+
+        mapas.forEach { arquivo ->
+            val chave = arquivo.nameWithoutExtension
+            val nome = preferencias().getString(chave, arquivo.name)
+                ?: arquivo.name
+
+            val item = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(13), dp(12), dp(8), dp(12))
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    setColor(Color.WHITE)
+                    cornerRadius = dp(15).toFloat()
+                }
+                elevation = dp(2).toFloat()
+            }
+
+            val icone = texto("▧", 32f, verde).apply {
+                gravity = Gravity.CENTER
+            }
+
+            item.addView(
+                icone,
+                LinearLayout.LayoutParams(dp(52), dp(58))
+            )
+
+            val info = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+            }
+
+            info.addView(
+                texto(nome, 16f, escuro).apply {
+                    maxLines = 2
+                }
+            )
+            info.addView(
+                texto("Mapa PDF • Toque para abrir", 12f, 0xFF758379.toInt())
+            )
+
+            item.addView(
+                info,
+                LinearLayout.LayoutParams(0, -2, 1f)
+            )
+
+            val opcoes = texto("⋮", 26f, escuro).apply {
+                gravity = Gravity.CENTER
+                setOnClickListener { menuMapa(chave, nome) }
+            }
+
+            item.addView(
+                opcoes,
+                LinearLayout.LayoutParams(dp(42), dp(52))
+            )
+
+            item.setOnClickListener { abrirMapa(chave) }
+
+            lista.addView(
+                item,
+                LinearLayout.LayoutParams(-1, -2).apply {
+                    bottomMargin = dp(11)
+                }
+            )
+        }
+
+        val rolagem = ScrollView(this)
+        rolagem.fillViewport = true
+        rolagem.addView(lista)
+
+        coluna.addView(
+            rolagem,
+            LinearLayout.LayoutParams(-1, 0, 1f)
+        )
+
+        tela.addView(
+            coluna,
             FrameLayout.LayoutParams(-1, -1)
         )
 
-        val cabecalho = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(12), dp(8), dp(12), dp(8))
-            setBackgroundColor(Color.argb(230, 22, 30, 27))
-        }
+        val adicionar = circulo("+") { menuImportacao() }
 
-        titulo = texto("🪓 Colheita GPS", 17f)
-        titulo.setOnClickListener { escolherMapa() }
-        cabecalho.addView(titulo)
-
-        gpsTexto = texto("GPS não iniciado", 12f)
-        gpsTexto.setTextColor(Color.rgb(185, 225, 193))
-        cabecalho.addView(gpsTexto)
-
-        raiz.addView(
-            cabecalho,
+        tela.addView(
+            adicionar,
             FrameLayout.LayoutParams(
-                -1, -2, Gravity.TOP
-            )
-        )
-
-        mensagem = texto(
-            "Abra um mapa PDF para começar", 12f
-        ).apply {
-            gravity = Gravity.CENTER
-            setPadding(dp(12), dp(8), dp(12), dp(8))
-            setBackgroundColor(
-                Color.argb(225, 22, 30, 27)
-            )
-        }
-
-        val msgParams = FrameLayout.LayoutParams(
-            -1, -2, Gravity.TOP
-        ).apply {
-            topMargin = dp(75)
-            leftMargin = dp(12)
-            rightMargin = dp(12)
-        }
-        raiz.addView(mensagem, msgParams)
-
-        val rodape = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            setPadding(dp(8), dp(4), dp(8), dp(8))
-        }
-
-        acoes = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-            visibility = View.GONE
-            setBackgroundColor(
-                Color.argb(235, 22, 30, 27)
-            )
-        }
-
-        rodape.addView(acoes)
-
-        ferramentas = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            visibility = View.GONE
-            setBackgroundColor(
-                Color.argb(240, 22, 30, 27)
-            )
-        }
-
-        fun linha(vararg botoes: Button) {
-            val row = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER
-            }
-            botoes.forEach { b ->
-                row.addView(
-                    b,
-                    LinearLayout.LayoutParams(
-                        0, dp(49), 1f
-                    )
-                )
-            }
-            ferramentas.addView(row)
-        }
-
-        linha(
-            botao("MAPAS") {
-                esconderMenu()
-                escolherMapa()
-            },
-            botao("GPS") {
-                esconderMenu()
-                iniciarGps()
-            },
-            botao("CENTRAR") {
-                esconderMenu()
-                mapa.centrarGps()
+                dp(62), dp(62),
+                Gravity.BOTTOM or Gravity.END
+            ).apply {
+                rightMargin = dp(22)
+                bottomMargin = margemSegura()
             }
         )
 
-        linha(
-            botao("PINTAR") {
-                esconderMenu()
-                menuPintura()
-            },
-            botao("MEDIR") {
-                esconderMenu()
-                menuMedidas()
-            },
-            botao("DESFAZER") {
-                esconderMenu()
-                mapa.desfazer()
-            }
-        )
-
-        rodape.addView(ferramentas)
-
-        val principal = botao("✚ FERRAMENTAS") {
-            ferramentas.visibility =
-                if (ferramentas.visibility == View.VISIBLE)
-                    View.GONE else View.VISIBLE
-        }
-
-        rodape.addView(
-            principal,
-            LinearLayout.LayoutParams(
-                dp(190), dp(55)
-            )
-        )
-
-        raiz.addView(
-            rodape,
-            FrameLayout.LayoutParams(
-                -1, -2, Gravity.BOTTOM
-            )
-        )
-
-        mapa.avisar = { mensagem.text = it }
-        mapa.avisarGps = { gpsTexto.text = it }
-
-        setContentView(raiz)
-
-        atualizarLista()
-
-        val ultimo = getSharedPreferences(
-            "config", 0
-        ).getString("ultimo", "") ?: ""
-
-        if (ultimo.isNotEmpty()) {
-            abrirMapa(ultimo)
-        }
+        setContentView(tela)
     }
 
-    private fun esconderMenu() {
-        ferramentas.visibility = View.GONE
-    }
-
-    private fun mostrarAcoes(
-        vararg opcoes: Pair<String, () -> Unit>
-    ) {
-        acoes.removeAllViews()
-
-        if (opcoes.isEmpty()) {
-            acoes.visibility = View.GONE
-            return
-        }
-
-        acoes.visibility = View.VISIBLE
-
-        opcoes.forEach { opcao ->
-            acoes.addView(
-                botao(opcao.first, opcao.second),
-                LinearLayout.LayoutParams(
-                    0, dp(49), 1f
-                )
-            )
-        }
-    }
-
-    private fun pastaMapas(): File =
-        File(filesDir, "mapas").apply {
-            mkdirs()
-        }
-
-    private fun atualizarLista() {
-        arquivos.clear()
-
-        val preferencias =
-            getSharedPreferences("mapas", 0)
-
-        pastaMapas().listFiles()
-            ?.filter {
-                it.extension.equals("pdf", true)
-            }
-            ?.sortedBy {
-                preferencias.getString(
-                    it.nameWithoutExtension, it.name
-                )
-            }
-            ?.forEach {
-                arquivos.add(
-                    it.nameWithoutExtension to
-                    (preferencias.getString(
-                        it.nameWithoutExtension,
-                        it.name
-                    ) ?: it.name)
-                )
-            }
-    }
-
-    private fun escolherMapa() {
-        atualizarLista()
-
-        val opcoes = mutableListOf(
-            "＋ Importar novo mapa PDF"
-        )
-
-        opcoes.addAll(
-            arquivos.map { it.second }
-        )
-
+    private fun menuImportacao() {
         AlertDialog.Builder(this)
-            .setTitle("Meus mapas")
-            .setItems(opcoes.toTypedArray()) { _, i ->
-                if (i == 0) importarPdf()
-                else abrirMapa(arquivos[i - 1].first)
+            .setTitle("Adicionar mapa")
+            .setItems(arrayOf("Importar mapa PDF")) { _, _ ->
+                val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                    type = "application/pdf"
+                    addCategory(Intent.CATEGORY_OPENABLE)
+                }
+                startActivityForResult(intent, 10)
             }
-            .setNegativeButton("Fechar", null)
+            .setNegativeButton("Cancelar", null)
             .show()
     }
 
-    private fun importarPdf() {
-        val intent = Intent(
-            Intent.ACTION_OPEN_DOCUMENT
-        ).apply {
-            type = "application/pdf"
-            addCategory(Intent.CATEGORY_OPENABLE)
+    private fun menuMapa(chave: String, nome: String) {
+        AlertDialog.Builder(this)
+            .setTitle(nome)
+            .setItems(arrayOf("Abrir", "Renomear", "Excluir")) { _, i ->
+                when (i) {
+                    0 -> abrirMapa(chave)
+                    1 -> renomearMapa(chave, nome)
+                    2 -> confirmarExclusao(chave, nome)
+                }
+            }
+            .show()
+    }
+
+    private fun renomearMapa(chave: String, nome: String) {
+        val campo = EditText(this).apply {
+            setText(nome)
+            setSingleLine(true)
+            setPadding(dp(16), dp(14), dp(16), dp(14))
         }
 
-        startActivityForResult(intent, 10)
+        AlertDialog.Builder(this)
+            .setTitle("Renomear mapa")
+            .setView(campo)
+            .setPositiveButton("Salvar") { _, _ ->
+                val novo = campo.text.toString().trim()
+                if (novo.isNotEmpty()) {
+                    preferencias().edit().putString(chave, novo).apply()
+                    mostrarBiblioteca()
+                }
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
+    }
+
+    private fun confirmarExclusao(chave: String, nome: String) {
+        AlertDialog.Builder(this)
+            .setTitle("Excluir mapa?")
+            .setMessage(
+                "O mapa \"$nome\" e suas pinturas salvas serão removidos deste aplicativo."
+            )
+            .setPositiveButton("Excluir") { _, _ ->
+                File(pasta(), "$chave.pdf").delete()
+                getSharedPreferences("pinturas", 0)
+                    .edit().remove(chave).apply()
+                preferencias().edit().remove(chave).apply()
+                mostrarBiblioteca()
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
     }
 
     override fun onActivityResult(
@@ -331,146 +329,105 @@ class MainActivity : Activity() {
         resultCode: Int,
         data: Intent?
     ) {
-        super.onActivityResult(
-            requestCode, resultCode, data
-        )
+        super.onActivityResult(requestCode, resultCode, data)
 
-        if (requestCode != 10 ||
-            resultCode != RESULT_OK) return
+        if (requestCode != 10 || resultCode != RESULT_OK) return
 
         val uri = data?.data ?: return
 
         try {
-            var nome = "Mapa PDF"
+            var nome = "Novo mapa.pdf"
 
-            contentResolver.query(
-                uri, null, null, null, null
-            )?.use { cursor ->
-                val coluna = cursor.getColumnIndex(
-                    OpenableColumns.DISPLAY_NAME
-                )
-                if (coluna >= 0 &&
-                    cursor.moveToFirst()) {
-                    nome = cursor.getString(coluna)
-                        ?: nome
+            contentResolver.query(uri, null, null, null, null)?.use {
+                val indice = it.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (indice >= 0 && it.moveToFirst()) {
+                    nome = it.getString(indice) ?: nome
                 }
             }
 
-            val temporario = File(
-                cacheDir, "importacao.pdf"
-            )
+            val temporario = File(cacheDir, "novo_mapa.pdf")
+            val digest = MessageDigest.getInstance("SHA-256")
 
-            val digest = MessageDigest.getInstance(
-                "SHA-256"
-            )
-
-            contentResolver.openInputStream(uri)!!
-                .use { entrada ->
-                    FileOutputStream(temporario)
-                        .use { saida ->
-                            val buffer = ByteArray(8192)
-                            while (true) {
-                                val n = entrada.read(buffer)
-                                if (n < 0) break
-                                digest.update(buffer, 0, n)
-                                saida.write(buffer, 0, n)
-                            }
-                        }
+            contentResolver.openInputStream(uri)!!.use { entrada ->
+                FileOutputStream(temporario).use { saida ->
+                    val buffer = ByteArray(8192)
+                    while (true) {
+                        val n = entrada.read(buffer)
+                        if (n < 0) break
+                        digest.update(buffer, 0, n)
+                        saida.write(buffer, 0, n)
+                    }
                 }
-
-            val chave = digest.digest()
-                .joinToString("") {
-                    "%02x".format(it)
-                }
-
-            val destino = File(
-                pastaMapas(), "$chave.pdf"
-            )
-
-            if (!destino.exists()) {
-                temporario.copyTo(destino)
             }
 
+            val chave = digest.digest().joinToString("") {
+                "%02x".format(it)
+            }
+
+            val destino = File(pasta(), "$chave.pdf")
+
+            if (!destino.exists()) temporario.copyTo(destino)
             temporario.delete()
 
-            getSharedPreferences("mapas", 0)
-                .edit()
-                .putString(chave, nome)
-                .apply()
-
-            atualizarLista()
-            abrirMapa(chave)
+            preferencias().edit().putString(chave, nome).apply()
+            mostrarBiblioteca()
 
         } catch (e: Exception) {
-            mensagem.text =
-                "Erro ao importar: ${e.message}"
+            Toast.makeText(
+                this,
+                "Erro ao importar: ${e.message}",
+                Toast.LENGTH_LONG
+            ).show()
         }
     }
 
     private fun abrirMapa(chave: String) {
-        val arquivo = File(
-            pastaMapas(), "$chave.pdf"
-        )
-
+        val arquivo = File(pasta(), "$chave.pdf")
         if (!arquivo.exists()) return
 
         try {
             val fd = ParcelFileDescriptor.open(
-                arquivo,
-                ParcelFileDescriptor.MODE_READ_ONLY
+                arquivo, ParcelFileDescriptor.MODE_READ_ONLY
             )
 
-            PdfRenderer(fd).use { pdf ->
-                val pagina = pdf.openPage(0)
+            var bitmap: Bitmap? = null
+            var larguraPdf = 0
+            var alturaPdf = 0
 
+            PdfRenderer(fd).use { renderer ->
+                val pagina = renderer.openPage(0)
                 try {
-                    val w = pagina.width
-                    val h = pagina.height
+                    larguraPdf = pagina.width
+                    alturaPdf = pagina.height
 
                     val fator = minOf(
                         3.0,
-                        4000.0 / maxOf(w, h)
+                        4000.0 / maxOf(pagina.width, pagina.height)
                     )
 
                     val limite = minOf(
                         1.0,
                         sqrt(
                             16000000.0 /
-                            (w.toDouble() * h *
-                             fator * fator)
+                                (pagina.width.toDouble() *
+                                    pagina.height * fator * fator)
                         )
                     )
 
-                    val bw = maxOf(
-                        1, (w * fator * limite).toInt()
-                    )
+                    val w = maxOf(1, (pagina.width * fator * limite).toInt())
+                    val h = maxOf(1, (pagina.height * fator * limite).toInt())
 
-                    val bh = maxOf(
-                        1, (h * fator * limite).toInt()
-                    )
-
-                    val bitmap = Bitmap.createBitmap(
-                        bw, bh,
-                        Bitmap.Config.ARGB_8888
-                    )
-
-                    bitmap.eraseColor(Color.WHITE)
+                    bitmap = Bitmap.createBitmap(
+                        w, h, Bitmap.Config.ARGB_8888
+                    ).apply {
+                        eraseColor(Color.WHITE)
+                    }
 
                     pagina.render(
-                        bitmap,
+                        bitmap!!,
                         null,
                         null,
                         PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY
-                    )
-
-                    val geo = GeoPdf.ler(
-                        arquivo,
-                        w.toDouble(),
-                        h.toDouble()
-                    )
-
-                    mapa.carregar(
-                        bitmap, chave, geo
                     )
                 } finally {
                     pagina.close()
@@ -478,113 +435,249 @@ class MainActivity : Activity() {
             }
 
             mapaAtual = chave
+            nomeAtual = preferencias().getString(chave, "Mapa") ?: "Mapa"
 
-            val nome = getSharedPreferences(
-                "mapas", 0
-            ).getString(chave, "Mapa") ?: "Mapa"
+            val geo = GeoPdf.ler(
+                arquivo,
+                larguraPdf.toDouble(),
+                alturaPdf.toDouble()
+            )
 
-            titulo.text = "🪓 $nome"
-
-            getSharedPreferences("config", 0)
-                .edit()
-                .putString("ultimo", chave)
-                .apply()
-
-            ultimaLat?.let { lat ->
-                ultimaLon?.let { lon ->
-                    mapa.atualizarGps(lat, lon)
-                }
-            }
-
-            mensagem.text = "Mapa carregado"
+            mostrarTelaMapa(bitmap!!, chave, geo)
 
         } catch (e: Exception) {
-            mensagem.text =
-                "Erro ao abrir PDF: ${e.message}"
+            Toast.makeText(
+                this,
+                "Erro ao abrir: ${e.message}",
+                Toast.LENGTH_LONG
+            ).show()
         }
     }
 
-    private fun menuPintura() {
-        val itens = arrayOf(
-            "Preencher talhão com mira central",
-            "Desenhar polígono tocando no mapa",
+    private fun mostrarTelaMapa(
+        imagem: Bitmap,
+        chave: String,
+        geo: GeoPdf?
+    ) {
+        val tela = criarRaiz()
+
+        mapa = MapaView(this)
+        mapa.carregar(imagem, chave, geo)
+
+        tela.addView(
+            mapa,
+            FrameLayout.LayoutParams(-1, -1)
+        )
+
+        val topo = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(10), dp(7), dp(10), dp(7))
+            setBackgroundColor(escuro)
+        }
+
+        val voltar = texto("‹", 34f, Color.WHITE).apply {
+            gravity = Gravity.CENTER
+            setOnClickListener {
+                mapa.salvar()
+                mostrarBiblioteca()
+            }
+        }
+
+        topo.addView(
+            voltar,
+            LinearLayout.LayoutParams(dp(48), dp(52))
+        )
+
+        val info = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+
+        info.addView(
+            texto(nomeAtual, 16f, Color.WHITE).apply {
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+            }
+        )
+
+        gpsStatus = texto(
+            if (geo != null)
+                "Mapa com referência geográfica detectada"
+            else
+                "Georreferência não reconhecida",
+            11f,
+            0xFFB9D7C4.toInt()
+        )
+
+        info.addView(gpsStatus)
+
+        topo.addView(
+            info,
+            LinearLayout.LayoutParams(0, -2, 1f)
+        )
+
+        val localizar = texto("◎", 30f, Color.WHITE).apply {
+            gravity = Gravity.CENTER
+            setOnClickListener {
+                if (ultimaLocalizacao == null) {
+                    iniciarGps()
+                } else {
+                    mapa.centrarGps()
+                }
+            }
+        }
+
+        topo.addView(
+            localizar,
+            LinearLayout.LayoutParams(dp(48), dp(52))
+        )
+
+        tela.addView(
+            topo,
+            FrameLayout.LayoutParams(-1, -2, Gravity.TOP)
+        )
+
+        val mais = circulo("+") {
+            menuFerramentas()
+        }
+
+        tela.addView(
+            mais,
+            FrameLayout.LayoutParams(
+                dp(62), dp(62),
+                Gravity.BOTTOM or Gravity.END
+            ).apply {
+                rightMargin = dp(22)
+                bottomMargin = margemSegura()
+            }
+        )
+
+        setContentView(tela)
+
+        ultimaLocalizacao?.let {
+            mapa.atualizarGps(it.latitude, it.longitude)
+        }
+    }
+
+    private fun menuFerramentas() {
+        val opcoes = arrayOf(
+            "Pintar talhão",
+            "Medir área",
+            "Medir distância",
             "Pintar com pincel",
             "Apagar pintura",
-            "Escolher cor",
-            "Ajustar transparência"
+            "Desfazer",
+            "GPS e localização",
+            "Voltar aos mapas"
         )
 
         AlertDialog.Builder(this)
-            .setTitle("Pintura de talhões")
-            .setItems(itens) { _, i ->
+            .setTitle("Ferramentas")
+            .setItems(opcoes) { _, i ->
                 when (i) {
-                    0 -> iniciarMira()
-                    1 -> iniciarPoligono()
-                    2 -> {
-                        mapa.modo = 1
-                        mostrarAcoes(
-                            "CONCLUIR" to {
-                                mapa.modo = 0
-                                mostrarAcoes()
-                            }
-                        )
+                    0 -> iniciarFerramenta(7)
+                    1 -> iniciarFerramenta(8)
+                    2 -> iniciarFerramenta(9)
+                    3 -> iniciarFerramenta(1)
+                    4 -> iniciarFerramenta(2)
+                    5 -> mapa.desfazer()
+                    6 -> iniciarGps()
+                    7 -> {
+                        mapa.salvar()
+                        mostrarBiblioteca()
                     }
-                    3 -> {
-                        mapa.modo = 2
-                        mostrarAcoes(
-                            "CONCLUIR" to {
-                                mapa.modo = 0
-                                mostrarAcoes()
-                            }
-                        )
-                    }
-                    4 -> escolherCor()
-                    5 -> escolherOpacidade()
                 }
-            }.show()
-    }
-
-    private fun iniciarMira() {
-        mapa.iniciar(7)
-
-        mostrarAcoes(
-            "＋ PONTO" to {
-                mapa.adicionarPontoCentral()
-            },
-            "DESFAZER" to {
-                mapa.desfazer()
-            },
-            "✓ PINTAR" to {
-                confirmarPintura()
             }
-        )
+            .show()
     }
 
-    private fun iniciarPoligono() {
-        mapa.iniciar(3)
+    private fun iniciarFerramenta(tipo: Int) {
+        mapa.iniciar(tipo)
 
-        mostrarAcoes(
-            "DESFAZER" to {
-                mapa.desfazer()
-            },
-            "✓ PINTAR" to {
-                confirmarPintura()
-            }
-        )
-    }
+        val tela = raiz
 
-    private fun confirmarPintura() {
-        if (mapa.pintarArea()) {
-            mapa.modo = 0
-            mostrarAcoes()
+        val antiga = tela.findViewWithTag<View>("painelFerramenta")
+        if (antiga != null) tela.removeView(antiga)
+
+        val painel = LinearLayout(this).apply {
+            tag = "painelFerramenta"
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(10), dp(10), dp(10), dp(10))
+            setBackgroundColor(escuro)
         }
+
+        val tituloFerramenta = when (tipo) {
+            7 -> "PINTAR TALHÃO"
+            8 -> "MEDIR ÁREA"
+            9 -> "MEDIR DISTÂNCIA"
+            1 -> "PINCEL"
+            else -> "BORRACHA"
+        }
+
+        painel.addView(
+            texto(tituloFerramenta, 14f, Color.WHITE).apply {
+                gravity = Gravity.CENTER
+            }
+        )
+
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+
+        fun adicionar(nome: String, acao: () -> Unit) {
+            row.addView(
+                botao(nome, acao),
+                LinearLayout.LayoutParams(0, dp(50), 1f)
+            )
+        }
+
+        if (tipo == 7 || tipo == 8 || tipo == 9) {
+            adicionar("+ Ponto") {
+                mapa.adicionarPontoCentral()
+            }
+
+            adicionar("Desfazer") {
+                mapa.desfazer()
+            }
+
+            adicionar(
+                if (tipo == 9) "Concluir" else "Fechar"
+            ) {
+                if (tipo == 7) {
+                    if (mapa.fecharArea()) {
+                        escolherCorPintura()
+                    }
+                } else {
+                    mapa.concluirMedida()
+                }
+            }
+        } else {
+            adicionar("Cor") { escolherCorPintura() }
+            adicionar("Desfazer") { mapa.desfazer() }
+        }
+
+        adicionar("Sair") {
+            mapa.cancelarFerramenta()
+            tela.removeView(painel)
+        }
+
+        painel.addView(row)
+
+        tela.addView(
+            painel,
+            FrameLayout.LayoutParams(
+                -1, -2, Gravity.BOTTOM
+            ).apply {
+                bottomMargin = dp(94)
+            }
+        )
     }
 
-    private fun escolherCor() {
+    private fun escolherCorPintura() {
         val nomes = arrayOf(
-            "Amarelo", "Verde", "Azul",
-            "Vermelho", "Laranja", "Roxo",
-            "Rosa", "Ciano", "Cinza", "Branco"
+            "Amarelo", "Verde", "Azul", "Vermelho",
+            "Laranja", "Roxo", "Rosa", "Ciano"
         )
 
         val cores = intArrayOf(
@@ -595,69 +688,53 @@ class MainActivity : Activity() {
             0xFFF97316.toInt(),
             0xFFA855F7.toInt(),
             0xFFEC4899.toInt(),
-            0xFF06B6D4.toInt(),
-            0xFF94A3B8.toInt(),
-            Color.WHITE
+            0xFF06B6D4.toInt()
         )
 
         AlertDialog.Builder(this)
-            .setTitle("Cor da pintura")
+            .setTitle("Escolher cor")
             .setItems(nomes) { _, i ->
                 mapa.corPintura = cores[i]
-                mensagem.text =
-                    "Cor selecionada: ${nomes[i]}"
-            }
-            .show()
-    }
 
-    private fun escolherOpacidade() {
-        val nomes = arrayOf(
-            "25% — bem transparente",
-            "40% — recomendado",
-            "60% — intermediário",
-            "80% — forte"
-        )
-
-        val valores = intArrayOf(
-            64, 102, 153, 204
-        )
-
-        AlertDialog.Builder(this)
-            .setTitle("Transparência")
-            .setItems(nomes) { _, i ->
-                mapa.opacidade = valores[i]
-                mensagem.text =
-                    "Transparência ajustada"
-            }
-            .show()
-    }
-
-    private fun menuMedidas() {
-        val itens = arrayOf(
-            "Medir área",
-            "Medir distância",
-            "Calibrar escala aproximada"
-        )
-
-        AlertDialog.Builder(this)
-            .setTitle("Ferramentas de medição")
-            .setItems(itens) { _, i ->
-                when (i) {
-                    0 -> mapa.iniciar(3)
-                    1 -> mapa.iniciar(4)
-                    2 -> mapa.iniciar(5)
+                if (mapa.modo == 7 && mapa.areaFechada) {
+                    confirmarPintura()
                 }
-
-                mostrarAcoes(
-                    "DESFAZER" to {
-                        mapa.desfazer()
-                    },
-                    "CONCLUIR" to {
-                        mapa.concluir()
-                    }
-                )
             }
+            .setNegativeButton("Cancelar", null)
             .show()
+    }
+
+    private fun confirmarPintura() {
+        val opcoes = arrayOf(
+            "Transparente — 25%",
+            "Recomendado — 40%",
+            "Intermediário — 60%"
+        )
+
+        val valores = intArrayOf(64, 102, 153)
+
+        AlertDialog.Builder(this)
+            .setTitle("Transparência da pintura")
+            .setItems(opcoes) { _, i ->
+                mapa.opacidade = valores[i]
+
+                if (mapa.salvarArea()) {
+                    encerrarPainel()
+                    Toast.makeText(
+                        this,
+                        "Talhão pintado e salvo",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+            .setNegativeButton("Voltar", null)
+            .show()
+    }
+
+    private fun encerrarPainel() {
+        val painel = raiz.findViewWithTag<View>("painelFerramenta")
+        if (painel != null) raiz.removeView(painel)
+        mapa.cancelarFerramenta()
     }
 
     private fun iniciarGps() {
@@ -666,9 +743,8 @@ class MainActivity : Activity() {
             ) != PackageManager.PERMISSION_GRANTED
         ) {
             requestPermissions(
-                arrayOf(
-                    Manifest.permission.ACCESS_FINE_LOCATION
-                ), 100
+                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION),
+                100
             )
             return
         }
@@ -681,8 +757,11 @@ class MainActivity : Activity() {
                 LocationManager.GPS_PROVIDER
             ) != true
         ) {
-            gpsTexto.text =
-                "Ative a localização do celular"
+            Toast.makeText(
+                this,
+                "Ative a localização do celular",
+                Toast.LENGTH_LONG
+            ).show()
             return
         }
 
@@ -691,18 +770,16 @@ class MainActivity : Activity() {
         }
 
         gpsListener = LocationListener { local ->
-            ultimaLat = local.latitude
-            ultimaLon = local.longitude
+            ultimaLocalizacao = local
 
-            gpsTexto.text = String.format(
+            if (::mapa.isInitialized && mapaAtual.isNotEmpty()) {
+                mapa.atualizarGps(local.latitude, local.longitude)
+            }
+
+            gpsStatus?.text = String.format(
                 Locale("pt", "BR"),
-                "GPS ±%.0f m • %.6f, %.6f",
+                "GPS ±%.0f m • %.5f, %.5f",
                 local.accuracy,
-                local.latitude,
-                local.longitude
-            )
-
-            mapa.atualizarGps(
                 local.latitude,
                 local.longitude
             )
@@ -715,11 +792,10 @@ class MainActivity : Activity() {
                 1f,
                 gpsListener!!
             )
-            gpsTexto.text =
-                "Procurando sinal GPS..."
+
+            gpsStatus?.text = "Procurando sinal GPS..."
         } catch (_: SecurityException) {
-            gpsTexto.text =
-                "Permissão de localização necessária"
+            gpsStatus?.text = "Permissão GPS necessária"
         }
     }
 
@@ -729,9 +805,7 @@ class MainActivity : Activity() {
         grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(
-            requestCode,
-            permissions,
-            grantResults
+            requestCode, permissions, grantResults
         )
 
         if (requestCode == 100 &&
@@ -742,9 +816,21 @@ class MainActivity : Activity() {
         }
     }
 
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        if (mapaAtual.isNotEmpty()) {
+            mapa.salvar()
+            mostrarBiblioteca()
+        } else {
+            super.onBackPressed()
+        }
+    }
+
     override fun onPause() {
         super.onPause()
-        mapa.salvar()
+        if (::mapa.isInitialized && mapaAtual.isNotEmpty()) {
+            mapa.salvar()
+        }
     }
 
     override fun onDestroy() {
@@ -758,11 +844,11 @@ class MainActivity : Activity() {
 class MapaView(context: Context) : View(context) {
 
     var modo = 0
+    var areaFechada = false
+        private set
+
     var corPintura = 0xFFFACC15.toInt()
     var opacidade = 102
-
-    var avisar: (String) -> Unit = {}
-    var avisarGps: (String) -> Unit = {}
 
     private var imagem: Bitmap? = null
     private var identificador = ""
@@ -771,7 +857,6 @@ class MapaView(context: Context) : View(context) {
     private var escala = 1f
     private var dx = 0f
     private var dy = 0f
-
     private var ultimoX = 0f
     private var ultimoY = 0f
     private var multitoque = false
@@ -779,25 +864,13 @@ class MapaView(context: Context) : View(context) {
     private var latGps: Double? = null
     private var lonGps: Double? = null
 
-    private var metrosPorPixel = 0.0
+    private val pontos = mutableListOf<PointF>()
+    private val areas = mutableListOf<MutableList<PointF>>()
+    private val coresAreas = mutableListOf<Int>()
+    private val linhas = mutableListOf<MutableList<PointF>>()
+    private val coresLinhas = mutableListOf<Int>()
 
-    private val areas =
-        mutableListOf<MutableList<PointF>>()
-
-    private val coresAreas =
-        mutableListOf<Int>()
-
-    private val linhas =
-        mutableListOf<MutableList<PointF>>()
-
-    private val coresLinhas =
-        mutableListOf<Int>()
-
-    private val pontos =
-        mutableListOf<PointF>()
-
-    private var linhaAtual:
-        MutableList<PointF>? = null
+    private var linhaAtual: MutableList<PointF>? = null
 
     private fun corAtual(): Int =
         Color.argb(
@@ -809,9 +882,7 @@ class MapaView(context: Context) : View(context) {
 
     private val detector = ScaleGestureDetector(
         context,
-        object :
-            ScaleGestureDetector.SimpleOnScaleGestureListener() {
-
+        object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
             override fun onScale(
                 detector: ScaleGestureDetector
             ): Boolean {
@@ -837,14 +908,11 @@ class MapaView(context: Context) : View(context) {
 
     fun carregar(
         bitmap: Bitmap,
-        id: String,
+        chave: String,
         referencia: GeoPdf?
     ) {
-        salvar()
-
-        imagem?.recycle()
         imagem = bitmap
-        identificador = id
+        identificador = chave
         geo = referencia
 
         areas.clear()
@@ -853,17 +921,7 @@ class MapaView(context: Context) : View(context) {
         coresLinhas.clear()
         pontos.clear()
 
-        metrosPorPixel = 0.0
-        modo = 0
-
         restaurar()
-
-        avisarGps(
-            if (geo != null)
-                "Mapa georreferenciado detectado"
-            else
-                "Georreferência não reconhecida"
-        )
 
         post {
             if (width > 0 && height > 0) {
@@ -872,43 +930,31 @@ class MapaView(context: Context) : View(context) {
                     height.toFloat() / bitmap.height
                 )
 
-                dx = (
-                    width - bitmap.width * escala
-                ) / 2f
-
-                dy = (
-                    height - bitmap.height * escala
-                ) / 2f
+                dx = (width - bitmap.width * escala) / 2f
+                dy = (height - bitmap.height * escala) / 2f
+                invalidate()
             }
-
-            invalidate()
         }
     }
 
     fun iniciar(tipo: Int) {
         modo = tipo
         pontos.clear()
+        areaFechada = false
+        invalidate()
+    }
 
-        avisar(
-            when (tipo) {
-                7 -> "Mova o mapa sob a mira e adicione pontos"
-                3 -> "Toque nos cantos do talhão"
-                4 -> "Toque nos pontos da distância"
-                5 -> "Marque dois pontos de escala"
-                else -> "Ferramenta selecionada"
-            }
-        )
-
+    fun cancelarFerramenta() {
+        modo = 0
+        pontos.clear()
+        areaFechada = false
+        linhaAtual = null
         invalidate()
     }
 
     fun adicionarPontoCentral() {
-        if (modo != 7) {
-            avisar("Ative a mira central primeiro")
-            return
-        }
-
-        if (imagem == null || escala <= 0f) return
+        if (modo !in 7..9 || imagem == null) return
+        if (areaFechada) return
 
         pontos.add(
             PointF(
@@ -917,328 +963,336 @@ class MapaView(context: Context) : View(context) {
             )
         )
 
-        avisar(
-            "${pontos.size} ponto(s) adicionados"
-        )
-
         invalidate()
     }
 
-    fun pintarArea(): Boolean {
-        if (pontos.size < 3 ||
-            (modo != 3 && modo != 7)
-        ) {
-            avisar(
-                "Marque pelo menos três pontos"
-            )
+    fun fecharArea(): Boolean {
+        if (modo != 7 || pontos.size < 3) {
+            Toast.makeText(
+                context,
+                "Adicione pelo menos 3 pontos",
+                Toast.LENGTH_SHORT
+            ).show()
+            return false
+        }
+
+        areaFechada = true
+        invalidate()
+        return true
+    }
+
+    fun salvarArea(): Boolean {
+        if (modo != 7 || !areaFechada || pontos.size < 3) {
             return false
         }
 
         areas.add(
-            pontos.map {
-                PointF(it.x, it.y)
-            }.toMutableList()
+            pontos.map { PointF(it.x, it.y) }.toMutableList()
         )
 
         coresAreas.add(corAtual())
 
         pontos.clear()
+        areaFechada = false
         salvar()
-
-        avisar("Talhão pintado e salvo")
         invalidate()
-
         return true
     }
 
     fun desfazer() {
         when {
             pontos.isNotEmpty() -> {
+                areaFechada = false
                 pontos.removeAt(pontos.lastIndex)
             }
+
             linhas.isNotEmpty() -> {
                 linhas.removeAt(linhas.lastIndex)
-                if (coresLinhas.isNotEmpty())
-                    coresLinhas.removeAt(
-                        coresLinhas.lastIndex
-                    )
+                coresLinhas.removeAt(coresLinhas.lastIndex)
             }
+
             areas.isNotEmpty() -> {
                 areas.removeAt(areas.lastIndex)
-                if (coresAreas.isNotEmpty())
-                    coresAreas.removeAt(
-                        coresAreas.lastIndex
-                    )
+                coresAreas.removeAt(coresAreas.lastIndex)
             }
         }
 
         salvar()
         invalidate()
-        avisar("Última ação desfeita")
+    }
+
+    fun concluirMedida() {
+        if (modo == 8) {
+            if (pontos.size < 3) {
+                aviso("Adicione pelo menos 3 pontos")
+                return
+            }
+
+            areaFechada = true
+            invalidate()
+
+            val coordenadas = pontosEmMetros()
+            if (coordenadas == null) {
+                aviso("Sem georreferência válida para medir hectares")
+                return
+            }
+
+            var soma = 0.0
+
+            for (i in coordenadas.indices) {
+                val j = (i + 1) % coordenadas.size
+                soma +=
+                    coordenadas[i].first * coordenadas[j].second -
+                    coordenadas[j].first * coordenadas[i].second
+            }
+
+            val hectares = abs(soma) / 20000.0
+
+            aviso(
+                String.format(
+                    Locale("pt", "BR"),
+                    "Área aproximada: %.4f hectares",
+                    hectares
+                )
+            )
+        }
+
+        if (modo == 9) {
+            if (pontos.size < 2) {
+                aviso("Adicione pelo menos 2 pontos")
+                return
+            }
+
+            val coordenadas = pontosEmMetros()
+            if (coordenadas == null) {
+                aviso("Sem georreferência válida para medir distância")
+                return
+            }
+
+            var metros = 0.0
+
+            for (i in 1 until coordenadas.size) {
+                metros += hypot(
+                    coordenadas[i].first - coordenadas[i - 1].first,
+                    coordenadas[i].second - coordenadas[i - 1].second
+                )
+            }
+
+            aviso(
+                String.format(
+                    Locale("pt", "BR"),
+                    "Distância aproximada: %.2f metros",
+                    metros
+                )
+            )
+        }
+    }
+
+    private fun aviso(mensagem: String) {
+        AlertDialog.Builder(context)
+            .setMessage(mensagem)
+            .setPositiveButton("OK", null)
+            .show()
+    }
+
+    private fun pontosEmMetros(): List<Pair<Double, Double>>? {
+        val referencia = geo ?: return null
+        val img = imagem ?: return null
+
+        val resultado = mutableListOf<Pair<Double, Double>>()
+
+        pontos.forEach { p ->
+            val valor = referencia.pixelParaMetros(
+                p.x, p.y, img.width, img.height
+            ) ?: return null
+
+            resultado.add(valor)
+        }
+
+        return resultado
     }
 
     fun atualizarGps(lat: Double, lon: Double) {
         latGps = lat
         lonGps = lon
-
-        avisarGps(
-            when {
-                imagem == null ->
-                    "Abra um mapa"
-                geo == null ->
-                    "GPS ativo • mapa não georreferenciado"
-                gpsEmPixels() == null ->
-                    "GPS fora dos limites do mapa"
-                else ->
-                    "GPS localizado no mapa"
-            }
-        )
-
         invalidate()
     }
 
-    private fun gpsEmPixels(): PointF? {
+    private fun gpsPixel(): PointF? {
         val img = imagem ?: return null
         val lat = latGps ?: return null
         val lon = lonGps ?: return null
 
         return geo?.gpsParaPixel(
-            lat, lon,
-            img.width, img.height
+            lat, lon, img.width, img.height
         )
     }
 
     fun centrarGps() {
-        val p = gpsEmPixels()
+        val p = gpsPixel()
 
         if (p == null) {
-            avisar(
-                "Não foi possível localizar o GPS neste mapa"
-            )
+            aviso("GPS não localizado neste mapa")
             return
         }
 
         dx = width / 2f - p.x * escala
         dy = height / 2f - p.y * escala
-
         invalidate()
     }
 
     private fun caminho(
-        pontos: List<PointF>,
-        fechado: Boolean
+        lista: List<PointF>,
+        fechar: Boolean
     ): Path {
         val path = Path()
+        if (lista.isEmpty()) return path
 
-        if (pontos.isEmpty()) return path
+        path.moveTo(lista[0].x, lista[0].y)
 
-        path.moveTo(
-            pontos[0].x,
-            pontos[0].y
-        )
-
-        for (i in 1 until pontos.size) {
-            path.lineTo(
-                pontos[i].x,
-                pontos[i].y
-            )
+        for (i in 1 until lista.size) {
+            path.lineTo(lista[i].x, lista[i].y)
         }
 
-        if (fechado) path.close()
-
+        if (fechar) path.close()
         return path
     }
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
-        canvas.drawColor(
-            Color.rgb(215, 220, 216)
-        )
+        canvas.drawColor(0xFFE5EAE6.toInt())
 
         canvas.save()
         canvas.translate(dx, dy)
         canvas.scale(escala, escala)
 
         imagem?.let {
-            canvas.drawBitmap(
-                it, 0f, 0f, null
-            )
+            canvas.drawBitmap(it, 0f, 0f, null)
         }
 
         areas.forEachIndexed { i, area ->
             if (area.size >= 3) {
-                val tinta = Paint(
-                    Paint.ANTI_ALIAS_FLAG
-                ).apply {
+                val tinta = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                     color = coresAreas.getOrElse(i) {
                         0x66FACC15
                     }
                     style = Paint.Style.FILL
                 }
 
-                canvas.drawPath(
-                    caminho(area, true),
-                    tinta
-                )
+                canvas.drawPath(caminho(area, true), tinta)
 
-                val contorno = Paint(
-                    Paint.ANTI_ALIAS_FLAG
-                ).apply {
-                    color = Color.rgb(
-                        28, 92, 54
-                    )
+                val borda = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = 0xFF17804D.toInt()
                     style = Paint.Style.STROKE
                     strokeWidth = 2f / escala
                 }
 
-                canvas.drawPath(
-                    caminho(area, true),
-                    contorno
-                )
+                canvas.drawPath(caminho(area, true), borda)
             }
         }
 
         linhas.forEachIndexed { i, linha ->
-            val tinta = Paint(
-                Paint.ANTI_ALIAS_FLAG
-            ).apply {
+            val tinta = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = coresLinhas.getOrElse(i) {
                     0x66FACC15
                 }
                 style = Paint.Style.STROKE
-                strokeWidth = 20f / escala
+                strokeWidth = 17f / escala
                 strokeCap = Paint.Cap.ROUND
                 strokeJoin = Paint.Join.ROUND
             }
 
-            canvas.drawPath(
-                caminho(linha, false),
-                tinta
-            )
+            canvas.drawPath(caminho(linha, false), tinta)
         }
 
         if (pontos.isNotEmpty()) {
-            val guia = Paint(
-                Paint.ANTI_ALIAS_FLAG
-            ).apply {
-                color = Color.rgb(
-                    15, 110, 245
-                )
+            val linha = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = 0xFF087CDE.toInt()
                 style = Paint.Style.STROKE
                 strokeWidth = 3f / escala
+                strokeJoin = Paint.Join.ROUND
             }
 
+            // A linha só fecha quando o usuário confirma.
             canvas.drawPath(
-                caminho(
-                    pontos,
-                    modo == 3 || modo == 7
-                ),
-                guia
+                caminho(pontos, areaFechada),
+                linha
             )
 
-            val ponto = Paint(
-                Paint.ANTI_ALIAS_FLAG
-            ).apply {
-                color = Color.WHITE
+            if (areaFechada && pontos.size >= 3) {
+                val preenchimento = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = 0x3322C55E
+                    style = Paint.Style.FILL
+                }
+
+                canvas.drawPath(
+                    caminho(pontos, true),
+                    preenchimento
+                )
             }
 
-            val borda = Paint(
-                Paint.ANTI_ALIAS_FLAG
-            ).apply {
-                color = Color.BLUE
-                style = Paint.Style.STROKE
-                strokeWidth = 2f / escala
-            }
+            pontos.forEachIndexed { i, p ->
+                val fundo = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = Color.WHITE
+                }
 
-            pontos.forEach {
+                val contorno = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = 0xFF087CDE.toInt()
+                    style = Paint.Style.STROKE
+                    strokeWidth = 2f / escala
+                }
+
                 canvas.drawCircle(
-                    it.x, it.y,
-                    6f / escala, ponto
+                    p.x, p.y, 6f / escala, fundo
                 )
                 canvas.drawCircle(
-                    it.x, it.y,
-                    6f / escala, borda
+                    p.x, p.y, 6f / escala, contorno
                 )
             }
         }
 
-        gpsEmPixels()?.let { p ->
-            val branco = Paint(
-                Paint.ANTI_ALIAS_FLAG
-            ).apply {
+        gpsPixel()?.let { p ->
+            val branco = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = Color.WHITE
             }
 
-            val azul = Paint(
-                Paint.ANTI_ALIAS_FLAG
-            ).apply {
-                color = Color.rgb(
-                    20, 115, 255
-                )
+            val azul = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = 0xFF1674E8.toInt()
             }
 
             canvas.drawCircle(
-                p.x, p.y,
-                13f / escala, branco
+                p.x, p.y, 13f / escala, branco
             )
-
             canvas.drawCircle(
-                p.x, p.y,
-                9f / escala, azul
+                p.x, p.y, 9f / escala, azul
             )
         }
 
         canvas.restore()
 
-        if (modo == 7) {
+        if (modo in 7..9) {
             val cx = width / 2f
             val cy = height / 2f
 
-            val mira = Paint(
-                Paint.ANTI_ALIAS_FLAG
-            ).apply {
-                color = Color.rgb(
-                    0, 105, 245
-                )
+            val mira = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = 0xFF087CDE.toInt()
                 strokeWidth = 3f
                 style = Paint.Style.STROKE
             }
 
-            canvas.drawCircle(
-                cx, cy, 11f, mira
-            )
-
-            canvas.drawLine(
-                cx - 30f, cy,
-                cx - 14f, cy, mira
-            )
-
-            canvas.drawLine(
-                cx + 14f, cy,
-                cx + 30f, cy, mira
-            )
-
-            canvas.drawLine(
-                cx, cy - 30f,
-                cx, cy - 14f, mira
-            )
-
-            canvas.drawLine(
-                cx, cy + 14f,
-                cx, cy + 30f, mira
-            )
+            canvas.drawCircle(cx, cy, 10f, mira)
+            canvas.drawLine(cx - 30, cy, cx - 14, cy, mira)
+            canvas.drawLine(cx + 14, cy, cx + 30, cy, mira)
+            canvas.drawLine(cx, cy - 30, cx, cy - 14, mira)
+            canvas.drawLine(cx, cy + 14, cx, cy + 30, mira)
         }
     }
 
-    override fun onTouchEvent(
-        e: MotionEvent
-    ): Boolean {
+    override fun onTouchEvent(e: MotionEvent): Boolean {
         if (imagem == null) return true
 
-        if (e.actionMasked ==
-            MotionEvent.ACTION_POINTER_DOWN
-        ) {
+        if (e.actionMasked == MotionEvent.ACTION_POINTER_DOWN) {
             multitoque = true
             linhaAtual = null
         }
@@ -1246,10 +1300,9 @@ class MapaView(context: Context) : View(context) {
         detector.onTouchEvent(e)
 
         if (e.pointerCount > 1 || multitoque) {
-            if (e.actionMasked ==
-                    MotionEvent.ACTION_UP ||
-                e.actionMasked ==
-                    MotionEvent.ACTION_CANCEL
+            if (
+                e.actionMasked == MotionEvent.ACTION_UP ||
+                e.actionMasked == MotionEvent.ACTION_CANCEL
             ) {
                 multitoque = false
             }
@@ -1266,42 +1319,24 @@ class MapaView(context: Context) : View(context) {
                 ultimoX = e.x
                 ultimoY = e.y
 
-                when (modo) {
-                    1 -> {
-                        linhaAtual = mutableListOf(
-                            PointF(x, y)
-                        )
-
-                        linhas.add(linhaAtual!!)
-                        coresLinhas.add(corAtual())
-                    }
-
-                    2 -> apagarPerto(x, y)
-
-                    3, 4 -> {
-                        pontos.add(PointF(x, y))
-                    }
-
-                    5 -> {
-                        if (pontos.size >= 2)
-                            pontos.clear()
-
-                        pontos.add(PointF(x, y))
-                    }
+                if (modo == 1) {
+                    linhaAtual = mutableListOf(PointF(x, y))
+                    linhas.add(linhaAtual!!)
+                    coresLinhas.add(corAtual())
                 }
+
+                if (modo == 2) apagarPerto(x, y)
             }
 
             MotionEvent.ACTION_MOVE -> {
                 when (modo) {
-                    0, 7 -> {
+                    0, 7, 8, 9 -> {
                         dx += e.x - ultimoX
                         dy += e.y - ultimoY
                     }
 
                     1 -> {
-                        linhaAtual?.add(
-                            PointF(x, y)
-                        )
+                        linhaAtual?.add(PointF(x, y))
                     }
 
                     2 -> apagarPerto(x, y)
@@ -1314,8 +1349,9 @@ class MapaView(context: Context) : View(context) {
             MotionEvent.ACTION_UP -> {
                 linhaAtual = null
 
-                if (modo == 1 || modo == 2)
+                if (modo == 1 || modo == 2) {
                     salvar()
+                }
             }
         }
 
@@ -1323,18 +1359,12 @@ class MapaView(context: Context) : View(context) {
         return true
     }
 
-    private fun apagarPerto(
-        x: Float,
-        y: Float
-    ) {
+    private fun apagarPerto(x: Float, y: Float) {
         val raio = 25f / escala
 
         for (i in linhas.indices.reversed()) {
             if (linhas[i].any {
-                hypot(
-                    it.x - x,
-                    it.y - y
-                ) < raio
+                hypot(it.x - x, it.y - y) < raio
             }) {
                 linhas.removeAt(i)
                 coresLinhas.removeAt(i)
@@ -1343,201 +1373,12 @@ class MapaView(context: Context) : View(context) {
 
         for (i in areas.indices.reversed()) {
             if (areas[i].any {
-                hypot(
-                    it.x - x,
-                    it.y - y
-                ) < raio
+                hypot(it.x - x, it.y - y) < raio
             }) {
                 areas.removeAt(i)
                 coresAreas.removeAt(i)
             }
         }
-
-        invalidate()
-    }
-
-    private fun distancia(
-        a: PointF,
-        b: PointF
-    ): Double =
-        hypot(
-            (a.x - b.x).toDouble(),
-            (a.y - b.y).toDouble()
-        )
-
-    private fun coordenadasMetros(
-        lista: List<PointF>
-    ): List<Pair<Double, Double>>? {
-        val ref = geo ?: return null
-        val img = imagem ?: return null
-
-        val resultado =
-            mutableListOf<Pair<Double, Double>>()
-
-        for (p in lista) {
-            val m = ref.pixelParaMetros(
-                p.x, p.y,
-                img.width, img.height
-            ) ?: return null
-
-            resultado.add(m)
-        }
-
-        return resultado
-    }
-
-    private fun areaMedida(): Double? {
-        if (pontos.size < 3) return null
-
-        val metros = coordenadasMetros(pontos)
-
-        if (metros != null) {
-            var soma = 0.0
-
-            for (i in metros.indices) {
-                val j = (i + 1) % metros.size
-
-                soma +=
-                    metros[i].first * metros[j].second -
-                    metros[j].first * metros[i].second
-            }
-
-            return abs(soma) / 2.0
-        }
-
-        if (geo != null ||
-            metrosPorPixel <= 0.0
-        ) return null
-
-        var soma = 0.0
-
-        for (i in pontos.indices) {
-            val j = (i + 1) % pontos.size
-
-            soma +=
-                pontos[i].x * pontos[j].y -
-                pontos[j].x * pontos[i].y
-        }
-
-        return abs(soma) / 2.0 *
-            metrosPorPixel * metrosPorPixel
-    }
-
-    private fun distanciaMedida(): Double? {
-        if (pontos.size < 2) return null
-
-        val metros = coordenadasMetros(pontos)
-
-        if (metros != null) {
-            var total = 0.0
-
-            for (i in 1 until metros.size) {
-                total += hypot(
-                    metros[i].first -
-                        metros[i - 1].first,
-                    metros[i].second -
-                        metros[i - 1].second
-                )
-            }
-
-            return total
-        }
-
-        if (geo != null ||
-            metrosPorPixel <= 0.0
-        ) return null
-
-        var total = 0.0
-
-        for (i in 1 until pontos.size) {
-            total += distancia(
-                pontos[i - 1],
-                pontos[i]
-            )
-        }
-
-        return total * metrosPorPixel
-    }
-
-    fun concluir() {
-        when (modo) {
-            3, 7 -> {
-                val m2 = areaMedida()
-
-                avisar(
-                    if (m2 == null)
-                        "Área sem escala geográfica válida"
-                    else String.format(
-                        Locale("pt", "BR"),
-                        "Área: %.4f hectares",
-                        m2 / 10000.0
-                    )
-                )
-            }
-
-            4 -> {
-                val metros = distanciaMedida()
-
-                avisar(
-                    if (metros == null)
-                        "Distância sem escala válida"
-                    else String.format(
-                        Locale("pt", "BR"),
-                        "Distância: %.2f metros",
-                        metros
-                    )
-                )
-            }
-
-            5 -> calibrarEscala()
-        }
-    }
-
-    private fun calibrarEscala() {
-        if (pontos.size != 2) {
-            avisar("Marque dois pontos")
-            return
-        }
-
-        val pixels = distancia(
-            pontos[0], pontos[1]
-        )
-
-        if (pixels <= 0.0) return
-
-        val campo = EditText(context).apply {
-            hint = "Distância real em metros"
-            inputType =
-                android.text.InputType.TYPE_CLASS_NUMBER or
-                android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
-        }
-
-        AlertDialog.Builder(context)
-            .setTitle("Calibrar medidas")
-            .setMessage(
-                "Esta calibração serve apenas para " +
-                "medidas. Não posiciona o GPS no mapa."
-            )
-            .setView(campo)
-            .setPositiveButton("Salvar") { _, _ ->
-                val metros = campo.text.toString()
-                    .replace(",", ".")
-                    .toDoubleOrNull()
-
-                if (metros != null && metros > 0) {
-                    metrosPorPixel =
-                        metros / pixels
-
-                    pontos.clear()
-                    salvar()
-
-                    avisar("Escala salva")
-                }
-            }
-            .setNegativeButton(
-                "Cancelar", null
-            )
-            .show()
     }
 
     fun salvar() {
@@ -1568,26 +1409,12 @@ class MapaView(context: Context) : View(context) {
         val dados = JSONObject()
             .put("areas", converter(areas))
             .put("linhas", converter(linhas))
-            .put(
-                "coresAreas",
-                JSONArray(coresAreas)
-            )
-            .put(
-                "coresLinhas",
-                JSONArray(coresLinhas)
-            )
-            .put(
-                "escala",
-                metrosPorPixel
-            )
+            .put("coresAreas", JSONArray(coresAreas))
+            .put("coresLinhas", JSONArray(coresLinhas))
 
-        context.getSharedPreferences(
-            "pinturas", 0
-        ).edit()
-            .putString(
-                identificador,
-                dados.toString()
-            )
+        context.getSharedPreferences("pinturas", 0)
+            .edit()
+            .putString(identificador, dados.toString())
             .apply()
     }
 
@@ -1595,25 +1422,20 @@ class MapaView(context: Context) : View(context) {
         try {
             val texto = context.getSharedPreferences(
                 "pinturas", 0
-            ).getString(
-                identificador, ""
-            ) ?: ""
+            ).getString(identificador, "") ?: ""
 
             if (texto.isEmpty()) return
 
             fun ler(
                 arr: JSONArray,
-                destino:
-                    MutableList<MutableList<PointF>>
+                destino: MutableList<MutableList<PointF>>
             ) {
                 for (i in 0 until arr.length()) {
                     val lista = mutableListOf<PointF>()
-                    val pontosJson =
-                        arr.getJSONArray(i)
+                    val pontosJson = arr.getJSONArray(i)
 
                     for (j in 0 until pontosJson.length()) {
-                        val p =
-                            pontosJson.getJSONObject(j)
+                        val p = pontosJson.getJSONObject(j)
 
                         lista.add(
                             PointF(
@@ -1631,9 +1453,7 @@ class MapaView(context: Context) : View(context) {
                 ler(JSONArray(texto), linhas)
 
                 repeat(linhas.size) {
-                    coresLinhas.add(
-                        0x66FACC15
-                    )
+                    coresLinhas.add(0x66FACC15)
                 }
             } else {
                 val dados = JSONObject(texto)
@@ -1647,25 +1467,25 @@ class MapaView(context: Context) : View(context) {
                 }
 
                 dados.optJSONArray("coresAreas")?.let {
-                    for (i in 0 until it.length())
+                    for (i in 0 until it.length()) {
                         coresAreas.add(it.getInt(i))
+                    }
                 }
 
                 dados.optJSONArray("coresLinhas")?.let {
-                    for (i in 0 until it.length())
+                    for (i in 0 until it.length()) {
                         coresLinhas.add(it.getInt(i))
+                    }
                 }
 
-                metrosPorPixel =
-                    dados.optDouble("escala", 0.0)
-
-                while (coresAreas.size < areas.size)
+                while (coresAreas.size < areas.size) {
                     coresAreas.add(0x66FACC15)
+                }
 
-                while (coresLinhas.size < linhas.size)
+                while (coresLinhas.size < linhas.size) {
                     coresLinhas.add(0x66FACC15)
+                }
             }
-
         } catch (_: Exception) {
         }
     }
@@ -1679,9 +1499,7 @@ class GeoPdf private constructor(
     private val alturaPdf: Double
 ) {
     private val latReferencia =
-        (0 until 4).map {
-            gpts[it * 2]
-        }.average()
+        (0 until 4).map { gpts[it * 2] }.average()
 
     private fun projetar(
         lat: Double,
@@ -1710,13 +1528,8 @@ class GeoPdf private constructor(
         ).second
     }
 
-    private val lx = DoubleArray(4) {
-        lpts[it * 2]
-    }
-
-    private val ly = DoubleArray(4) {
-        lpts[it * 2 + 1]
-    }
+    private val lx = DoubleArray(4) { lpts[it * 2] }
+    private val ly = DoubleArray(4) { lpts[it * 2 + 1] }
 
     private fun bilinear(
         a: DoubleArray,
@@ -1724,9 +1537,9 @@ class GeoPdf private constructor(
         v: Double
     ): Double =
         a[0] * (1 - u) * (1 - v) +
-        a[1] * (1 - u) * v +
-        a[2] * u * v +
-        a[3] * u * (1 - v)
+            a[1] * (1 - u) * v +
+            a[2] * u * v +
+            a[3] * u * (1 - v)
 
     private fun inversa(
         x: Double,
@@ -1738,48 +1551,40 @@ class GeoPdf private constructor(
         var v = 0.5
 
         repeat(25) {
-            val ex =
-                bilinear(xx, u, v) - x
-
-            val ey =
-                bilinear(yy, u, v) - y
+            val ex = bilinear(xx, u, v) - x
+            val ey = bilinear(yy, u, v) - y
 
             val xu =
                 (xx[3] - xx[0]) * (1 - v) +
-                (xx[2] - xx[1]) * v
+                    (xx[2] - xx[1]) * v
 
             val xv =
                 (xx[1] - xx[0]) * (1 - u) +
-                (xx[2] - xx[3]) * u
+                    (xx[2] - xx[3]) * u
 
             val yu =
                 (yy[3] - yy[0]) * (1 - v) +
-                (yy[2] - yy[1]) * v
+                    (yy[2] - yy[1]) * v
 
             val yv =
                 (yy[1] - yy[0]) * (1 - u) +
-                (yy[2] - yy[3]) * u
+                    (yy[2] - yy[3]) * u
 
             val det = xu * yv - xv * yu
 
-            if (abs(det) < 1e-12)
-                return null
+            if (abs(det) < 1e-12) return null
 
-            val du =
-                (ex * yv - ey * xv) / det
-
-            val dv =
-                (ey * xu - ex * yu) / det
+            val du = (ex * yv - ey * xv) / det
+            val dv = (ey * xu - ex * yu) / det
 
             u -= du
             v -= dv
 
-            if (!u.isFinite() ||
-                !v.isFinite()
-            ) return null
+            if (!u.isFinite() || !v.isFinite()) return null
 
-            if (abs(du) + abs(dv) < 1e-10)
+            if (abs(du) + abs(dv) < 1e-10) {
                 return Pair(u, v)
+            }
         }
 
         return if (
@@ -1787,7 +1592,11 @@ class GeoPdf private constructor(
                 bilinear(xx, u, v) - x,
                 bilinear(yy, u, v) - y
             ) < 0.1
-        ) Pair(u, v) else null
+        ) {
+            Pair(u, v)
+        } else {
+            null
+        }
     }
 
     fun gpsParaPixel(
@@ -1799,27 +1608,19 @@ class GeoPdf private constructor(
         val xy = projetar(lat, lon)
 
         val uv = inversa(
-            xy.first, xy.second,
-            mx, my
+            xy.first, xy.second, mx, my
         ) ?: return null
 
-        if (uv.first !in 0.0..1.0 ||
+        if (
+            uv.first !in 0.0..1.0 ||
             uv.second !in 0.0..1.0
         ) return null
 
-        val px = bilinear(
-            lx, uv.first, uv.second
-        )
+        val px = bilinear(lx, uv.first, uv.second)
+        val py = bilinear(ly, uv.first, uv.second)
 
-        val py = bilinear(
-            ly, uv.first, uv.second
-        )
-
-        val pdfX = bbox[0] +
-            px * (bbox[2] - bbox[0])
-
-        val pdfY = bbox[1] +
-            py * (bbox[3] - bbox[1])
+        val pdfX = bbox[0] + px * (bbox[2] - bbox[0])
+        val pdfY = bbox[1] + py * (bbox[3] - bbox[1])
 
         return PointF(
             (pdfX / larguraPdf * w).toFloat(),
@@ -1833,26 +1634,21 @@ class GeoPdf private constructor(
         w: Int,
         h: Int
     ): Pair<Double, Double>? {
-        val pdfX =
-            px / w * larguraPdf
-
-        val pdfY =
-            (1 - py / h) * alturaPdf
+        val pdfX = px / w * larguraPdf
+        val pdfY = (1 - py / h) * alturaPdf
 
         val localX =
-            (pdfX - bbox[0]) /
-            (bbox[2] - bbox[0])
+            (pdfX - bbox[0]) / (bbox[2] - bbox[0])
 
         val localY =
-            (pdfY - bbox[1]) /
-            (bbox[3] - bbox[1])
+            (pdfY - bbox[1]) / (bbox[3] - bbox[1])
 
         val uv = inversa(
-            localX, localY,
-            lx, ly
+            localX, localY, lx, ly
         ) ?: return null
 
-        if (uv.first !in 0.0..1.0 ||
+        if (
+            uv.first !in 0.0..1.0 ||
             uv.second !in 0.0..1.0
         ) return null
 
@@ -1872,32 +1668,17 @@ class GeoPdf private constructor(
             chave: String,
             inicio: Int
         ): DoubleArray? {
-            val pos = texto.indexOf(
-                chave, inicio
-            )
-
+            val pos = texto.indexOf(chave, inicio)
             if (pos < 0) return null
 
-            val abre = texto.indexOf(
-                '[', pos + chave.length
-            )
+            val abre = texto.indexOf('[', pos + chave.length)
+            if (abre < 0 || abre - pos > 40) return null
 
-            if (abre < 0 ||
-                abre - pos > 40
-            ) return null
-
-            val fecha = texto.indexOf(
-                ']', abre + 1
-            )
-
-            if (fecha < 0 ||
-                fecha - abre > 2500
-            ) return null
+            val fecha = texto.indexOf(']', abre + 1)
+            if (fecha < 0 || fecha - abre > 2500) return null
 
             return numeros.findAll(
-                texto.substring(
-                    abre + 1, fecha
-                )
+                texto.substring(abre + 1, fecha)
             ).mapNotNull {
                 it.value.toDoubleOrNull()
             }.toList().toDoubleArray()
@@ -1909,66 +1690,53 @@ class GeoPdf private constructor(
             altura: Double
         ): GeoPdf? {
             return try {
-                if (arquivo.length() >
-                    30000000L
-                ) return null
+                if (arquivo.length() > 30000000L) return null
 
-                val texto =
-                    arquivo.readBytes().toString(
-                        Charsets.ISO_8859_1
-                    )
+                val texto = arquivo.readBytes().toString(
+                    Charsets.ISO_8859_1
+                )
 
-                val gpsPos =
-                    texto.indexOf("/GPTS")
-
+                val gpsPos = texto.indexOf("/GPTS")
                 if (gpsPos < 0) return null
 
-                val vpPos =
-                    texto.lastIndexOf(
-                        "/VP", gpsPos
-                    )
+                val vpPos = texto.lastIndexOf("/VP", gpsPos)
+                val bboxPos = texto.lastIndexOf("/BBox", gpsPos)
 
-                val bboxPos =
-                    texto.lastIndexOf(
-                        "/BBox", gpsPos
-                    )
-
-                if (vpPos < 0 ||
+                if (
+                    vpPos < 0 ||
                     bboxPos < vpPos ||
                     gpsPos - vpPos > 15000
                 ) return null
 
-                val bbox = lerArray(
-                    texto, "/BBox", bboxPos
-                ) ?: return null
+                val bbox = lerArray(texto, "/BBox", bboxPos)
+                    ?: return null
 
-                val gpts = lerArray(
-                    texto, "/GPTS", gpsPos
-                ) ?: return null
+                val gpts = lerArray(texto, "/GPTS", gpsPos)
+                    ?: return null
 
-                val lpts = lerArray(
-                    texto, "/LPTS", gpsPos
-                ) ?: return null
+                val lpts = lerArray(texto, "/LPTS", gpsPos)
+                    ?: return null
 
-                if (bbox.size != 4 ||
+                if (
+                    bbox.size != 4 ||
                     gpts.size != 8 ||
                     lpts.size != 8
                 ) return null
 
-                if (bbox[2] <= bbox[0] ||
+                if (
+                    bbox[2] <= bbox[0] ||
                     bbox[3] <= bbox[1]
                 ) return null
 
                 if ((0 until 4).any {
-                    abs(gpts[it * 2]) > 90.0 ||
-                    abs(gpts[it * 2 + 1]) > 180.0
-                }) return null
+                        abs(gpts[it * 2]) > 90.0 ||
+                            abs(gpts[it * 2 + 1]) > 180.0
+                    }
+                ) return null
 
                 GeoPdf(
-                    bbox, lpts, gpts,
-                    largura, altura
+                    bbox, lpts, gpts, largura, altura
                 )
-
             } catch (_: Exception) {
                 null
             }
