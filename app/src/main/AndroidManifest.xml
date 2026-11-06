@@ -1,4 +1,4 @@
-<![CDATA[<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
@@ -21,4 +21,4 @@
         </activity>
     </application>
 
-</manifest>]]>
+</manifest>
