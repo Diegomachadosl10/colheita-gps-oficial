@@ -230,7 +230,7 @@ class MainActivity : Activity() {
         }
 
         val rolagem = ScrollView(this)
-        rolagem.fillViewport = true
+        rolagem.isFillViewport = true
         rolagem.addView(lista)
 
         coluna.addView(
@@ -1232,7 +1232,7 @@ class MapaView(context: Context) : View(context) {
                 )
             }
 
-            pontos.forEachIndexed { i, p ->
+            pontos.forEach { p ->
                 val fundo = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                     color = Color.WHITE
                 }
