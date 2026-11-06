@@ -344,7 +344,7 @@ class MainActivity : Activity() {
         android.app.AlertDialog.Builder(this)
             .setTitle("Unidade de medida")
             .setItems(opcoes) { _, qual ->
-                mapa.unidade = qual
+                mapa.unidade = opcoes[qual]
                 mapa.atualizarResultado()
             }
             .show()
@@ -441,7 +441,6 @@ class MapaView(context: Context) : View(context) {
         mutableListOf<MutableList<PointF>>()
     private val pontos = mutableListOf<PointF>()
     private var atual: MutableList<PointF>? = null
-    private var ultimoTipo = 3
 
     private val zoom = ScaleGestureDetector(
         context,
@@ -487,7 +486,6 @@ class MapaView(context: Context) : View(context) {
 
     fun iniciarMedicao(tipo: Int) {
         modo = tipo
-        if (tipo == 3 || tipo == 4) ultimoTipo = tipo
         pontos.clear()
         unidade = if (tipo == 4) "Metros" else "Hectares"
         avisar(
