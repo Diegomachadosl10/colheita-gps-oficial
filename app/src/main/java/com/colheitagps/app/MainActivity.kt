@@ -73,7 +73,7 @@ class MainActivity : Activity() {
         if (Build.VERSION.SDK_INT >= 30) {
             window.setDecorFitsSystemWindows(false)
         }
-        biblioteca()
+        inicio()
     }
 
     private fun tela(): FrameLayout =
@@ -116,6 +116,211 @@ class MainActivity : Activity() {
     private fun nome(id: String) =
         prefs().getString(id, "Mapa PDF") ?: "Mapa PDF"
 
+    private fun cartao(titulo: String, subtitulo: String, acao: () -> Unit): View {
+        val caixa = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(18), dp(18), dp(18), dp(18))
+            background = GradientDrawable().apply {
+                setColor(0xFF223029.toInt())
+                cornerRadius = dp(16).toFloat()
+            }
+            setOnClickListener { acao() }
+        }
+        caixa.addView(texto(titulo, 19f, Color.WHITE))
+        caixa.addView(texto(subtitulo, 13f, 0xFFB6C9BD.toInt()))
+        return caixa
+    }
+
+    private fun pagina(titulo: String): LinearLayout {
+        val base = tela()
+        val coluna = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(12), dp(16), dp(16))
+        }
+        val topo = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        topo.addView(botao("Voltar") { inicio() })
+        topo.addView(texto(titulo, 22f, Color.WHITE).apply {
+            setPadding(dp(12), 0, 0, 0)
+        })
+        coluna.addView(topo)
+        val rolagem = ScrollView(this).apply { addView(coluna) }
+        base.addView(rolagem, FrameLayout.LayoutParams(-1, -1))
+        setContentView(base)
+        base.requestApplyInsets()
+        return coluna
+    }
+
+    private fun inicio() {
+        mapa?.salvar()
+        mapa = null
+        status = null
+        val coluna = pagina("Colheita GPS 2.0")
+        val itens = listOf(
+            Triple("MAPAS", "PDF georreferenciado, GPS e talhões", 0),
+            Triple("ORDENS DE SERVIÇO", "Página exclusiva das O.S. por mapa", 1),
+            Triple("ESTOQUE DE CANA", "Registrar entradas e saídas por turno", 2),
+            Triple("RELATÓRIOS", "Consultar registros dos turnos A, B e C", 3)
+        )
+        for ((titulo, subtitulo, tipo) in itens) {
+            val item = cartao(titulo, subtitulo) {
+                when (tipo) {
+                    0 -> biblioteca()
+                    1 -> paginaOrdens()
+                    2 -> estoque()
+                    else -> relatorios()
+                }
+            }
+            coluna.addView(item, LinearLayout.LayoutParams(-1, -2).apply {
+                topMargin = dp(16)
+            })
+        }
+        coluna.addView(texto("Dados salvos neste aparelho. Sincronização online ainda não disponível.", 12f, 0xFFB6C9BD.toInt()).apply {
+            setPadding(0, dp(22), 0, 0)
+        })
+    }
+
+    private fun paginaOrdens() {
+        val coluna = pagina("Ordens de serviço")
+        coluna.addView(texto("Selecione um mapa para consultar ou editar suas O.S.", 14f).apply {
+            setPadding(0, dp(16), 0, dp(8))
+        })
+        val todos = arquivos()
+        if (todos.isEmpty()) coluna.addView(texto("Nenhum mapa importado."))
+        for (f in todos) {
+            val id = f.nameWithoutExtension
+            coluna.addView(cartao(nome(id), "Abrir ordens de serviço") { ordens(id) },
+                LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
+        }
+    }
+
+    private fun registros(): JSONArray {
+        val texto = getSharedPreferences("controle_colheita", 0).getString("movimentos", "[]") ?: "[]"
+        return try { JSONArray(texto) } catch (_: Exception) { JSONArray() }
+    }
+
+    private fun estoque() {
+        val coluna = pagina("Estoque de cana")
+        coluna.addView(texto("Entradas e saídas de cana", 15f).apply {
+            setPadding(0, dp(14), 0, dp(8))
+        })
+        coluna.addView(botao("Adicionar movimentação") { novaMovimentacao() })
+        val dados = registros()
+        var saldo = 0.0
+        for (i in 0 until dados.length()) {
+            val o = dados.optJSONObject(i) ?: continue
+            val valor = o.optDouble("quantidade", 0.0)
+            saldo += if (o.optString("tipo") == "Entrada") valor else -valor
+        }
+        coluna.addView(texto("Saldo registrado: %.2f toneladas".format(Locale("pt", "BR"), saldo), 19f).apply {
+            setPadding(0, dp(18), 0, dp(12))
+        })
+        for (i in dados.length() - 1 downTo 0) {
+            val o = dados.optJSONObject(i) ?: continue
+            val resumo = "${o.optString("tipo")} • ${o.optDouble("quantidade")} t • Turno ${o.optString("turno")}"
+            val detalhe = "${o.optString("data")} • ${o.optString("os")} • ${o.optString("observacao")}"
+            coluna.addView(cartao(resumo, detalhe) {},
+                LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(9) })
+        }
+    }
+
+    private fun novaMovimentacao() {
+        val corpo = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(8), dp(20), dp(8))
+        }
+        val tipo = Spinner(this).apply {
+            adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item,
+                arrayOf("Entrada", "Saída"))
+        }
+        val turno = Spinner(this).apply {
+            adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item,
+                arrayOf("A", "B", "C"))
+        }
+        val quantidade = EditText(this).apply {
+            hint = "Quantidade em toneladas"
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
+        }
+        val os = EditText(this).apply { hint = "Número da O.S. (opcional)" }
+        val obs = EditText(this).apply { hint = "Talhão / observação" }
+        corpo.addView(TextView(this).apply { text = "Tipo de movimentação" })
+        corpo.addView(tipo)
+        corpo.addView(TextView(this).apply { text = "Turno" })
+        corpo.addView(turno)
+        corpo.addView(quantidade)
+        corpo.addView(os)
+        corpo.addView(obs)
+        AlertDialog.Builder(this).setTitle("Nova movimentação").setView(corpo)
+            .setPositiveButton("Salvar") { _, _ ->
+                val valor = quantidade.text.toString().replace(',', '.').toDoubleOrNull()
+                if (valor == null || valor <= 0) {
+                    Toast.makeText(this, "Informe uma quantidade válida", Toast.LENGTH_LONG).show()
+                    return@setPositiveButton
+                }
+                val objeto = JSONObject().apply {
+                    put("tipo", tipo.selectedItem.toString())
+                    put("turno", turno.selectedItem.toString())
+                    put("quantidade", valor)
+                    put("os", os.text.toString())
+                    put("observacao", obs.text.toString())
+                    put("data", java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", Locale("pt", "BR")).format(java.util.Date()))
+                }
+                val dados = registros()
+                dados.put(objeto)
+                getSharedPreferences("controle_colheita", 0).edit()
+                    .putString("movimentos", dados.toString()).apply()
+                estoque()
+            }.setNegativeButton("Cancelar", null).show()
+    }
+
+    private fun relatorios() {
+        val coluna = pagina("Relatórios por turno")
+        val dados = registros()
+        if (dados.length() == 0) {
+            coluna.addView(texto("Nenhuma movimentação registrada.").apply {
+                setPadding(0, dp(20), 0, 0)
+            })
+        }
+        for (turno in listOf("A", "B", "C")) {
+            var entradas = 0.0
+            var saidas = 0.0
+            var total = 0
+            for (i in 0 until dados.length()) {
+                val o = dados.optJSONObject(i) ?: continue
+                if (o.optString("turno") != turno) continue
+                total++
+                if (o.optString("tipo") == "Entrada") entradas += o.optDouble("quantidade")
+                else saidas += o.optDouble("quantidade")
+            }
+            val descricao = "Registros: $total | Entradas: %.2f t | Saídas: %.2f t".format(
+                Locale("pt", "BR"), entradas, saidas)
+            coluna.addView(cartao("Turno $turno", descricao) {},
+                LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(14) })
+        }
+        coluna.addView(botao("Compartilhar resumo") {
+            val msg = StringBuilder("COLHEITA GPS - RESUMO POR TURNO\n")
+            for (turno in listOf("A", "B", "C")) {
+                var entrada = 0.0
+                var saida = 0.0
+                for (i in 0 until dados.length()) {
+                    val o = dados.optJSONObject(i) ?: continue
+                    if (o.optString("turno") == turno) {
+                        if (o.optString("tipo") == "Entrada") entrada += o.optDouble("quantidade")
+                        else saida += o.optDouble("quantidade")
+                    }
+                }
+                msg.append("Turno $turno: entrada %.2f t; saída %.2f t\n".format(
+                    Locale("pt", "BR"), entrada, saida))
+            }
+            startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TEXT, msg.toString())
+            }, "Compartilhar relatório"))
+        }.apply { setPadding(0, dp(12), 0, dp(12)) })
+    }
+
     private fun biblioteca() {
         mapa?.salvar()
         mapa = null
@@ -132,7 +337,8 @@ class MainActivity : Activity() {
             setBackgroundColor(escuro)
             setPadding(dp(20), dp(20), dp(20), dp(18))
         }
-        cab.addView(texto("COLHEITA GPS", 23f, Color.WHITE))
+        cab.addView(texto("COLHEITA GPS 2.0", 23f, Color.WHITE))
+        cab.addView(botao("Menu principal") { inicio() })
         cab.addView(
             texto("Meus mapas de colheita", 14f, 0xFFB6DCC6.toInt())
         )
@@ -166,7 +372,7 @@ class MainActivity : Activity() {
             }
 
             item.addView(
-                texto("鈻�", 30f, verde),
+                texto("PDF", 17f, verde),
                 LinearLayout.LayoutParams(dp(48), dp(58))
             )
 
@@ -174,12 +380,12 @@ class MainActivity : Activity() {
                 orientation = LinearLayout.VERTICAL
             }
             info.addView(texto(nome(id), 16f).apply { maxLines = 2 })
-            info.addView(texto("Mapa PDF 鈥� Abrir", 12f, 0xFFB6C9BD.toInt()))
+            info.addView(texto("Mapa PDF • Abrir", 12f, 0xFFB6C9BD.toInt()))
 
             item.addView(info, LinearLayout.LayoutParams(0, -2, 1f))
 
             item.addView(
-                texto("鈰�", 26f).apply {
+                texto("Opções", 12f).apply {
                     gravity = Gravity.CENTER
                     setOnClickListener { opcoesMapa(id) }
                 },
@@ -254,7 +460,7 @@ class MainActivity : Activity() {
         AlertDialog.Builder(this)
             .setTitle("Excluir mapa?")
             .setMessage(
-                "Isso tamb茅m apaga as pinturas e os n煤meros de O.S. deste mapa."
+                "Isso também apaga as pinturas e os números de O.S. deste mapa."
             )
             .setPositiveButton("Excluir") { _, _ ->
                 File(pasta(), "$id.pdf").delete()
@@ -292,11 +498,11 @@ class MainActivity : Activity() {
         val dados = lista()
         val itens = (
             dados.map { "O.S. $it" } +
-                "锛� Adicionar n煤mero"
+                "Adicionar número"
             ).toTypedArray()
 
         AlertDialog.Builder(this)
-            .setTitle("O.S. 鈥� ${nome(id)}")
+            .setTitle("O.S. • ${nome(id)}")
             .setItems(itens) { _, pos ->
                 val novo = pos == dados.size
 
@@ -304,7 +510,7 @@ class MainActivity : Activity() {
                     inputType = android.text.InputType.TYPE_CLASS_TEXT
                     setSingleLine(true)
                     if (!novo) setText(dados[pos])
-                    hint = "N煤mero da O.S."
+                    hint = "Número da O.S."
                 }
 
                 val dialogo = AlertDialog.Builder(this)
@@ -488,11 +694,11 @@ class MainActivity : Activity() {
         }
 
         cab.addView(
-            texto("鈥�", 34f, Color.WHITE).apply {
+            texto("Voltar", 14f, Color.WHITE).apply {
                 gravity = Gravity.CENTER
                 setOnClickListener { biblioteca() }
             },
-            LinearLayout.LayoutParams(dp(48), dp(52))
+            LinearLayout.LayoutParams(dp(66), dp(52))
         )
 
         val info = LinearLayout(this).apply {
@@ -508,9 +714,9 @@ class MainActivity : Activity() {
 
         status = texto(
             if (geo != null) {
-                "GeoPDF reconhecido 鈥� conferir posi莽茫o"
+                "GeoPDF reconhecido • conferir posição"
             } else {
-                "Georrefer锚ncia n茫o reconhecida"
+                "Georreferência não reconhecida"
             },
             11f,
             0xFFB9D7C4.toInt()
@@ -523,7 +729,7 @@ class MainActivity : Activity() {
         )
 
         cab.addView(
-            texto("鈼�", 29f, Color.WHITE).apply {
+            texto("GPS", 15f, Color.WHITE).apply {
                 gravity = Gravity.CENTER
                 setOnClickListener {
                     if (local == null) {
@@ -533,7 +739,7 @@ class MainActivity : Activity() {
                     }
                 }
             },
-            LinearLayout.LayoutParams(dp(48), dp(52))
+            LinearLayout.LayoutParams(dp(62), dp(52))
         )
 
         base.addView(
@@ -565,9 +771,9 @@ class MainActivity : Activity() {
             .setTitle("Ferramentas")
             .setItems(
                 arrayOf(
-                    "Pintar talh茫o",
-                    "Medir 谩rea",
-                    "Medir dist芒ncia",
+                    "Pintar talhão",
+                    "Medir área",
+                    "Medir distância",
                     "Pincel",
                     "Borracha",
                     "Desfazer",
@@ -607,9 +813,9 @@ class MainActivity : Activity() {
         }
 
         val titulo = when (tipo) {
-            7 -> "PINTAR TALH脙O"
-            8 -> "MEDIR 脕REA"
-            9 -> "MEDIR DIST脗NCIA"
+            7 -> "PINTAR TALHÃO"
+            8 -> "MEDIR ÁREA"
+            9 -> "MEDIR DISTÂNCIA"
             1 -> "PINCEL"
             else -> "BORRACHA"
         }
@@ -694,7 +900,7 @@ class MainActivity : Activity() {
                     mapa?.areaFechada == true
                 ) {
                     AlertDialog.Builder(this)
-                        .setTitle("Transpar锚ncia")
+                        .setTitle("Transparência")
                         .setItems(
                             arrayOf(
                                 "25%",
@@ -751,7 +957,7 @@ class MainActivity : Activity() {
 
             status?.text = String.format(
                 Locale("pt", "BR"),
-                "GPS 卤%.0f m 鈥� %.5f, %.5f",
+                "GPS ±%.0f m • %.5f, %.5f",
                 p.accuracy,
                 p.latitude,
                 p.longitude
@@ -767,7 +973,7 @@ class MainActivity : Activity() {
             )
             status?.text = "Buscando sinal GPS..."
         } catch (_: SecurityException) {
-            status?.text = "Permiss茫o de localiza莽茫o necess谩ria"
+            status?.text = "Permissão de localização necessária"
         }
     }
 
@@ -981,7 +1187,7 @@ class MapaView(context: Context) : View(context) {
 
         if (g == null || b == null) {
             aviso(
-                "Georrefer锚ncia n茫o reconhecida: n茫o 茅 poss铆vel medir em metros ou hectares."
+                "Georreferência não reconhecida: não é possível medir em metros ou hectares."
             )
             return
         }
@@ -991,7 +1197,7 @@ class MapaView(context: Context) : View(context) {
         }
 
         if (m.any { it == null }) {
-            aviso("Pontos fora da regi茫o georreferenciada.")
+            aviso("Pontos fora da região georreferenciada.")
             return
         }
 
@@ -1017,7 +1223,7 @@ class MapaView(context: Context) : View(context) {
             aviso(
                 String.format(
                     Locale("pt", "BR"),
-                    "脕rea aproximada: %.4f ha",
+                    "Área aproximada: %.4f ha",
                     abs(soma) / 20000.0
                 )
             )
@@ -1038,7 +1244,7 @@ class MapaView(context: Context) : View(context) {
             aviso(
                 String.format(
                     Locale("pt", "BR"),
-                    "Dist芒ncia aproximada: %.2f m",
+                    "Distância aproximada: %.2f m",
                     d
                 )
             )
@@ -1073,7 +1279,7 @@ class MapaView(context: Context) : View(context) {
 
         if (p == null) {
             aviso(
-                "Posi莽茫o fora do mapa ou georrefer锚ncia n茫o reconhecida."
+                "Posição fora do mapa ou georreferência não reconhecida."
             )
             return
         }
