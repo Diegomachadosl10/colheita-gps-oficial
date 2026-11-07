@@ -22,7 +22,7 @@ import kotlin.math.*
 
 class MainActivity : Activity() {
     private val verde = Color.rgb(20,139,81)
-    private val escuro = Color.rgb(23,32,29)
+    private val escuro = Color.rgb(18,26,22)
     private var raiz: FrameLayout? = null
     private var mapa: MapaView? = null
     private var chaveAtual = ""
@@ -34,7 +34,7 @@ class MainActivity : Activity() {
 
     private fun dp(n: Int) = (n * resources.displayMetrics.density).toInt()
 
-    private fun texto(s: String, size: Float = 15f, color: Int = escuro) =
+    private fun texto(s: String, size: Float = 15f, color: Int = Color.WHITE) =
         TextView(this).apply {
             text = s
             textSize = size
@@ -78,7 +78,7 @@ class MainActivity : Activity() {
 
     private fun tela(): FrameLayout =
         FrameLayout(this).apply {
-            setBackgroundColor(0xFFF4F7F5.toInt())
+            setBackgroundColor(0xFF121A16.toInt())
             setOnApplyWindowInsetsListener { v, ins ->
                 if (Build.VERSION.SDK_INT >= 30) {
                     val b = ins.getInsets(
@@ -159,14 +159,14 @@ class MainActivity : Activity() {
                 gravity = Gravity.CENTER_VERTICAL
                 setPadding(dp(14), dp(12), dp(10), dp(12))
                 background = GradientDrawable().apply {
-                    setColor(Color.WHITE)
+                    setColor(0xFF223029.toInt())
                     cornerRadius = dp(14).toFloat()
                 }
                 elevation = dp(2).toFloat()
             }
 
             item.addView(
-                texto("▧", 30f, verde),
+                texto("鈻�", 30f, verde),
                 LinearLayout.LayoutParams(dp(48), dp(58))
             )
 
@@ -174,12 +174,12 @@ class MainActivity : Activity() {
                 orientation = LinearLayout.VERTICAL
             }
             info.addView(texto(nome(id), 16f).apply { maxLines = 2 })
-            info.addView(texto("Mapa PDF • Abrir", 12f, Color.GRAY))
+            info.addView(texto("Mapa PDF 鈥� Abrir", 12f, 0xFFB6C9BD.toInt()))
 
             item.addView(info, LinearLayout.LayoutParams(0, -2, 1f))
 
             item.addView(
-                texto("⋮", 26f).apply {
+                texto("鈰�", 26f).apply {
                     gravity = Gravity.CENTER
                     setOnClickListener { opcoesMapa(id) }
                 },
@@ -254,7 +254,7 @@ class MainActivity : Activity() {
         AlertDialog.Builder(this)
             .setTitle("Excluir mapa?")
             .setMessage(
-                "Isso também apaga as pinturas e os números de O.S. deste mapa."
+                "Isso tamb茅m apaga as pinturas e os n煤meros de O.S. deste mapa."
             )
             .setPositiveButton("Excluir") { _, _ ->
                 File(pasta(), "$id.pdf").delete()
@@ -292,11 +292,11 @@ class MainActivity : Activity() {
         val dados = lista()
         val itens = (
             dados.map { "O.S. $it" } +
-                "＋ Adicionar número"
+                "锛� Adicionar n煤mero"
             ).toTypedArray()
 
         AlertDialog.Builder(this)
-            .setTitle("O.S. • ${nome(id)}")
+            .setTitle("O.S. 鈥� ${nome(id)}")
             .setItems(itens) { _, pos ->
                 val novo = pos == dados.size
 
@@ -304,7 +304,7 @@ class MainActivity : Activity() {
                     inputType = android.text.InputType.TYPE_CLASS_TEXT
                     setSingleLine(true)
                     if (!novo) setText(dados[pos])
-                    hint = "Número da O.S."
+                    hint = "N煤mero da O.S."
                 }
 
                 val dialogo = AlertDialog.Builder(this)
@@ -488,7 +488,7 @@ class MainActivity : Activity() {
         }
 
         cab.addView(
-            texto("‹", 34f, Color.WHITE).apply {
+            texto("鈥�", 34f, Color.WHITE).apply {
                 gravity = Gravity.CENTER
                 setOnClickListener { biblioteca() }
             },
@@ -508,9 +508,9 @@ class MainActivity : Activity() {
 
         status = texto(
             if (geo != null) {
-                "GeoPDF reconhecido • conferir posição"
+                "GeoPDF reconhecido 鈥� conferir posi莽茫o"
             } else {
-                "Georreferência não reconhecida"
+                "Georrefer锚ncia n茫o reconhecida"
             },
             11f,
             0xFFB9D7C4.toInt()
@@ -523,7 +523,7 @@ class MainActivity : Activity() {
         )
 
         cab.addView(
-            texto("◎", 29f, Color.WHITE).apply {
+            texto("鈼�", 29f, Color.WHITE).apply {
                 gravity = Gravity.CENTER
                 setOnClickListener {
                     if (local == null) {
@@ -565,9 +565,9 @@ class MainActivity : Activity() {
             .setTitle("Ferramentas")
             .setItems(
                 arrayOf(
-                    "Pintar talhão",
-                    "Medir área",
-                    "Medir distância",
+                    "Pintar talh茫o",
+                    "Medir 谩rea",
+                    "Medir dist芒ncia",
                     "Pincel",
                     "Borracha",
                     "Desfazer",
@@ -607,9 +607,9 @@ class MainActivity : Activity() {
         }
 
         val titulo = when (tipo) {
-            7 -> "PINTAR TALHÃO"
-            8 -> "MEDIR ÁREA"
-            9 -> "MEDIR DISTÂNCIA"
+            7 -> "PINTAR TALH脙O"
+            8 -> "MEDIR 脕REA"
+            9 -> "MEDIR DIST脗NCIA"
             1 -> "PINCEL"
             else -> "BORRACHA"
         }
@@ -694,7 +694,7 @@ class MainActivity : Activity() {
                     mapa?.areaFechada == true
                 ) {
                     AlertDialog.Builder(this)
-                        .setTitle("Transparência")
+                        .setTitle("Transpar锚ncia")
                         .setItems(
                             arrayOf(
                                 "25%",
@@ -751,7 +751,7 @@ class MainActivity : Activity() {
 
             status?.text = String.format(
                 Locale("pt", "BR"),
-                "GPS ±%.0f m • %.5f, %.5f",
+                "GPS 卤%.0f m 鈥� %.5f, %.5f",
                 p.accuracy,
                 p.latitude,
                 p.longitude
@@ -767,7 +767,7 @@ class MainActivity : Activity() {
             )
             status?.text = "Buscando sinal GPS..."
         } catch (_: SecurityException) {
-            status?.text = "Permissão de localização necessária"
+            status?.text = "Permiss茫o de localiza莽茫o necess谩ria"
         }
     }
 
@@ -981,7 +981,7 @@ class MapaView(context: Context) : View(context) {
 
         if (g == null || b == null) {
             aviso(
-                "Georreferência não reconhecida: não é possível medir em metros ou hectares."
+                "Georrefer锚ncia n茫o reconhecida: n茫o 茅 poss铆vel medir em metros ou hectares."
             )
             return
         }
@@ -991,7 +991,7 @@ class MapaView(context: Context) : View(context) {
         }
 
         if (m.any { it == null }) {
-            aviso("Pontos fora da região georreferenciada.")
+            aviso("Pontos fora da regi茫o georreferenciada.")
             return
         }
 
@@ -1017,7 +1017,7 @@ class MapaView(context: Context) : View(context) {
             aviso(
                 String.format(
                     Locale("pt", "BR"),
-                    "Área aproximada: %.4f ha",
+                    "脕rea aproximada: %.4f ha",
                     abs(soma) / 20000.0
                 )
             )
@@ -1038,7 +1038,7 @@ class MapaView(context: Context) : View(context) {
             aviso(
                 String.format(
                     Locale("pt", "BR"),
-                    "Distância aproximada: %.2f m",
+                    "Dist芒ncia aproximada: %.2f m",
                     d
                 )
             )
@@ -1073,7 +1073,7 @@ class MapaView(context: Context) : View(context) {
 
         if (p == null) {
             aviso(
-                "Posição fora do mapa ou georreferência não reconhecida."
+                "Posi莽茫o fora do mapa ou georrefer锚ncia n茫o reconhecida."
             )
             return
         }
@@ -1102,7 +1102,7 @@ class MapaView(context: Context) : View(context) {
 
     override fun onDraw(c: Canvas) {
         super.onDraw(c)
-        c.drawColor(0xFFE5EAE6.toInt())
+        c.drawColor(0xFF18231D.toInt())
 
         c.save()
         c.translate(dx, dy)
