@@ -102,6 +102,28 @@ class MainActivity : Activity() {
             if (fala != null) vozResultado?.invoke(fala)
             vozResultado = null
         }
+        if (requestCode == 306) {
+            val uri = data?.data ?: return
+            try {
+                val destino = File(filesDir, "foto_estoque_atual.jpg")
+                val bitmap = contentResolver.openInputStream(uri)?.use { entrada ->
+                    BitmapFactory.decodeStream(entrada)
+                } ?: throw IOException("Imagem indisponível")
+                destino.outputStream().use { saida ->
+                    if (!bitmap.compress(Bitmap.CompressFormat.JPEG, 88, saida))
+                        throw IOException("Falha ao gravar imagem")
+                }
+                bitmap.recycle()
+                val p = progresso().put("fotoEstoque", destino.absolutePath)
+                getSharedPreferences("controle_colheita", 0).edit()
+                    .putString("progresso", p.toString()).commit()
+                estoque()
+                Toast.makeText(this, "Foto anexada ao estoque", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Toast.makeText(this, "Erro ao anexar foto: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+            return
+        }
         if (requestCode == 301) {
             val uri = data?.data ?: return
             val id = fotoPendente ?: return
@@ -448,11 +470,37 @@ class MainActivity : Activity() {
         coluna.addView(texto("Área restante: ${p.optString("areaRestante").ifBlank { "Não informada" }} ha", 18f))
         coluna.addView(texto("Produtividade: ${p.optString("produtividade").ifBlank { "Não informada" }} t/ha", 16f))
         coluna.addView(botao("Editar dados do estoque") { editarProgressoColheita() })
+        coluna.addView(botao("Adicionar / trocar foto do mapa") { escolherFotoEstoque() })
+        fotoEstoque()?.let { foto ->
+            coluna.addView(texto("Foto anexada: ${foto.name}", 14f))
+            coluna.addView(botao("Remover foto anexada") {
+                val p = progresso()
+                p.remove("fotoEstoque")
+                getSharedPreferences("controle_colheita", 0).edit()
+                    .putString("progresso", p.toString()).commit()
+                estoque()
+            })
+        }
         coluna.addView(botao("Compartilhar estoque") { escolherCompartilhamentoEstoque() })
         coluna.addView(botao("Histórico") { historicoEstoque() })
     }
 
     private var mapaEstoqueSelecionado: File? = null
+    private fun fotoEstoque(): File? {
+        val caminho = progresso().optString("fotoEstoque")
+        return if (caminho.isNotBlank()) File(caminho).takeIf { it.exists() } else null
+    }
+    private fun escolherFotoEstoque() {
+        try {
+            startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                type = "image/*"
+                addCategory(Intent.CATEGORY_OPENABLE)
+            }, 306)
+        } catch (e: Exception) {
+            Toast.makeText(this, "Não foi possível abrir a galeria", Toast.LENGTH_LONG).show()
+        }
+    }
+
     private fun mapasDisponiveisEstoque(): List<File> =
         (filesDir.listFiles() ?: emptyArray<File>()).filter {
             it.isFile && it.name.startsWith("mapa_relatorio_") && it.name.endsWith(".png")
@@ -466,6 +514,15 @@ class MainActivity : Activity() {
                 .setMessage("Informe O.S., talhões, área restante e produtividade antes de compartilhar.")
                 .setPositiveButton("Preencher") { _, _ -> editarProgressoColheita() }
                 .setNegativeButton("Cancelar", null).show()
+            return
+        }
+        val foto = fotoEstoque()
+        if (foto != null) {
+            mapaEstoqueSelecionado = foto
+            AlertDialog.Builder(this).setTitle("Compartilhar estoque")
+                .setItems(arrayOf("Mensagem com foto (WhatsApp)", "PDF com foto")) { _, op ->
+                    if (op == 0) compartilharEstoqueComMapa() else gerarPdfEstoque()
+                }.show()
             return
         }
         val mapas = mapasDisponiveisEstoque()
@@ -517,7 +574,8 @@ class MainActivity : Activity() {
                     for (parte in entrada.text.toString().split(",")) {
                         val pedaco = parte.trim()
                         if (pedaco.isEmpty()) continue
-                        val faixa = pedaco.split("-").map { it.trim().toIntOrNull() }
+                        val faixa = pedaco.replace(Regex("\\s+[aA]\\s+"), "-")
+                            .split("-").map { it.trim().toIntOrNull() }
                         if (faixa.size !in 1..2 || faixa.any { it == null }) {
                             valido = false; break
                         }
@@ -535,19 +593,25 @@ class MainActivity : Activity() {
                     }
                 }.show()
         })
-        AlertDialog.Builder(this).setTitle("Estoque restante da colheita").setView(corpo)
+        val rolagem = ScrollView(this).apply { addView(corpo) }
+        AlertDialog.Builder(this).setTitle("Estoque restante da colheita").setView(rolagem)
             .setNegativeButton("Cancelar", null).setPositiveButton("Salvar") { _, _ ->
-                val restante = area.text.toString().replace(',', '.').toDoubleOrNull()
-                val prod = produtividade.text.toString().replace(',', '.').toDoubleOrNull()
+                val restante = area.text.toString().trim().replace("ha", "", true)
+                    .replace(" ", "").replace(',', '.').toDoubleOrNull()
+                val prod = produtividade.text.toString().trim().replace("t/ha", "", true)
+                    .replace(" ", "").replace(',', '.').toDoubleOrNull()
                 if (restante == null || restante < 0 || prod == null || prod < 0) {
                     Toast.makeText(this, "Confira área e produtividade", Toast.LENGTH_LONG).show()
                 } else {
-                    val obj = JSONObject().put("os", os.text.toString())
-                        .put("talhoes", talhoes.text.toString())
+                    val obj = JSONObject().put("os", os.text.toString().trim())
+                        .put("talhoes", talhoes.text.toString().trim())
                         .put("areaRestante", restante.toString())
                         .put("produtividade", prod.toString())
+                    atual.optString("fotoEstoque").takeIf { it.isNotBlank() }?.let {
+                        obj.put("fotoEstoque", it)
+                    }
                     getSharedPreferences("controle_colheita", 0).edit()
-                        .putString("progresso", obj.toString()).apply()
+                        .putString("progresso", obj.toString()).commit()
                     val historico = dados("historico_estoque")
                     historico.put(JSONObject(obj.toString()).put("data",
                         java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", Locale("pt", "BR"))
@@ -573,8 +637,9 @@ class MainActivity : Activity() {
 
     private fun arquivoMapaAtual(): File? {
         val id = getSharedPreferences("controle_colheita", 0).getString("ultimo_mapa", "") ?: ""
-        if (id.isBlank() && mapaEstoqueSelecionado == null) return null
-        return (mapaEstoqueSelecionado ?: File(filesDir, "mapa_relatorio_$id.png")).takeIf { it.exists() }
+        if (id.isBlank() && mapaEstoqueSelecionado == null && fotoEstoque() == null) return null
+        return (mapaEstoqueSelecionado ?: fotoEstoque()
+            ?: File(filesDir, "mapa_relatorio_$id.png")).takeIf { it.exists() }
     }
 
     private fun textoEstoque(): String {
@@ -615,10 +680,10 @@ class MainActivity : Activity() {
             return
         }
         try {
-            val nome = "ColheitaGPS_Mapa_${System.currentTimeMillis()}.png"
+            val nome = "ColheitaGPS_Mapa_${System.currentTimeMillis()}.jpg"
             val valores = android.content.ContentValues().apply {
                 put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, nome)
-                put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/png")
+                put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
                 if (Build.VERSION.SDK_INT >= 29) {
                     put(android.provider.MediaStore.Images.Media.RELATIVE_PATH,
                         android.os.Environment.DIRECTORY_PICTURES + "/ColheitaGPS")
@@ -636,7 +701,7 @@ class MainActivity : Activity() {
                 imagem.inputStream().use { it.copyTo(saida) }
             } ?: throw IOException("Não foi possível copiar o mapa")
             startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
-                type = "image/png"
+                type = "image/jpeg"
                 putExtra(Intent.EXTRA_STREAM, uri)
                 putExtra(Intent.EXTRA_TEXT, textoEstoque())
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -1425,6 +1490,24 @@ class MainActivity : Activity() {
             LinearLayout.LayoutParams(dp(62), dp(52))
         )
 
+        val resumoArea = texto("Área em destaque: —   |   Total pintado: —", 13f, Color.WHITE).apply {
+            setPadding(dp(12), dp(7), dp(12), dp(7))
+            setBackgroundColor(0xDD173A2A.toInt())
+        }
+        val atualizarArea = {
+            val destaque = visual.hectaresEmDestaque()?.let {
+                String.format(Locale("pt", "BR"), "%.2f ha", it)
+            } ?: "—"
+            val total = visual.hectaresPintados()?.let {
+                String.format(Locale("pt", "BR"), "%.2f ha", it)
+            } ?: "sem georreferência"
+            resumoArea.text = "Área em destaque: $destaque   |   Total: $total"
+        }
+        visual.aoAtualizarArea = atualizarArea
+        base.addView(resumoArea, FrameLayout.LayoutParams(-1, -2, Gravity.TOP).apply {
+            topMargin = dp(69)
+        })
+        atualizarArea()
         base.addView(
             cab,
             FrameLayout.LayoutParams(-1, -2, Gravity.TOP)
@@ -1450,31 +1533,42 @@ class MainActivity : Activity() {
     }
 
     private fun menu() {
-        AlertDialog.Builder(this)
-            .setTitle("Ferramentas")
-            .setItems(
-                arrayOf(
-                    "Pintar talhão",
-                    "Medir área",
-                    "Medir distância",
-                    "Pincel",
-                    "Borracha",
-                    "Desfazer",
-                    "Excluir última pintura",
-                    "O.S. de trabalho",
-                    "GPS",
-                    "Voltar aos mapas"
-                )
-            ) { _, i ->
-                when (i) {
+        val v = mapa ?: return
+        val ativo = v.modo in 7..9
+        val opcoes = if (ativo) arrayOf(
+            "Adicionar ponto", "Desfazer ponto", "Concluir",
+            "Cancelar ferramenta", "Pintar talhão", "Medir área",
+            "Medir distância", "Pincel", "Borracha", "O.S. de trabalho", "GPS"
+        ) else arrayOf(
+            "Pintar talhão", "Medir área", "Medir distância", "Pincel",
+            "Borracha", "Desfazer", "Excluir última pintura",
+            "O.S. de trabalho", "GPS", "Voltar aos mapas"
+        )
+        AlertDialog.Builder(this).setTitle("Ferramentas")
+            .setItems(opcoes) { _, i ->
+                if (ativo) when (i) {
+                    0 -> v.adicionarPontoCentral()
+                    1 -> v.desfazer()
+                    2 -> if (v.modo == 7) {
+                        if (v.fecharArea()) escolherCor()
+                    } else v.concluirMedida()
+                    3 -> v.cancelarFerramenta()
+                    4 -> ferramenta(7)
+                    5 -> ferramenta(8)
+                    6 -> ferramenta(9)
+                    7 -> ferramenta(1)
+                    8 -> ferramenta(2)
+                    9 -> ordens(chaveAtual)
+                    10 -> iniciarGps()
+                } else when (i) {
                     0 -> ferramenta(7)
                     1 -> ferramenta(8)
                     2 -> ferramenta(9)
                     3 -> ferramenta(1)
                     4 -> ferramenta(2)
-                    5 -> mapa?.desfazer()
+                    5 -> v.desfazer()
                     6 -> AlertDialog.Builder(this).setTitle("Excluir última pintura?")
-                        .setPositiveButton("Excluir") { _, _ -> mapa?.desfazer() }
+                        .setPositiveButton("Excluir") { _, _ -> v.desfazer() }
                         .setNegativeButton("Cancelar", null).show()
                     7 -> ordens(chaveAtual)
                     8 -> iniciarGps()
@@ -1486,74 +1580,8 @@ class MainActivity : Activity() {
     private fun ferramenta(tipo: Int, manterPontos: Boolean = false) {
         val v = mapa ?: return
         if (!manterPontos) v.iniciar(tipo)
-
-        val base = raiz ?: return
-        base.findViewWithTag<View>("painel")?.let {
-            base.removeView(it)
-        }
-
-        val painel = LinearLayout(this).apply {
-            tag = "painel"
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(escuro)
-            setPadding(dp(5), dp(7), dp(5), dp(7))
-        }
-
-        val titulo = when (tipo) {
-            7 -> "PINTAR TALHÃO"
-            8 -> "MEDIR ÁREA"
-            9 -> "MEDIR DISTÂNCIA"
-            1 -> "PINCEL"
-            else -> "BORRACHA"
-        }
-
-        // Título removido para liberar espaço útil do mapa.
-
-        val linha = LinearLayout(this)
-
-        fun adicionar(s: String, acao: () -> Unit) {
-            linha.addView(
-                botao(s, acao),
-                LinearLayout.LayoutParams(0, dp(42), 1f)
-            )
-        }
-
-        if (tipo in 7..9) {
-            adicionar("+ Ponto") {
-                v.adicionarPontoCentral()
-            }
-            adicionar("Desfazer") {
-                v.desfazer()
-            }
-            adicionar(
-                if (tipo == 7) "Concluir pintura" else "Concluir"
-            ) {
-                if (tipo == 7) {
-                    if (v.fecharArea()) escolherCor()
-                } else {
-                    v.concluirMedida()
-                }
-            }
-        } else {
-            adicionar("Cor") { escolherCor() }
-            adicionar("Desfazer") { v.desfazer() }
-        }
-
-        adicionar("Sair") {
-            v.cancelarFerramenta()
-            base.removeView(painel)
-        }
-
-        painel.addView(linha)
-
-        base.addView(
-            painel,
-            FrameLayout.LayoutParams(
-                -1, -2, Gravity.BOTTOM
-            ).apply {
-                bottomMargin = dp(70)
-            }
-        )
+        raiz?.findViewWithTag<View>("painel")?.let { raiz?.removeView(it) }
+        Toast.makeText(this, "Ferramentas no botão +", Toast.LENGTH_SHORT).show()
     }
 
     private fun escolherCor() {
@@ -1709,6 +1737,7 @@ class MapaView(context: Context) : View(context) {
         private set
 
     var aoEditarArea: (() -> Unit)? = null
+    var aoAtualizarArea: (() -> Unit)? = null
     private var inicioToqueX = 0f
     private var inicioToqueY = 0f
     private var arrastou = false
@@ -1825,6 +1854,7 @@ class MapaView(context: Context) : View(context) {
                 )
             )
             invalidate()
+            aoAtualizarArea?.invoke()
         }
     }
 
@@ -1835,6 +1865,7 @@ class MapaView(context: Context) : View(context) {
         }
         areaFechada = true
         invalidate()
+        aoAtualizarArea?.invoke()
         return true
     }
 
@@ -2061,7 +2092,7 @@ class MapaView(context: Context) : View(context) {
             val tinta = Paint(3).apply {
                 color = Color.WHITE
                 textAlign = Paint.Align.CENTER
-                textSize = 16f / escala
+                textSize = 25f / escala
                 typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
                 setShadowLayer(3f / escala, 1f / escala, 1f / escala, Color.BLACK)
             }
@@ -2103,7 +2134,7 @@ class MapaView(context: Context) : View(context) {
                     pathEffect = DashPathEffect(floatArrayOf(12f / escala, 7f / escala), 0f)
                 }
                 c.drawLine(ultimo.x, ultimo.y, centro.x, centro.y, referencia)
-                if (pontos.size > 1) c.drawLine(centro.x, centro.y, pontos.first().x, pontos.first().y, referencia)
+                // Sem fechamento antecipado: apenas a linha guia até o próximo ponto.
             }
             if (areaFechada) {
                 c.drawPath(
@@ -2153,8 +2184,8 @@ class MapaView(context: Context) : View(context) {
         hectaresPintados()?.let { ha ->
             val legenda = String.format(Locale("pt", "BR"), "TOTAL PINTADO: %.2f ha", ha)
             val fundo = Paint(3).apply { color = 0xDD143C2A.toInt() }
-            c.drawRoundRect(RectF(12f, 16f, minOf(width.toFloat() - 12f, 330f), 68f), 12f, 12f, fundo)
-            c.drawText(legenda, 24f, 49f, Paint(3).apply {
+            c.drawRoundRect(RectF(12f, 94f * resources.displayMetrics.density, minOf(width.toFloat() - 12f, 330f * resources.displayMetrics.density), 142f * resources.displayMetrics.density), 12f, 12f, fundo)
+            c.drawText(legenda, 24f, 124f * resources.displayMetrics.density, Paint(3).apply {
                 color = Color.WHITE; textSize = 19f
                 typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             })
@@ -2365,25 +2396,34 @@ class MapaView(context: Context) : View(context) {
             .show()
     }
 
+    // União rasterizada: áreas sobrepostas não são contadas duas vezes.
     fun hectaresPintados(): Double? {
-        val g = geo ?: return null
         val b = imagem ?: return null
-        var total = 0.0
-        for (poligono in areas) {
-            if (poligono.size < 3) continue
-            val xy = poligono.map { g.pixelParaMetros(it.x, it.y, b.width, b.height) }
-            if (xy.any { it == null }) return null
-            val pontosMetros = xy.filterNotNull()
-            var soma = 0.0
-            for (i in pontosMetros.indices) {
-                val j = (i + 1) % pontosMetros.size
-                soma += pontosMetros[i].first * pontosMetros[j].second - pontosMetros[j].first * pontosMetros[i].second
+        if (geo == null) return null
+        if (areas.isEmpty()) return 0.0
+        val w = minOf(b.width, 1200)
+        val h = maxOf(1, (b.height.toDouble() * w / b.width).toInt())
+        val mascara = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        try {
+            val c = Canvas(mascara)
+            c.scale(w.toFloat() / b.width, h.toFloat() / b.height)
+            val tinta = Paint().apply { color = Color.WHITE; style = Paint.Style.FILL }
+            for (poligono in areas) {
+                if (poligono.size >= 3) c.drawPath(caminho(poligono, true), tinta)
             }
-            total += abs(soma) / 20000.0
-        }
-        // Polígonos sobrepostos podem somar área duplicada; valor aproximado.
-        return total
+            val pixels = IntArray(w * h)
+            mascara.getPixels(pixels, 0, w, 0, 0, w, h)
+            val preenchidos = pixels.count { Color.alpha(it) > 0 }
+            val areaImagem = hectaresDaArea(listOf(
+                PointF(0f, 0f), PointF(b.width.toFloat(), 0f),
+                PointF(b.width.toFloat(), b.height.toFloat()), PointF(0f, b.height.toFloat())
+            )) ?: return null
+            return areaImagem * preenchidos.toDouble() / pixels.size
+        } finally { mascara.recycle() }
     }
+
+    fun hectaresEmDestaque(): Double? =
+        if (pontos.size >= 3) hectaresDaArea(pontos) else null
 
     private fun atualizarResumoMapa() {
         if (id.isEmpty()) return
@@ -2443,6 +2483,7 @@ class MapaView(context: Context) : View(context) {
             .putString(id, j.toString())
             .apply()
         atualizarResumoMapa()
+        aoAtualizarArea?.invoke()
     }
 
     private fun restaurar() {
