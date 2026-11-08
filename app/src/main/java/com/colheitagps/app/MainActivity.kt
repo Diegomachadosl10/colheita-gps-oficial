@@ -469,6 +469,21 @@ class MainActivity : Activity() {
         coluna.addView(texto("Produtividade: ${p.optString("produtividade").ifBlank { "Não informada" }} t/ha", 16f))
         coluna.addView(botao("Editar dados do estoque") { editarProgressoColheita() })
         coluna.addView(botao("Adicionar / trocar foto do mapa") { escolherFotoEstoque() })
+        coluna.addView(botao("Usar mapa pintado salvo") {
+            val mapas = mapasDisponiveisEstoque()
+            if (mapas.isEmpty()) {
+                Toast.makeText(this, "Salve primeiro uma imagem no mapa pelo botão +", Toast.LENGTH_LONG).show()
+            } else {
+                val nomes = mapas.map { it.name.removePrefix("mapa_relatorio_").removeSuffix(".png") }.toTypedArray()
+                AlertDialog.Builder(this).setTitle("Escolher mapa pintado")
+                    .setItems(nomes) { _, indice ->
+                        val obj = progresso().put("fotoEstoque", mapas[indice].absolutePath)
+                        getSharedPreferences("controle_colheita", 0).edit()
+                            .putString("progresso", obj.toString()).commit()
+                        estoque()
+                    }.setNegativeButton("Cancelar", null).show()
+            }
+        })
         fotoEstoque()?.let { foto ->
             coluna.addView(texto("Foto anexada: ${foto.name}", 14f))
             coluna.addView(botao("Remover foto anexada") {
@@ -594,17 +609,12 @@ class MainActivity : Activity() {
         val rolagem = ScrollView(this).apply { addView(corpo) }
         AlertDialog.Builder(this).setTitle("Estoque restante da colheita").setView(rolagem)
             .setNegativeButton("Cancelar", null).setPositiveButton("Salvar") { _, _ ->
-                val restante = area.text.toString().trim().replace("ha", "", true)
-                    .replace(" ", "").replace(',', '.').toDoubleOrNull()
-                val prod = produtividade.text.toString().trim().replace("t/ha", "", true)
-                    .replace(" ", "").replace(',', '.').toDoubleOrNull()
-                if (restante == null || restante < 0 || prod == null || prod < 0) {
-                    Toast.makeText(this, "Confira área e produtividade", Toast.LENGTH_LONG).show()
-                } else {
-                    val obj = JSONObject().put("os", os.text.toString().trim())
-                        .put("talhoes", talhoes.text.toString().trim())
-                        .put("areaRestante", restante.toString())
-                        .put("produtividade", prod.toString())
+                // Campos são texto livre. Os exemplos não são regras de validação.
+                val obj = JSONObject().put("os", os.text.toString())
+                    .put("talhoes", talhoes.text.toString())
+                    .put("areaRestante", area.text.toString())
+                    .put("produtividade", produtividade.text.toString())
+                run {
                     atual.optString("fotoEstoque").takeIf { it.isNotBlank() }?.let {
                         obj.put("fotoEstoque", it)
                     }
@@ -643,9 +653,10 @@ class MainActivity : Activity() {
     private fun textoEstoque(): String {
         val p = progresso()
         val br = Locale("pt", "BR")
-        val restante = p.optString("areaRestante",
-            p.optString("areaTotal")).replace(',', '.').toDoubleOrNull()
-        val produt = p.optString("produtividade").replace(',', '.').toDoubleOrNull()
+        fun numero(texto: String): Double? = Regex("""\d+(?:[.,]\d+)?""")
+            .find(texto)?.value?.replace(',', '.')?.toDoubleOrNull()
+        val restante = numero(p.optString("areaRestante", p.optString("areaTotal")))
+        val produt = numero(p.optString("produtividade"))
         val sb = StringBuilder("ESTOQUE DE CANA - COLHEITA GPS\n")
         sb.append("Data: ").append(java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", br)
             .format(java.util.Date())).append("\n")
@@ -1501,7 +1512,7 @@ class MainActivity : Activity() {
             } ?: "—"
             val total = visual.hectaresPintados()?.let {
                 String.format(Locale("pt", "BR"), "%.2f ha", it)
-            } ?: "indisponível"
+            } ?: "—"
             resumoArea.text = "Destaque: $destaque    •    Total: $total"
         }
         visual.aoAtualizarArea = atualizarArea
@@ -1566,11 +1577,11 @@ class MainActivity : Activity() {
         val opcoes = if (ativo) arrayOf(
             "Adicionar ponto", "Desfazer ponto", "Concluir",
             "Cancelar ferramenta", "Pintar talhão", "Medir área",
-            "Medir distância", "Pincel", "Borracha", "O.S. de trabalho", "GPS"
+            "Medir distância", "Pincel", "Borracha", "O.S. de trabalho", "GPS", "Salvar mapa pintado"
         ) else arrayOf(
             "Pintar talhão", "Medir área", "Medir distância", "Pincel",
             "Borracha", "Desfazer", "Excluir última pintura",
-            "O.S. de trabalho", "GPS", "Voltar aos mapas"
+            "O.S. de trabalho", "GPS", "Salvar mapa pintado", "Voltar aos mapas"
         )
         AlertDialog.Builder(this).setTitle("Ferramentas")
             .setItems(opcoes) { _, i ->
@@ -1588,6 +1599,7 @@ class MainActivity : Activity() {
                     8 -> ferramenta(2)
                     9 -> ordens(chaveAtual)
                     10 -> iniciarGps()
+                    11 -> { v.salvar(); salvarImagemMapa() }
                 } else when (i) {
                     0 -> ferramenta(7)
                     1 -> ferramenta(8)
@@ -1600,7 +1612,8 @@ class MainActivity : Activity() {
                         .setNegativeButton("Cancelar", null).show()
                     7 -> ordens(chaveAtual)
                     8 -> iniciarGps()
-                    9 -> biblioteca()
+                    9 -> { v.salvar(); salvarImagemMapa() }
+                    10 -> biblioteca()
                 }
             }.show()
     }
@@ -1831,6 +1844,7 @@ class MapaView(context: Context) : View(context) {
         coresLinhas.clear()
         pontos.clear()
         restaurar()
+        aoAtualizarArea?.invoke()
 
         post {
             if (width > 0 && height > 0) {
@@ -2429,34 +2443,50 @@ class MapaView(context: Context) : View(context) {
             .show()
     }
 
-    // União rasterizada: áreas sobrepostas não são contadas duas vezes.
+    // Soma a união das pinturas usando a escala de área já validada
+    // para os polígonos. Não depende dos quatro cantos do PDF.
     fun hectaresPintados(): Double? {
-        val b = imagem ?: return null
-        if (geo == null) return null
         if (areas.isEmpty()) return 0.0
-        val w = minOf(b.width, 1200)
+        if (imagem == null || geo == null) return null
+        val validas = areas.filter { it.size >= 3 }
+        if (validas.isEmpty()) return 0.0
+        val referencia = validas.firstOrNull { hectaresDaArea(it) != null } ?: return null
+        val hectaresReferencia = hectaresDaArea(referencia) ?: return null
+        val pixelsReferencia = areaPixels(referencia)
+        if (pixelsReferencia <= 0.0) return null
+        // União rasterizada com resolução constante para limitar memória.
+        val b = imagem ?: return null
+        val w = minOf(1600, b.width)
         val h = maxOf(1, (b.height.toDouble() * w / b.width).toInt())
         val mascara = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         try {
             val c = Canvas(mascara)
             c.scale(w.toFloat() / b.width, h.toFloat() / b.height)
-            val tinta = Paint().apply { color = Color.WHITE; style = Paint.Style.FILL }
-            for (poligono in areas) {
-                if (poligono.size >= 3) c.drawPath(caminho(poligono, true), tinta)
-            }
+            val tinta = Paint(3).apply { color = Color.WHITE; style = Paint.Style.FILL }
+            validas.forEach { c.drawPath(caminho(it, true), tinta) }
             val pixels = IntArray(w * h)
             mascara.getPixels(pixels, 0, w, 0, 0, w, h)
-            val preenchidos = pixels.count { Color.alpha(it) > 0 }
-            val areaImagem = hectaresDaArea(listOf(
-                PointF(0f, 0f), PointF(b.width.toFloat(), 0f),
-                PointF(b.width.toFloat(), b.height.toFloat()), PointF(0f, b.height.toFloat())
-            )) ?: return null
-            return areaImagem * preenchidos.toDouble() / pixels.size
+            val preenchidos = pixels.count { Color.alpha(it) != 0 }
+            val pixelsUniao = preenchidos.toDouble() * b.width / w * b.height / h
+            return hectaresReferencia * pixelsUniao / pixelsReferencia
         } finally { mascara.recycle() }
     }
 
-    fun hectaresEmDestaque(): Double? =
-        if (pontos.size >= 3) hectaresDaArea(pontos) else null
+    private fun areaPixels(poligono: List<PointF>): Double {
+        var soma = 0.0
+        for (i in poligono.indices) {
+            val j = (i + 1) % poligono.size
+            soma += poligono[i].x.toDouble() * poligono[j].y -
+                poligono[j].x.toDouble() * poligono[i].y
+        }
+        return kotlin.math.abs(soma) / 2.0
+    }
+
+    fun hectaresEmDestaque(): Double? = when {
+        pontos.size >= 3 -> hectaresDaArea(pontos)
+        areas.isNotEmpty() -> hectaresDaArea(areas.last())
+        else -> null
+    }
 
     private fun atualizarResumoMapa() {
         if (id.isEmpty()) return
