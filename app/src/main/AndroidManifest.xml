@@ -15,6 +15,10 @@
             android:name="com.colheitagps.app.MainActivity"
             android:exported="false" />
 
+<activity
+    android:name="com.colheitagps.app.AdminActivity"
+    android:exported="false" />
+
         <activity
             android:name="com.colheitagps.app.LoginActivity"
             android:exported="true">
