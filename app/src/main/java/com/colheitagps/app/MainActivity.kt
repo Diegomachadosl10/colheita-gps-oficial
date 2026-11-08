@@ -37,6 +37,8 @@ class MainActivity : Activity() {
     private var status: TextView? = null
     private var telaAtual = "inicio"
     private var fotoPendente: String? = null
+    private var fotosFormulario = mutableListOf<String>()
+    private var atualizarFotosFormulario: (() -> Unit)? = null
     private var pdfPendente: File? = null
     private var imagemPendente: File? = null
     private var vozResultado: ((String) -> Unit)? = null
@@ -114,6 +116,12 @@ class MainActivity : Activity() {
                         throw IOException("Falha ao gravar imagem")
                 }
                 bitmap.recycle()
+                val nomeFoto = contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                    val col = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    if (col >= 0 && cursor.moveToFirst()) cursor.getString(col) else null
+                } ?: "Foto do estoque.jpg"
+                getSharedPreferences("controle_colheita", 0).edit()
+                    .putString("nome_foto_estoque", nomeFoto).apply()
                 val p = progresso().put("fotoEstoque", destino.absolutePath)
                 getSharedPreferences("controle_colheita", 0).edit()
                     .putString("progresso", p.toString()).commit()
@@ -122,6 +130,29 @@ class MainActivity : Activity() {
             } catch (e: Exception) {
                 Toast.makeText(this, "Erro ao anexar foto: ${e.message}", Toast.LENGTH_LONG).show()
             }
+            return
+        }
+        if (requestCode == 307 || requestCode == 308) {
+            try {
+                if (requestCode == 307) {
+                    val uris = mutableListOf<android.net.Uri>()
+                    data?.clipData?.let { clips -> for (i in 0 until clips.itemCount) uris.add(clips.getItemAt(i).uri) }
+                    if (uris.isEmpty()) data?.data?.let { uris.add(it) }
+                    for (uri in uris) {
+                        val arquivo = File(filesDir, "pendencia_foto_${System.currentTimeMillis()}_${fotosFormulario.size}.jpg")
+                        contentResolver.openInputStream(uri)?.use { entrada -> arquivo.outputStream().use { entrada.copyTo(it) } }
+                        if (arquivo.length() > 0) fotosFormulario.add(arquivo.absolutePath)
+                    }
+                } else {
+                    val miniatura = data?.extras?.get("data") as? Bitmap
+                    if (miniatura != null) {
+                        val arquivo = File(filesDir, "pendencia_camera_${System.currentTimeMillis()}.jpg")
+                        arquivo.outputStream().use { miniatura.compress(Bitmap.CompressFormat.JPEG, 90, it) }
+                        fotosFormulario.add(arquivo.absolutePath)
+                    }
+                }
+                atualizarFotosFormulario?.invoke()
+            } catch (e: Exception) { Toast.makeText(this, "Erro na foto: ${e.message}", Toast.LENGTH_LONG).show() }
             return
         }
         if (requestCode == 301) {
@@ -560,7 +591,7 @@ class MainActivity : Activity() {
                 }.show()
             return
         }
-        val nomes = mapas.map { it.name.removePrefix("mapa_relatorio_").removeSuffix(".png") }.toTypedArray()
+        val nomes = mapas.map { nomeOriginalMapaEstoque(it) }.toTypedArray()
         AlertDialog.Builder(this).setTitle("Selecione o mapa pintado")
             .setSingleChoiceItems(nomes, -1) { dialogo, indice ->
                 mapaEstoqueSelecionado = mapas[indice]
@@ -627,7 +658,7 @@ class MainActivity : Activity() {
                 .setItems(escolhas) { _, opcao ->
                     if (opcao == 0) escolherFotoEstoque()
                     else {
-                        val nomes = mapas.map { it.name.removePrefix("mapa_relatorio_").removeSuffix(".png") }.toTypedArray()
+                        val nomes = mapas.map { nomeOriginalMapaEstoque(it) }.toTypedArray()
                         AlertDialog.Builder(this).setTitle("Mapa pintado salvo")
                             .setItems(nomes) { _, indice ->
                                 val obj = progresso().put("fotoEstoque", mapas[indice].absolutePath)
@@ -719,6 +750,21 @@ class MainActivity : Activity() {
     }
 
 
+    private fun nomeOriginalMapaEstoque(arquivo: File?): String {
+        val selecionado = arquivo?.name?.takeIf {
+            it.startsWith("mapa_relatorio_") && it.endsWith(".png")
+        }?.removePrefix("mapa_relatorio_")?.removeSuffix(".png")
+        val id = selecionado ?: getSharedPreferences("controle_colheita", 0)
+            .getString("ultimo_mapa", "").orEmpty()
+        return if (id.isNotBlank() && arquivo?.name?.startsWith("mapa_relatorio_") == true) {
+            nome(id).substringBeforeLast('.', nome(id))
+        } else if (arquivo?.name == "foto_estoque_atual.jpg") {
+            getSharedPreferences("controle_colheita", 0)
+                .getString("nome_foto_estoque", "Foto do estoque").orEmpty()
+                .substringBeforeLast('.', "Foto do estoque")
+        } else arquivo?.nameWithoutExtension ?: "Mapa"
+    }
+
     private fun compartilharEstoqueComMapa() {
         val imagem = arquivoMapaAtual()
         if (imagem == null) {
@@ -727,10 +773,13 @@ class MainActivity : Activity() {
             return
         }
         try {
-            val nome = "ColheitaGPS_Mapa_${System.currentTimeMillis()}.jpg"
+            val original = nomeOriginalMapaEstoque(imagem)
+            val extensao = if (imagem.extension.equals("png", true)) ".png" else ".jpg"
+            val nome = original.replace(Regex("[\\\\/:*?\\"<>|]"), "_") + extensao
             val valores = android.content.ContentValues().apply {
                 put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, nome)
-                put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+                put(android.provider.MediaStore.Images.Media.MIME_TYPE,
+                    if (extensao == ".png") "image/png" else "image/jpeg")
                 if (Build.VERSION.SDK_INT >= 29) {
                     put(android.provider.MediaStore.Images.Media.RELATIVE_PATH,
                         android.os.Environment.DIRECTORY_PICTURES + "/ColheitaGPS")
@@ -748,7 +797,7 @@ class MainActivity : Activity() {
                 imagem.inputStream().use { it.copyTo(saida) }
             } ?: throw IOException("Não foi possível copiar o mapa")
             startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
-                type = "image/jpeg"
+                type = if (extensao == ".png") "image/png" else "image/jpeg"
                 putExtra(Intent.EXTRA_STREAM, uri)
                 putExtra(Intent.EXTRA_TEXT, textoEstoque())
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -777,7 +826,7 @@ class MainActivity : Activity() {
                 if (bitmap != null) {
                     pagina++
                     val pg = doc.startPage(android.graphics.pdf.PdfDocument.PageInfo.Builder(595, 842, pagina).create())
-                    pg.canvas.drawText("MAPA PINTADO - ÚLTIMO MAPA ABERTO", 28f, 35f, paint)
+                    pg.canvas.drawText("MAPA: " + nomeOriginalMapaEstoque(arquivo).take(70), 28f, 35f, paint)
                     val escala = minOf(535f / bitmap.width, 750f / bitmap.height)
                     val destino = RectF(30f, 50f, 30f + bitmap.width * escala, 50f + bitmap.height * escala)
                     pg.canvas.drawBitmap(bitmap, null, destino, Paint(3))
@@ -801,7 +850,7 @@ class MainActivity : Activity() {
         imagemPendente = arquivo
         startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE); type = "image/png"
-            putExtra(Intent.EXTRA_TITLE, "Mapa_Colheita.png")
+            putExtra(Intent.EXTRA_TITLE, nomeOriginalMapaEstoque(arquivo) + ".png")
         }, 304)
     }
 
@@ -982,6 +1031,31 @@ class MainActivity : Activity() {
         val osRelatorio = campo("O.S. / lote (opcional)", atual?.optString("os") ?: "")
         val pendenciasRelatorio = campo("Pendências para o próximo turno", atual?.optString("pendencias") ?: "")
         if (!foto) { corpo.addView(osRelatorio); corpo.addView(pendenciasRelatorio) }
+        if (foto) {
+            fotosFormulario = mutableListOf<String>().apply {
+                atual?.optJSONArray("fotos")?.let { arr -> for (i in 0 until arr.length()) add(arr.optString(i)) }
+                if (isEmpty()) atual?.optString("foto")?.takeIf { it.isNotBlank() }?.let { add(it) }
+            }
+            val resumo = texto("Fotos anexadas: ${fotosFormulario.size}", 14f)
+            corpo.addView(resumo)
+            atualizarFotosFormulario = { resumo.text = "Fotos anexadas: ${fotosFormulario.size}" }
+            corpo.addView(botao("📷 Tirar foto") {
+                startActivityForResult(Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE), 308)
+            })
+            corpo.addView(botao("🖼 Adicionar fotos da galeria") {
+                startActivityForResult(Intent(Intent.ACTION_GET_CONTENT).apply {
+                    type = "image/*"; putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+                }, 307)
+            })
+            corpo.addView(botao("Remover foto selecionada") {
+                if (fotosFormulario.isNotEmpty()) {
+                    AlertDialog.Builder(this).setTitle("Remover foto")
+                        .setItems(fotosFormulario.mapIndexed { i, _ -> "Foto ${i + 1}" }.toTypedArray()) { _, pos ->
+                            fotosFormulario.removeAt(pos); atualizarFotosFormulario?.invoke()
+                        }.show()
+                }
+            })
+        }
         if (!foto) corpo.addView(botao("🎤 Ditar ocorrência") { ouvir { fala ->
             descricao.setText((descricao.text.toString() + " " + fala).trim())
             Toast.makeText(this, "Confira o texto e salve o registro", Toast.LENGTH_SHORT).show()
@@ -996,15 +1070,17 @@ class MainActivity : Activity() {
                     obj.put("os", osRelatorio.text.toString())
                     obj.put("pendencias", pendenciasRelatorio.text.toString())
                 }
+                if (foto) {
+                    val listaFotos = JSONArray()
+                    fotosFormulario.filter { File(it).exists() }.forEach { listaFotos.put(it) }
+                    obj.put("fotos", listaFotos)
+                    obj.put("foto", if (listaFotos.length() > 0) listaFotos.optString(0) else "")
+                }
                 if (idx < 0) arr.put(obj)
                 guardar(key, arr)
                 if (foto) {
+                    atualizarFotosFormulario = null
                     pendencias()
-                    AlertDialog.Builder(this).setMessage("Deseja adicionar uma foto a esta pendência?")
-                        .setPositiveButton("Adicionar foto") { _, _ ->
-                            fotoPendente = obj.optString("id")
-                            startActivityForResult(Intent(Intent.ACTION_GET_CONTENT).apply { type = "image/*" }, 301)
-                        }.setNegativeButton("Agora não", null).show()
                 } else relatorios()
             }.show()
     }
