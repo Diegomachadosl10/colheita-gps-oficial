@@ -1081,6 +1081,121 @@ class MainActivity : Activity() {
         if (encontrados == 0) coluna.addView(texto("Nenhum registro nesta data.", 14f))
     }
 
+    private fun textoPendencia(obj: JSONObject): String = buildString {
+        append("PENDÊNCIA DE MANUTENÇÃO - COLHEITA GPS\n")
+        append("Data: ").append(dataRegistro(obj)).append("\n")
+        append("O.S.: ").append(obj.optString("osPendencia").ifBlank { "Não informada" }).append("\n")
+        append("Equipamento / Local: ").append(obj.optString("equipamento")).append("\n")
+        append("Pendência: ").append(obj.optString("descricao")).append("\n")
+        append("Situação: ").append(if (obj.optBoolean("concluida", false)) "Concluída" else "Pendente")
+    }
+
+    private fun fotosPendencia(obj: JSONObject): List<File> {
+        val arr = obj.optJSONArray("fotos")
+        val caminhos = if (arr != null && arr.length() > 0)
+            (0 until arr.length()).map { arr.optString(it) }
+        else listOf(obj.optString("foto"))
+        return caminhos.filter { it.isNotBlank() }.map { File(it) }.filter { it.isFile }
+    }
+
+    private fun compartilharPendenciaMenu(obj: JSONObject) {
+        val fotos = fotosPendencia(obj)
+        val opcoes = arrayOf("WhatsApp / mensagem sem foto", "WhatsApp / mensagem com foto", "PDF sem foto", "PDF com foto")
+        AlertDialog.Builder(this).setTitle("Compartilhar pendência")
+            .setMessage("O.S.: " + obj.optString("osPendencia").ifBlank { "Não informada" })
+            .setItems(opcoes) { _, escolha ->
+                when (escolha) {
+                    0 -> compartilharTextoPendencia(obj)
+                    1 -> if (fotos.isEmpty()) {
+                        Toast.makeText(this, "Esta pendência não tem fotos anexadas", Toast.LENGTH_LONG).show()
+                    } else compartilharFotoPendencia(obj, fotos.first())
+                    2 -> gerarPdfPendencia(obj, false)
+                    3 -> if (fotos.isEmpty()) {
+                        Toast.makeText(this, "Esta pendência não tem fotos anexadas", Toast.LENGTH_LONG).show()
+                    } else gerarPdfPendencia(obj, true)
+                }
+            }.show()
+    }
+
+    private fun compartilharTextoPendencia(obj: JSONObject) {
+        startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, textoPendencia(obj))
+        }, "Compartilhar pendência"))
+    }
+
+    private fun compartilharFotoPendencia(obj: JSONObject, foto: File) {
+        try {
+            if (Build.VERSION.SDK_INT < 29) {
+                Toast.makeText(this, "Use PDF com foto neste Android", Toast.LENGTH_LONG).show()
+                gerarPdfPendencia(obj, true)
+                return
+            }
+            val bitmap = BitmapFactory.decodeFile(foto.absolutePath) ?: throw IOException("Foto inválida")
+            val valores = android.content.ContentValues().apply {
+                put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, "pendencia_${System.currentTimeMillis()}.jpg")
+                put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+                put(android.provider.MediaStore.Images.Media.RELATIVE_PATH,
+                    android.os.Environment.DIRECTORY_PICTURES + "/ColheitaGPS")
+            }
+            val uri = contentResolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, valores)
+                ?: throw IOException("Não foi possível preparar a foto")
+            contentResolver.openOutputStream(uri)?.use { saida ->
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 90, saida)
+            } ?: throw IOException("Não foi possível gravar a foto")
+            bitmap.recycle()
+            startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+                type = "image/jpeg"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                putExtra(Intent.EXTRA_TEXT, textoPendencia(obj))
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                clipData = ClipData.newUri(contentResolver, "Foto da pendência", uri)
+            }, "Compartilhar pendência com foto"))
+        } catch (e: Exception) {
+            Toast.makeText(this, "Erro ao compartilhar foto: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun gerarPdfPendencia(obj: JSONObject, comFotos: Boolean) {
+        try {
+            val doc = android.graphics.pdf.PdfDocument()
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK; textSize = 12f }
+            val pg = doc.startPage(android.graphics.pdf.PdfDocument.PageInfo.Builder(595, 842, 1).create())
+            var y = 45f
+            for (linha in textoPendencia(obj).lines()) {
+                // Quebra textos longos para não ultrapassar a página.
+                for (trecho in linha.chunked(75).ifEmpty { listOf("") }) {
+                    pg.canvas.drawText(trecho, 28f, y, paint)
+                    y += 20f
+                }
+            }
+            doc.finishPage(pg)
+            if (comFotos) {
+                fotosPendencia(obj).forEachIndexed { i, arquivo ->
+                    val bitmap = BitmapFactory.decodeFile(arquivo.absolutePath) ?: return@forEachIndexed
+                    val pagina = doc.startPage(android.graphics.pdf.PdfDocument.PageInfo.Builder(595, 842, i + 2).create())
+                    pagina.canvas.drawText("Foto ${i + 1} da pendência", 28f, 35f, paint)
+                    val escala = minOf(535f / bitmap.width, 750f / bitmap.height)
+                    pagina.canvas.drawBitmap(bitmap, null,
+                        RectF(30f, 50f, 30f + bitmap.width * escala, 50f + bitmap.height * escala), Paint(3))
+                    doc.finishPage(pagina)
+                    bitmap.recycle()
+                }
+            }
+            val arquivo = File(cacheDir, "pendencia_${System.currentTimeMillis()}.pdf")
+            arquivo.outputStream().use { doc.writeTo(it) }
+            doc.close()
+            pdfPendente = arquivo
+            startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "application/pdf"
+                putExtra(Intent.EXTRA_TITLE, "Pendencia_OS_${obj.optString("osPendencia").ifBlank { "sem_numero" }}.pdf")
+            }, 303)
+        } catch (e: Exception) {
+            Toast.makeText(this, "Erro no PDF da pendência: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
     private fun pendencias() = listarRegistros("pendencias", "Pendências de manutenção", true)
     private fun relatoriosTurno() = relatorios()
     private fun listarRegistros(key: String, titulo: String, foto: Boolean) {
@@ -1092,16 +1207,18 @@ class MainActivity : Activity() {
             val idx = i
             val tituloItem = obj.optString("equipamento", obj.optString("turno", "Registro"))
             coluna.addView(cartao(tituloItem + (if (foto && obj.optBoolean("concluida", false)) " • Concluída" else ""), obj.optString("descricao")) {
-                val opcoes = if (foto) arrayOf("Editar", "Adicionar foto", "Ver fotos", "Concluir / reabrir", "Excluir")
+                val opcoes = if (foto) arrayOf("Visualizar / compartilhar", "Editar", "Adicionar foto", "Ver fotos", "Concluir / reabrir", "Excluir")
                               else arrayOf("Editar", "Excluir")
                 AlertDialog.Builder(this).setTitle(tituloItem).setItems(opcoes) { _, escolha ->
                     when {
+                        escolha == 0 && foto -> compartilharPendenciaMenu(obj)
                         escolha == 0 -> editarRegistro(key, idx, foto)
-                        foto && escolha == 1 -> {
+                        foto && escolha == 1 -> editarRegistro(key, idx, foto)
+                        foto && escolha == 2 -> {
                             fotoPendente = obj.optString("id")
                             startActivityForResult(Intent(Intent.ACTION_GET_CONTENT).apply { type = "image/*" }, 301)
                         }
-                        foto && escolha == 2 -> {
+                        foto && escolha == 3 -> {
                             val fotos = obj.optJSONArray("fotos")
                             val caminhos = if (fotos != null && fotos.length() > 0) (0 until fotos.length()).map { fotos.optString(it) }
                                 else listOf(obj.optString("foto"))
@@ -1114,7 +1231,7 @@ class MainActivity : Activity() {
                                     }).setPositiveButton("Fechar", null).show()
                                 }.show()
                         }
-                        foto && escolha == 3 -> {
+                        foto && escolha == 4 -> {
                             obj.put("concluida", !obj.optBoolean("concluida", false))
                             guardar(key, arr)
                             pendencias()
@@ -1130,7 +1247,10 @@ class MainActivity : Activity() {
         val corpo = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(18), dp(8), dp(18), dp(8)) }
         val equipamento = campo(if (foto) "Equipamento / O.S." else "Turno (A, B ou C)", (if (foto) atual?.optString("equipamento") else atual?.optString("turno") ?: turnoInicial) ?: "")
         val descricao = campo(if (foto) "Defeito e localização" else "Ocorrências, serviços e pendências", atual?.optString("descricao") ?: "")
-        corpo.addView(equipamento); corpo.addView(descricao)
+        corpo.addView(equipamento)
+        val osPendencia = campo("O.S. da pendência (ex.: 12345)", if (foto) atual?.optString("osPendencia") ?: "" else "")
+        if (foto) corpo.addView(osPendencia)
+        corpo.addView(descricao)
         val osRelatorio = campo("O.S. / lote (opcional)", atual?.optString("os") ?: "")
         val pendenciasRelatorio = campo("Pendências para o próximo turno", atual?.optString("pendencias") ?: "")
         if (!foto) { corpo.addView(osRelatorio); corpo.addView(pendenciasRelatorio) }
@@ -1174,6 +1294,7 @@ class MainActivity : Activity() {
                     obj.put("pendencias", pendenciasRelatorio.text.toString())
                 }
                 if (foto) {
+                    obj.put("osPendencia", osPendencia.text.toString())
                     val listaFotos = JSONArray()
                     fotosFormulario.filter { File(it).exists() }.forEach { listaFotos.put(it) }
                     obj.put("fotos", listaFotos)
@@ -1185,6 +1306,10 @@ class MainActivity : Activity() {
                 if (foto) {
                     atualizarFotosFormulario = null
                     pendencias()
+                    AlertDialog.Builder(this).setTitle("Pendência salva")
+                        .setMessage("Deseja compartilhar esta pendência agora?")
+                        .setNegativeButton("Agora não", null)
+                        .setPositiveButton("Compartilhar") { _, _ -> compartilharPendenciaMenu(obj) }.show()
                 } else relatorios()
             }.show()
     }
