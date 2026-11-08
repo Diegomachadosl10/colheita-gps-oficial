@@ -36,6 +36,7 @@ class MainActivity : Activity() {
     private var telaAtual = "inicio"
     private var fotoPendente: String? = null
     private var pdfPendente: File? = null
+    private var imagemPendente: File? = null
     private var vozResultado: ((String) -> Unit)? = null
     private fun dados(key: String): JSONArray = try {
         JSONArray(getSharedPreferences("registros_v3", 0).getString(key, "[]"))
@@ -74,6 +75,16 @@ class MainActivity : Activity() {
     }
     private fun tratarResultadoVozEFoto(requestCode: Int, resultCode: Int, data: Intent?) {
         if (resultCode != RESULT_OK) return
+        if (requestCode == 304) {
+            val destino = data?.data ?: return
+            val origem = imagemPendente ?: return
+            try {
+                contentResolver.openOutputStream(destino)?.use { out -> origem.inputStream().use { it.copyTo(out) } }
+                Toast.makeText(this, "Imagem salva e pronta para compartilhar", Toast.LENGTH_LONG).show()
+            } catch (_: Exception) { Toast.makeText(this, "Erro ao salvar imagem", Toast.LENGTH_LONG).show() }
+            imagemPendente = null
+            return
+        }
         if (requestCode == 303) {
             val destino = data?.data ?: return
             val origem = pdfPendente ?: return
@@ -99,6 +110,12 @@ class MainActivity : Activity() {
                 for (i in 0 until arr.length()) {
                     val item = arr.getJSONObject(i)
                     if (item.optString("id") == id) {
+                        val fotos = item.optJSONArray("fotos") ?: JSONArray().also { lista ->
+                            val anterior = item.optString("foto")
+                            if (anterior.isNotBlank()) lista.put(anterior)
+                        }
+                        fotos.put(arquivo.absolutePath)
+                        item.put("fotos", fotos)
                         item.put("foto", arquivo.absolutePath)
                         break
                     }
@@ -303,6 +320,10 @@ class MainActivity : Activity() {
             setPadding(0, dp(14), 0, dp(8))
         })
         coluna.addView(botao("Adicionar movimentação") { novaMovimentacao() })
+        coluna.addView(botao("Talhões, áreas e produtividade") { editarProgressoColheita() })
+        coluna.addView(botao("Compartilhar estoque por mensagem") { compartilharTextoEstoque() })
+        coluna.addView(botao("Gerar relatório de estoque em PDF") { gerarPdfEstoque() })
+        coluna.addView(botao("Salvar imagem do mapa pintado") { salvarImagemMapa() })
         val dados = registros()
         var saldo = 0.0
         for (i in 0 until dados.length()) {
@@ -320,6 +341,118 @@ class MainActivity : Activity() {
             coluna.addView(cartao(resumo, detalhe) {},
                 LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(9) })
         }
+    }
+
+    private fun progresso(): JSONObject = try {
+        JSONObject(getSharedPreferences("controle_colheita", 0).getString("progresso", "{}") ?: "{}")
+    } catch (_: Exception) { JSONObject() }
+
+    private fun editarProgressoColheita() {
+        val atual = progresso()
+        val corpo = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(18), dp(8), dp(18), dp(8)) }
+        val os = campo("O.S.", atual.optString("os"))
+        val talhoes = campo("Talhões em trabalho (ex.: 03, 04 e 05)", atual.optString("talhoes"))
+        val total = campo("Área total dos talhões (ha)", atual.optString("areaTotal"))
+        val produtividade = campo("Produtividade prevista (t/ha)", atual.optString("produtividade"))
+        for (v in listOf(os, talhoes, total, produtividade)) corpo.addView(v)
+        AlertDialog.Builder(this).setTitle("O.S. e talhões em colheita").setView(corpo)
+            .setNegativeButton("Cancelar", null).setPositiveButton("Salvar") { _, _ ->
+                val obj = JSONObject().put("os", os.text.toString()).put("talhoes", talhoes.text.toString())
+                    .put("areaTotal", total.text.toString()).put("produtividade", produtividade.text.toString())
+                getSharedPreferences("controle_colheita", 0).edit().putString("progresso", obj.toString()).apply()
+                estoque()
+            }.show()
+    }
+
+    private fun arquivoMapaAtual(): File? {
+        val id = getSharedPreferences("controle_colheita", 0).getString("ultimo_mapa", "") ?: ""
+        if (id.isBlank()) return null
+        return File(filesDir, "mapa_relatorio_$id.png").takeIf { it.exists() }
+    }
+
+    private fun textoEstoque(): String {
+        val p = progresso()
+        val br = Locale("pt", "BR")
+        val total = p.optString("areaTotal").replace(',', '.').toDoubleOrNull()
+        val produt = p.optString("produtividade").replace(',', '.').toDoubleOrNull()
+        val area = getSharedPreferences("controle_colheita", 0).getFloat("ultima_area_pintada_ha", -1f).toDouble().takeIf { it >= 0 }
+        val sb = StringBuilder("COLHEITA GPS - ESTOQUE E COLHEITA\n")
+        sb.append("Data: ").append(java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", br).format(java.util.Date())).append("\n")
+        sb.append("O.S.: ").append(p.optString("os", "Não informada")).append("\n")
+        sb.append("Talhões: ").append(p.optString("talhoes", "Não informados")).append("\n")
+        sb.append("Área total informada: ").append(total?.let { "%.2f ha".format(br, it) } ?: "Não informada").append("\n")
+        sb.append("Área pintada no último mapa: ").append(area?.let { "%.2f ha (aproximada)".format(br, it) } ?: "Indisponível (georreferência necessária)").append("\n")
+        val restante = if (total != null && area != null) (total - area).coerceAtLeast(0.0) else null
+        sb.append("Área restante estimada: ").append(restante?.let { "%.2f ha".format(br, it) } ?: "Indisponível").append("\n")
+        sb.append("Produtividade prevista: ").append(produt?.let { "%.2f t/ha".format(br, it) } ?: "Não informada").append("\n")
+        if (restante != null && produt != null) sb.append("Produção restante estimada: %.2f t\n".format(br, restante * produt))
+        var entradas = 0.0; var saidas = 0.0
+        val arr = registros()
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            if (o.optString("tipo") == "Entrada") entradas += o.optDouble("quantidade") else saidas += o.optDouble("quantidade")
+        }
+        sb.append("\nMOVIMENTAÇÕES DE ESTOQUE\n")
+        sb.append("Entradas: %.2f t\nSaídas: %.2f t\nSaldo: %.2f t\n".format(br, entradas, saidas, entradas - saidas))
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            sb.append("- ").append(o.optString("data")).append(" | Turno ").append(o.optString("turno"))
+                .append(" | ").append(o.optString("tipo")).append(" ").append(o.optDouble("quantidade"))
+                .append(" t | O.S. ").append(o.optString("os")).append(" | ").append(o.optString("observacao")).append("\n")
+        }
+        return sb.toString()
+    }
+
+    private fun compartilharTextoEstoque() {
+        startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"; putExtra(Intent.EXTRA_TEXT, textoEstoque())
+        }, "Compartilhar estoque"))
+    }
+
+    private fun gerarPdfEstoque() {
+        try {
+            val doc = android.graphics.pdf.PdfDocument()
+            val linhas = textoEstoque().lines()
+            val paint = Paint(3).apply { color = Color.BLACK; textSize = 11f }
+            var pagina = 0
+            for (bloco in linhas.chunked(45)) {
+                pagina++
+                val pg = doc.startPage(android.graphics.pdf.PdfDocument.PageInfo.Builder(595, 842, pagina).create())
+                var y = 35f
+                for (linha in bloco) { pg.canvas.drawText(linha.take(95), 28f, y, paint); y += 16f }
+                doc.finishPage(pg)
+            }
+            arquivoMapaAtual()?.let { arquivo ->
+                val bitmap = BitmapFactory.decodeFile(arquivo)
+                if (bitmap != null) {
+                    pagina++
+                    val pg = doc.startPage(android.graphics.pdf.PdfDocument.PageInfo.Builder(595, 842, pagina).create())
+                    pg.canvas.drawText("MAPA PINTADO - ÚLTIMO MAPA ABERTO", 28f, 35f, paint)
+                    val escala = minOf(535f / bitmap.width, 750f / bitmap.height)
+                    val destino = RectF(30f, 50f, 30f + bitmap.width * escala, 50f + bitmap.height * escala)
+                    pg.canvas.drawBitmap(bitmap, null, destino, Paint(3))
+                    doc.finishPage(pg)
+                    bitmap.recycle()
+                }
+            }
+            val arquivo = File(cacheDir, "estoque_${System.currentTimeMillis()}.pdf")
+            arquivo.outputStream().use { doc.writeTo(it) }; doc.close()
+            pdfPendente = arquivo
+            startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE); type = "application/pdf"
+                putExtra(Intent.EXTRA_TITLE, "Relatorio_Estoque.pdf")
+            }, 303)
+        } catch (e: Exception) { Toast.makeText(this, "Erro no PDF: ${e.message}", Toast.LENGTH_LONG).show() }
+    }
+
+    private fun salvarImagemMapa() {
+        val arquivo = arquivoMapaAtual()
+        if (arquivo == null) { Toast.makeText(this, "Abra e pinte um mapa primeiro", Toast.LENGTH_LONG).show(); return }
+        imagemPendente = arquivo
+        startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE); type = "image/png"
+            putExtra(Intent.EXTRA_TITLE, "Mapa_Colheita.png")
+        }, 304)
     }
 
     private fun novaMovimentacao() {
@@ -503,12 +636,17 @@ class MainActivity : Activity() {
                             startActivityForResult(Intent(Intent.ACTION_GET_CONTENT).apply { type = "image/*" }, 301)
                         }
                         foto && escolha == 2 -> {
-                            val caminho = obj.optString("foto")
-                            if (caminho.isEmpty() || !File(caminho).exists()) Toast.makeText(this, "Sem foto", Toast.LENGTH_SHORT).show()
-                            else AlertDialog.Builder(this).setView(ImageView(this).apply {
-                                setImageBitmap(BitmapFactory.decodeFile(caminho))
-                                adjustViewBounds = true
-                            }).setPositiveButton("Fechar", null).show()
+                            val fotos = obj.optJSONArray("fotos")
+                            val caminhos = if (fotos != null && fotos.length() > 0) (0 until fotos.length()).map { fotos.optString(it) }
+                                else listOf(obj.optString("foto"))
+                            val existentes = caminhos.filter { it.isNotBlank() && File(it).exists() }
+                            if (existentes.isEmpty()) Toast.makeText(this, "Sem foto", Toast.LENGTH_SHORT).show()
+                            else AlertDialog.Builder(this).setTitle("Fotos da pendência")
+                                .setItems(existentes.mapIndexed { i, _ -> "Foto ${i + 1}" }.toTypedArray()) { _, fotoIdx ->
+                                    AlertDialog.Builder(this).setView(ImageView(this).apply {
+                                        setImageBitmap(BitmapFactory.decodeFile(existentes[fotoIdx])); adjustViewBounds = true
+                                    }).setPositiveButton("Fechar", null).show()
+                                }.show()
                         }
                         else -> remover(key, idx) { listarRegistros(key, titulo, foto) }
                     }
@@ -926,6 +1064,7 @@ class MainActivity : Activity() {
             }
 
             chaveAtual = id
+            getSharedPreferences("controle_colheita", 0).edit().putString("ultimo_mapa", id).apply()
             nomeAtual = nome(id)
             mostrarMapa(imagem, id, GeoPdf.ler(arquivo))
         } catch (e: Exception) {
@@ -1045,6 +1184,7 @@ class MainActivity : Activity() {
                     "Pincel",
                     "Borracha",
                     "Desfazer",
+                    "Excluir última pintura",
                     "O.S. de trabalho",
                     "GPS",
                     "Voltar aos mapas"
@@ -1057,9 +1197,12 @@ class MainActivity : Activity() {
                     3 -> ferramenta(1)
                     4 -> ferramenta(2)
                     5 -> mapa?.desfazer()
-                    6 -> ordens(chaveAtual)
-                    7 -> iniciarGps()
-                    8 -> biblioteca()
+                    6 -> AlertDialog.Builder(this).setTitle("Excluir última pintura?")
+                        .setPositiveButton("Excluir") { _, _ -> mapa?.desfazer() }
+                        .setNegativeButton("Cancelar", null).show()
+                    7 -> ordens(chaveAtual)
+                    8 -> iniciarGps()
+                    9 -> biblioteca()
                 }
             }.show()
     }
@@ -1788,6 +1931,53 @@ class MapaView(context: Context) : View(context) {
         }
     }
 
+    fun hectaresPintados(): Double? {
+        val g = geo ?: return null
+        val b = imagem ?: return null
+        var total = 0.0
+        for (poligono in areas) {
+            if (poligono.size < 3) continue
+            val xy = poligono.map { g.pixelParaMetros(it.x, it.y, b.width, b.height) }
+            if (xy.any { it == null }) return null
+            val pontosMetros = xy.filterNotNull()
+            var soma = 0.0
+            for (i in pontosMetros.indices) {
+                val j = (i + 1) % pontosMetros.size
+                soma += pontosMetros[i].first * pontosMetros[j].second - pontosMetros[j].first * pontosMetros[i].second
+            }
+            total += abs(soma) / 20000.0
+        }
+        // Polígonos sobrepostos podem somar área duplicada; valor aproximado.
+        return total
+    }
+
+    private fun atualizarResumoMapa() {
+        if (id.isEmpty()) return
+        val pref = context.getSharedPreferences("controle_colheita", 0).edit()
+        val ha = hectaresPintados()
+        if (ha != null) pref.putFloat("ultima_area_pintada_ha", ha.toFloat())
+        else pref.remove("ultima_area_pintada_ha")
+        pref.putString("ultimo_mapa", id).apply()
+        val b = imagem ?: return
+        try {
+            val escalaImagem = minOf(1f, 2400f / maxOf(b.width, b.height))
+            val w = maxOf(1, (b.width * escalaImagem).toInt())
+            val h = maxOf(1, (b.height * escalaImagem).toInt())
+            val saida = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+            val c = Canvas(saida)
+            c.scale(w.toFloat() / b.width, h.toFloat() / b.height)
+            c.drawBitmap(b, 0f, 0f, null)
+            for (i in areas.indices) {
+                c.drawPath(caminho(areas[i], true), Paint(3).apply { color = coresAreas.getOrElse(i) { 0x66FACC15 }; style = Paint.Style.FILL })
+            }
+            for (i in linhas.indices) {
+                c.drawPath(caminho(linhas[i], false), Paint(3).apply { color = coresLinhas.getOrElse(i) { 0x66FACC15 }; style = Paint.Style.STROKE; strokeWidth = 17f; strokeCap = Paint.Cap.ROUND })
+            }
+            File(context.filesDir, "mapa_relatorio_$id.png").outputStream().use { saida.compress(Bitmap.CompressFormat.PNG, 95, it) }
+            saida.recycle()
+        } catch (_: Exception) { /* A pintura permanece salva mesmo se a imagem falhar */ }
+    }
+
     fun salvar() {
         if (id.isEmpty()) return
 
@@ -1818,6 +2008,7 @@ class MapaView(context: Context) : View(context) {
             .edit()
             .putString(id, j.toString())
             .apply()
+        atualizarResumoMapa()
     }
 
     private fun restaurar() {
