@@ -71,8 +71,7 @@ class MainActivity : Activity() {
             Toast.makeText(this, "Reconhecimento de voz indisponível neste aparelho", Toast.LENGTH_LONG).show()
         }
     }
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
+    private fun tratarResultadoVozEFoto(requestCode: Int, resultCode: Int, data: Intent?) {
         if (resultCode != RESULT_OK) return
         if (requestCode == 302) {
             val fala = data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
@@ -744,6 +743,7 @@ class MainActivity : Activity() {
         data: Intent?
     ) {
         super.onActivityResult(requestCode, resultCode, data)
+        tratarResultadoVozEFoto(requestCode, resultCode, data)
         if (requestCode != 10 || resultCode != RESULT_OK) return
 
         val uri = data?.data ?: return
