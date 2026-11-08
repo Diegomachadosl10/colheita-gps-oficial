@@ -292,6 +292,38 @@ class MainActivity : Activity() {
             setOnClickListener { acao() }
         }
 
+    private fun botaoVoltar(acao: () -> Unit): View =
+        TextView(this).apply {
+            text = "‹"
+            textSize = 34f
+            gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            contentDescription = "Voltar"
+            background = GradientDrawable().apply {
+                setColor(0xFF173F2D.toInt())
+                cornerRadius = dp(14).toFloat()
+                setStroke(dp(1), 0xFF279965.toInt())
+            }
+            elevation = dp(2).toFloat()
+            setOnClickListener { acao() }
+        }
+
+    private fun apresentacao() {
+        val base = tela()
+        base.setBackgroundColor(0xFF071810.toInt())
+        val imagem = ImageView(this).apply {
+            setImageResource(R.drawable.splash_dm_agro)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            contentDescription = "DM AGRO - Colheita GPS - Criado por Diego Machado"
+        }
+        base.addView(imagem, FrameLayout.LayoutParams(-1, -1))
+        setContentView(base)
+        base.requestApplyInsets()
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            if (!isFinishing && !isDestroyed) inicio()
+        }, 2000L)
+    }
+
     private fun redondo(s: String, acao: () -> Unit) =
         TextView(this).apply {
             text = s
@@ -313,7 +345,7 @@ class MainActivity : Activity() {
         if (Build.VERSION.SDK_INT >= 30) {
             window.setDecorFitsSystemWindows(false)
         }
-        inicio()
+        if (savedInstanceState == null) apresentacao() else inicio()
     }
 
     private fun tela(): FrameLayout =
@@ -382,7 +414,10 @@ class MainActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        if (telaAtual != "inicio") topo.addView(botao("←") { voltarTela() })
+        if (telaAtual != "inicio") topo.addView(
+            botaoVoltar { voltarTela() },
+            LinearLayout.LayoutParams(dp(46), dp(46))
+        )
         topo.addView(texto(titulo, 22f, Color.WHITE).apply {
             setPadding(dp(12), 0, 0, 0)
         })
@@ -1456,11 +1491,10 @@ class MainActivity : Activity() {
         }
 
         cab.addView(
-            texto("Voltar", 14f, Color.WHITE).apply {
-                gravity = Gravity.CENTER
-                setOnClickListener { biblioteca() }
-            },
-            LinearLayout.LayoutParams(dp(66), dp(52))
+            botaoVoltar { biblioteca() },
+            LinearLayout.LayoutParams(dp(46), dp(46)).apply {
+                rightMargin = dp(8)
+            }
         )
 
         val info = LinearLayout(this).apply {
