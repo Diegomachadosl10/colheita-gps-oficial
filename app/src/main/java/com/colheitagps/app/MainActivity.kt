@@ -548,7 +548,8 @@ class MainActivity : Activity() {
             .putString("progresso", obj.toString()).commit()
         val lote = obj.optString("os")
         val detalhe = "Lote: $lote\nTalhões: ${obj.optString("talhoes")}\nÁrea: ${obj.optString("areaRestante")} ha\nProdutividade: ${obj.optString("produtividade")} t/ha"
-        AlertDialog.Builder(this).setTitle("Estoque $lote").setMessage(detalhe)
+        AlertDialog.Builder(this).setTitle("Estoque $lote")
+            .setView(texto(detalhe, 15f))
             .setItems(arrayOf("Editar estoque", "Compartilhar estoque", "Excluir estoque")) { _, escolha ->
                 when (escolha) {
                     0 -> editarProgressoColheita(false)
@@ -700,6 +701,7 @@ class MainActivity : Activity() {
             atual.optString("id").takeIf { it.isNotBlank() }?.let { rascunho.put("id", it) }
             atual.optString("fotoEstoque").takeIf { it.isNotBlank() }?.let { rascunho.put("fotoEstoque", it) }
             salvarEstoqueAtual(rascunho)
+            atual.put("id", progresso().optString("id"))
             val mapas = mapasDisponiveisEstoque()
             val escolhas = if (mapas.isEmpty()) arrayOf("Escolher da galeria")
                 else arrayOf("Escolher da galeria", "Usar mapa pintado salvo")
@@ -730,7 +732,10 @@ class MainActivity : Activity() {
                 atual.optString("fotoEstoque").takeIf { it.isNotBlank() }?.let { obj.put("fotoEstoque", it) }
                 salvarEstoqueAtual(obj)
                 estoque()
-                Toast.makeText(this, "Estoque salvo", Toast.LENGTH_SHORT).show()
+                AlertDialog.Builder(this).setTitle("Estoque salvo")
+                    .setMessage("Deseja compartilhar este estoque agora?")
+                    .setPositiveButton("Compartilhar") { _, _ -> escolherCompartilhamentoEstoque() }
+                    .setNegativeButton("Agora não", null).show()
             }.show()
     }
 
