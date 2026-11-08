@@ -35,6 +35,7 @@ class MainActivity : Activity() {
     private var status: TextView? = null
     private var telaAtual = "inicio"
     private var fotoPendente: String? = null
+    private var pdfPendente: File? = null
     private var vozResultado: ((String) -> Unit)? = null
     private fun dados(key: String): JSONArray = try {
         JSONArray(getSharedPreferences("registros_v3", 0).getString(key, "[]"))
@@ -73,6 +74,16 @@ class MainActivity : Activity() {
     }
     private fun tratarResultadoVozEFoto(requestCode: Int, resultCode: Int, data: Intent?) {
         if (resultCode != RESULT_OK) return
+        if (requestCode == 303) {
+            val destino = data?.data ?: return
+            val origem = pdfPendente ?: return
+            try {
+                contentResolver.openOutputStream(destino)?.use { out -> origem.inputStream().use { it.copyTo(out) } }
+                Toast.makeText(this, "PDF salvo. Abra o arquivo para compartilhar.", Toast.LENGTH_LONG).show()
+            } catch (e: Exception) { Toast.makeText(this, "Falha ao salvar PDF", Toast.LENGTH_LONG).show() }
+            pdfPendente = null
+            return
+        }
         if (requestCode == 302) {
             val fala = data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
             if (fala != null) vozResultado?.invoke(fala)
@@ -221,7 +232,7 @@ class MainActivity : Activity() {
                 menu.add("Mapas").setOnMenuItemClickListener { biblioteca(); true }
                 menu.add("Pendências").setOnMenuItemClickListener { pendencias(); true }
                 menu.add("Caminhões").setOnMenuItemClickListener { caminhoes(); true }
-                menu.add("Relatórios de turno").setOnMenuItemClickListener { relatoriosTurno(); true }
+                menu.add("Relatórios de turno").setOnMenuItemClickListener { relatorios(); true }
                 show()
             } }
         })
@@ -242,10 +253,9 @@ class MainActivity : Activity() {
             Triple("MAPAS", "PDF georreferenciado, GPS e talhões", 0),
             Triple("ORDENS DE SERVIÇO", "Página exclusiva das O.S. por mapa", 1),
             Triple("ESTOQUE DE CANA", "Registrar entradas e saídas por turno", 2),
-            Triple("RELATÓRIOS", "Consultar registros dos turnos A, B e C", 3),
+            Triple("RELATÓRIOS DE TURNO", "Resumo dos turnos A, B e C", 3),
             Triple("PENDÊNCIAS", "Fotos e acompanhamento de manutenção", 4),
             Triple("CAMINHÕES", "Chegada e saída por voz ou digitação", 5),
-            Triple("RELATÓRIOS DE TURNO", "Ocorrências, serviços e pendências", 6)
         )
         for ((titulo, subtitulo, tipo) in itens) {
             val item = cartao(titulo, subtitulo) {
@@ -362,53 +372,118 @@ class MainActivity : Activity() {
     }
 
     private fun relatorios() {
-        val coluna = pagina("Relatórios por turno")
-        val dados = registros()
-        if (dados.length() == 0) {
-            coluna.addView(texto("Nenhuma movimentação registrada.").apply {
-                setPadding(0, dp(20), 0, 0)
-            })
-        }
+        val coluna = pagina("Relatórios de turno")
+        coluna.addView(texto("Escolha um turno para consultar e compartilhar o relatório completo.", 14f))
         for (turno in listOf("A", "B", "C")) {
-            var entradas = 0.0
-            var saidas = 0.0
-            var total = 0
-            for (i in 0 until dados.length()) {
-                val o = dados.optJSONObject(i) ?: continue
+            val movimentos = registros()
+            var entradas = 0.0; var saidas = 0.0
+            for (i in 0 until movimentos.length()) {
+                val o = movimentos.optJSONObject(i) ?: continue
                 if (o.optString("turno") != turno) continue
-                total++
                 if (o.optString("tipo") == "Entrada") entradas += o.optDouble("quantidade")
                 else saidas += o.optDouble("quantidade")
             }
-            val descricao = "Registros: $total | Entradas: %.2f t | Saídas: %.2f t".format(
-                Locale("pt", "BR"), entradas, saidas)
-            coluna.addView(cartao("Turno $turno", descricao) {},
+            val resumo = "Estoque: +%.2f t / -%.2f t".format(Locale("pt", "BR"), entradas, saidas)
+            coluna.addView(cartao("Turno $turno", resumo) { detalheTurno(turno) },
                 LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(14) })
         }
-        coluna.addView(botao("Compartilhar resumo") {
-            val msg = StringBuilder("COLHEITA GPS - RESUMO POR TURNO\n")
-            for (turno in listOf("A", "B", "C")) {
-                var entrada = 0.0
-                var saida = 0.0
-                for (i in 0 until dados.length()) {
-                    val o = dados.optJSONObject(i) ?: continue
-                    if (o.optString("turno") == turno) {
-                        if (o.optString("tipo") == "Entrada") entrada += o.optDouble("quantidade")
-                        else saida += o.optDouble("quantidade")
-                    }
-                }
-                msg.append("Turno $turno: entrada %.2f t; saída %.2f t\n".format(
-                    Locale("pt", "BR"), entrada, saida))
-            }
+        coluna.addView(botao("+ Nova ocorrência") { editarRegistro("relatorios_turno", -1, false) })
+    }
+
+    private fun textoRelatorio(turno: String): String {
+        val sb = StringBuilder("COLHEITA GPS - RELATÓRIO DO TURNO $turno\n")
+        sb.append("Emitido em: ").append(java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", Locale("pt", "BR")).format(java.util.Date())).append("\n\n")
+        var entradas = 0.0; var saidas = 0.0
+        sb.append("ESTOQUE DE CANA\n")
+        val movimentos = registros()
+        for (i in 0 until movimentos.length()) {
+            val o = movimentos.optJSONObject(i) ?: continue
+            if (o.optString("turno") != turno) continue
+            val q = o.optDouble("quantidade")
+            if (o.optString("tipo") == "Entrada") entradas += q else saidas += q
+            sb.append("- ").append(o.optString("tipo")).append(": ").append(q).append(" t | ")
+                .append(o.optString("data")).append(" | OS: ").append(o.optString("os"))
+                .append(" | ").append(o.optString("observacao")).append("\n")
+        }
+        sb.append("Total: +%.2f t / -%.2f t\n\n".format(Locale("pt", "BR"), entradas, saidas))
+        sb.append("CAMINHÕES\n")
+        val caminh = dados("caminhoes")
+        for (i in 0 until caminh.length()) {
+            val o = caminh.optJSONObject(i) ?: continue
+            if (o.optString("turno") != turno) continue
+            sb.append("- Caminhão ").append(o.optString("numero"))
+                .append(" | Entrada: ").append(o.optString("chegada"))
+                .append(" | Saída: ").append(o.optString("saida").ifBlank { "Pendente" }).append("\n")
+        }
+        sb.append("\nOCORRÊNCIAS, SERVIÇOS E PASSAGEM DE TURNO\n")
+        val ocorr = dados("relatorios_turno")
+        for (i in 0 until ocorr.length()) {
+            val o = ocorr.optJSONObject(i) ?: continue
+            if (o.optString("turno").trim().uppercase() == turno) sb.append("- ").append(o.optString("descricao")).append("\n")
+        }
+        sb.append("\nPENDÊNCIAS DE MANUTENÇÃO (GERAIS)\n")
+        val pend = dados("pendencias")
+        for (i in 0 until pend.length()) {
+            val o = pend.optJSONObject(i) ?: continue
+            sb.append("- ").append(o.optString("equipamento")).append(": ").append(o.optString("descricao")).append("\n")
+        }
+        return sb.toString()
+    }
+
+    private fun detalheTurno(turno: String) {
+        val coluna = pagina("Relatório do turno $turno")
+        coluna.addView(texto(textoRelatorio(turno), 14f).apply { setPadding(0, dp(15), 0, dp(15)) })
+        coluna.addView(botao("+ Registrar ocorrência") { editarRegistro("relatorios_turno", -1, false, turno) })
+        coluna.addView(botao("Compartilhar relatório") {
             startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
                 type = "text/plain"
-                putExtra(Intent.EXTRA_TEXT, msg.toString())
-            }, "Compartilhar relatório"))
-        }.apply { setPadding(0, dp(12), 0, dp(12)) })
+                putExtra(Intent.EXTRA_TEXT, textoRelatorio(turno))
+            }, "Compartilhar turno $turno"))
+        })
+        coluna.addView(botao("Gerar PDF") { gerarPdfTurno(turno) })
+    }
+
+    private fun gerarPdfTurno(turno: String) {
+        try {
+            val documento = android.graphics.pdf.PdfDocument()
+            val linhas = textoRelatorio(turno).lines()
+            val pincel = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK; textSize = 11f }
+            val alturaUtil = 780
+            val linhasPorPagina = alturaUtil / 16
+            var paginaNumero = 0
+            for (bloco in linhas.chunked(linhasPorPagina)) {
+                paginaNumero++
+                val info = android.graphics.pdf.PdfDocument.PageInfo.Builder(595, 842, paginaNumero).create()
+                val pagina = documento.startPage(info)
+                val canvas = pagina.canvas
+                var y = 40f
+                for (linha in bloco) {
+                    canvas.drawText(linha.take(95), 32f, y, pincel)
+                    y += 16f
+                }
+                documento.finishPage(pagina)
+            }
+            if (paginaNumero == 0) {
+                val pagina = documento.startPage(android.graphics.pdf.PdfDocument.PageInfo.Builder(595, 842, 1).create())
+                documento.finishPage(pagina)
+            }
+            val arquivo = File(cacheDir, "relatorio_turno_${turno}_${System.currentTimeMillis()}.pdf")
+            arquivo.outputStream().use { documento.writeTo(it) }
+            documento.close()
+            // Salvar PDF pelo seletor de documentos do Android.
+            pdfPendente = arquivo
+            startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "application/pdf"
+                putExtra(Intent.EXTRA_TITLE, "Relatorio_Turno_${turno}.pdf")
+            }, 303)
+        } catch (e: Exception) {
+            Toast.makeText(this, "Erro ao gerar PDF: ${e.message}", Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun pendencias() = listarRegistros("pendencias", "Pendências de manutenção", true)
-    private fun relatoriosTurno() = listarRegistros("relatorios_turno", "Relatórios de turno", false)
+    private fun relatoriosTurno() = relatorios()
     private fun listarRegistros(key: String, titulo: String, foto: Boolean) {
         val coluna = pagina(titulo)
         coluna.addView(botao("+ Novo registro") { editarRegistro(key, -1, foto) })
@@ -441,12 +516,16 @@ class MainActivity : Activity() {
             }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
         }
     }
-    private fun editarRegistro(key: String, idx: Int, foto: Boolean) {
+    private fun editarRegistro(key: String, idx: Int, foto: Boolean, turnoInicial: String = "A") {
         val atual = if (idx >= 0) dados(key).optJSONObject(idx) else null
         val corpo = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(18), dp(8), dp(18), dp(8)) }
-        val equipamento = campo(if (foto) "Equipamento / O.S." else "Turno (A, B ou C)", (if (foto) atual?.optString("equipamento") else atual?.optString("turno")) ?: "")
+        val equipamento = campo(if (foto) "Equipamento / O.S." else "Turno (A, B ou C)", (if (foto) atual?.optString("equipamento") else atual?.optString("turno") ?: turnoInicial) ?: "")
         val descricao = campo(if (foto) "Defeito e localização" else "Ocorrências, serviços e pendências", atual?.optString("descricao") ?: "")
         corpo.addView(equipamento); corpo.addView(descricao)
+        if (!foto) corpo.addView(botao("🎤 Ditar ocorrência") { ouvir { fala ->
+            descricao.setText((descricao.text.toString() + " " + fala).trim())
+            Toast.makeText(this, "Confira o texto e salve o registro", Toast.LENGTH_SHORT).show()
+        } })
         AlertDialog.Builder(this).setTitle(if (idx < 0) "Novo registro" else "Editar registro")
             .setView(corpo).setNegativeButton("Cancelar", null).setPositiveButton("Salvar") { _, _ ->
                 val arr = dados(key)
@@ -455,7 +534,7 @@ class MainActivity : Activity() {
                 obj.put("descricao", descricao.text.toString())
                 if (idx < 0) arr.put(obj)
                 guardar(key, arr)
-                listarRegistros(key, if (foto) "Pendências de manutenção" else "Relatórios de turno", foto)
+                if (foto) pendencias() else relatorios()
             }.show()
     }
     private fun caminhoes() {
@@ -482,15 +561,19 @@ class MainActivity : Activity() {
         if (atual != null) turno.setSelection(listOf("A", "B", "C").indexOf(atual.optString("turno")).coerceAtLeast(0))
         corpo.addView(numero); corpo.addView(chegada); corpo.addView(saida); corpo.addView(turno)
         corpo.addView(botao("🎤 Ditar informações") { ouvir { fala ->
-            // A fala é preenchida para revisão, evitando registrar números ou horários errados.
-            val digitos = Regex("(?:caminhão|caminhao)\\s*(?:número\\s*)?(\\d+)", RegexOption.IGNORE_CASE).find(fala)?.groupValues?.get(1)
-            if (digitos != null) numero.setText(digitos)
-            val horarios = Regex("\\b([01]?\\d|2[0-3])(?:[:h ]([0-5]\\d))?\\b").findAll(fala).map {
-                it.groupValues[1].padStart(2, '0') + ":" + it.groupValues[2].ifEmpty { "00" }
-            }.toList()
-            if (horarios.isNotEmpty()) chegada.setText(horarios[0])
-            if (horarios.size > 1) saida.setText(horarios[1])
-            Toast.makeText(this, "Confira os dados antes de salvar: $fala", Toast.LENGTH_LONG).show()
+            val numeroFalado = Regex("(?:caminhão|caminhao)\\s*(?:número\\s*)?(\\d+)", RegexOption.IGNORE_CASE)
+                .find(fala)?.groupValues?.get(1)
+            if (numeroFalado != null) numero.setText(numeroFalado)
+            val hora = Regex("\\b([01]?\\d|2[0-3])[:h]([0-5]\\d)\\b").find(fala)?.let {
+                it.groupValues[1].padStart(2, '0') + ":" + it.groupValues[2]
+            } ?: Regex("\\b([01]?\\d|2[0-3])\\s*horas?\\b", RegexOption.IGNORE_CASE).find(fala)?.let {
+                it.groupValues[1].padStart(2, '0') + ":00"
+            }
+            val saidaFalou = Regex("sa[ií]da|saiu|partiu", RegexOption.IGNORE_CASE).containsMatchIn(fala)
+            if (hora != null) {
+                if (saidaFalou) saida.setText(hora) else chegada.setText(hora)
+            }
+            Toast.makeText(this, "Confira os campos e toque em Salvar", Toast.LENGTH_LONG).show()
         } })
         AlertDialog.Builder(this).setTitle("Caminhão").setView(corpo)
             .setNegativeButton("Cancelar", null).setPositiveButton("Salvar") { _, _ ->
