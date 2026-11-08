@@ -395,6 +395,8 @@ class MainActivity : Activity() {
                 menu.add("Pendências").setOnMenuItemClickListener { pendencias(); true }
                 menu.add("Caminhões").setOnMenuItemClickListener { caminhoes(); true }
                 menu.add("Relatórios de turno").setOnMenuItemClickListener { relatorios(); true }
+                menu.add("Exportar cópia de segurança").setOnMenuItemClickListener { exportarBackup(); true }
+                menu.add("Restaurar cópia de segurança").setOnMenuItemClickListener { solicitarRestauracaoBackup(); true }
                 show()
             } }
         })
@@ -435,11 +437,7 @@ class MainActivity : Activity() {
                 topMargin = dp(16)
             })
         }
-        coluna.addView(botao("Exportar cópia de segurança") { exportarBackup() })
-        coluna.addView(botao("Restaurar cópia de segurança") { solicitarRestauracaoBackup() })
-        coluna.addView(texto("Dados salvos neste aparelho. Sincronização online ainda não disponível.", 12f, 0xFFB6C9BD.toInt()).apply {
-            setPadding(0, dp(22), 0, 0)
-        })
+
     }
 
     private fun paginaOrdens() {
@@ -1417,6 +1415,8 @@ class MainActivity : Activity() {
         }
     }
 
+    private var atualizarControlesMapa: (() -> Unit)? = null
+
     private fun mostrarMapa(
         imagem: Bitmap,
         id: String,
@@ -1490,9 +1490,10 @@ class MainActivity : Activity() {
             LinearLayout.LayoutParams(dp(62), dp(52))
         )
 
-        val resumoArea = texto("Área em destaque: —   |   Total pintado: —", 13f, Color.WHITE).apply {
-            setPadding(dp(12), dp(7), dp(12), dp(7))
-            setBackgroundColor(0xDD173A2A.toInt())
+        val resumoArea = texto("Destaque: —    •    Total: —", 14f, Color.WHITE).apply {
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+            setBackgroundColor(0xEE173A2A.toInt())
+            gravity = Gravity.CENTER_VERTICAL
         }
         val atualizarArea = {
             val destaque = visual.hectaresEmDestaque()?.let {
@@ -1500,14 +1501,41 @@ class MainActivity : Activity() {
             } ?: "—"
             val total = visual.hectaresPintados()?.let {
                 String.format(Locale("pt", "BR"), "%.2f ha", it)
-            } ?: "sem georreferência"
-            resumoArea.text = "Área em destaque: $destaque   |   Total: $total"
+            } ?: "indisponível"
+            resumoArea.text = "Destaque: $destaque    •    Total: $total"
         }
         visual.aoAtualizarArea = atualizarArea
-        base.addView(resumoArea, FrameLayout.LayoutParams(-1, -2, Gravity.TOP).apply {
+        base.addView(resumoArea, FrameLayout.LayoutParams(-1, dp(40), Gravity.TOP).apply {
             topMargin = dp(69)
         })
         atualizarArea()
+
+        val controles = LinearLayout(this).apply {
+            tag = "controlesPintura"
+            gravity = Gravity.CENTER
+            setPadding(dp(5), dp(5), dp(5), dp(5))
+            setBackgroundColor(0xE8182B21.toInt())
+            visibility = View.GONE
+        }
+        fun controle(nome: String, acao: () -> Unit) {
+            controles.addView(botao(nome, acao), LinearLayout.LayoutParams(0, dp(48), 1f).apply {
+                marginStart = dp(3); marginEnd = dp(3)
+            })
+        }
+        controle("+ Ponto") { visual.adicionarPontoCentral() }
+        controle("Desfazer") { visual.desfazer() }
+        controle("Concluir") {
+            if (visual.modo == 7) {
+                if (visual.fecharArea()) escolherCor()
+            } else visual.concluirMedida()
+        }
+        controle("Sair") { visual.cancelarFerramenta() }
+        base.addView(controles, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM).apply {
+            bottomMargin = dp(94)
+        })
+        atualizarControlesMapa = {
+            controles.visibility = if (visual.modo in 7..9) View.VISIBLE else View.GONE
+        }
         base.addView(
             cab,
             FrameLayout.LayoutParams(-1, -2, Gravity.TOP)
@@ -1552,7 +1580,7 @@ class MainActivity : Activity() {
                     2 -> if (v.modo == 7) {
                         if (v.fecharArea()) escolherCor()
                     } else v.concluirMedida()
-                    3 -> v.cancelarFerramenta()
+                    3 -> { v.cancelarFerramenta(); atualizarControlesMapa?.invoke() }
                     4 -> ferramenta(7)
                     5 -> ferramenta(8)
                     6 -> ferramenta(9)
@@ -1581,7 +1609,7 @@ class MainActivity : Activity() {
         val v = mapa ?: return
         if (!manterPontos) v.iniciar(tipo)
         raiz?.findViewWithTag<View>("painel")?.let { raiz?.removeView(it) }
-        Toast.makeText(this, "Ferramentas no botão +", Toast.LENGTH_SHORT).show()
+        atualizarControlesMapa?.invoke()
     }
 
     private fun escolherCor() {
@@ -1626,6 +1654,7 @@ class MainActivity : Activity() {
                                 raiz?.findViewWithTag<View>("painel")
                                     ?.let { raiz?.removeView(it) }
                                 mapa?.cancelarFerramenta()
+                                atualizarControlesMapa?.invoke()
                             }
                         }.show()
                 }
@@ -1821,6 +1850,7 @@ class MapaView(context: Context) : View(context) {
         pontos.clear()
         areaFechada = false
         invalidate()
+        aoAtualizarArea?.invoke()
     }
 
     fun cancelarFerramenta() {
@@ -1921,6 +1951,7 @@ class MapaView(context: Context) : View(context) {
         }
         salvar()
         invalidate()
+        aoAtualizarArea?.invoke()
     }
 
     fun concluirMedida() {
@@ -2180,7 +2211,7 @@ class MapaView(context: Context) : View(context) {
 
         c.restore()
 
-        // Indicador de hectares em pixels de tela: permanece legível com qualquer zoom.
+        /* Indicador duplicado removido; a faixa única fica acima do mapa.
         hectaresPintados()?.let { ha ->
             val legenda = String.format(Locale("pt", "BR"), "TOTAL PINTADO: %.2f ha", ha)
             val fundo = Paint(3).apply { color = 0xDD143C2A.toInt() }
@@ -2190,6 +2221,8 @@ class MapaView(context: Context) : View(context) {
                 typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             })
         }
+
+        */
 
         if (modo in 7..9) {
             val x = width / 2f
