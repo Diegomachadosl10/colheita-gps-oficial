@@ -164,8 +164,11 @@ class LoginActivity : Activity() {
             .addOnSuccessListener { documento ->
                 when (documento.getString("status")) {
                     "aprovado" -> {
-                        startActivity(Intent(this, MainActivity::class.java))
-                        finish()
+                        if (documento.getString("papel") == "administrador") {
+                            painelAdministrador()
+                        } else {
+                            abrirAplicativo()
+                        }
                     }
                     "bloqueado" -> {
                         aguardando("Seu acesso foi bloqueado.")
@@ -178,6 +181,42 @@ class LoginActivity : Activity() {
             .addOnFailureListener {
                 aguardando("Não foi possível verificar sua autorização. Verifique a internet.")
             }
+    }
+
+    private fun abrirAplicativo() {
+        startActivity(Intent(this, MainActivity::class.java))
+        finish()
+    }
+
+    private fun painelAdministrador() {
+        painel.removeAllViews()
+
+        painel.addView(mensagem("DM AGRO"))
+        painel.addView(mensagem("Bem-vindo, administrador!"))
+
+        painel.addView(Button(this).apply {
+            text = "Abrir aplicativo"
+            setOnClickListener {
+                abrirAplicativo()
+            }
+        })
+
+        painel.addView(Button(this).apply {
+            text = "Gerenciar usuários"
+            setOnClickListener {
+                startActivity(
+                    Intent(this@LoginActivity, AdminActivity::class.java)
+                )
+            }
+        })
+
+        painel.addView(Button(this).apply {
+            text = "Sair da conta"
+            setOnClickListener {
+                auth.signOut()
+                formulario(false)
+            }
+        })
     }
 
     private fun aguardando(texto: String) {
