@@ -1,4 +1,3 @@
-
 package com.colheitagps.app
 
 import android.app.Activity
@@ -70,10 +69,10 @@ class LoginActivity : Activity() {
 
     private fun estrutura(titulo: String, subtitulo: String): LinearLayout {
         painel.removeAllViews()
-        painel.addView(texto("ðŸšœ", 36f, claro).apply { gravity = Gravity.CENTER })
+        painel.addView(texto("DM", 36f, claro, true).apply { gravity = Gravity.CENTER })
         painel.addView(espaco(6))
         painel.addView(texto("DM AGRO", 30f, Color.WHITE, true).apply { gravity = Gravity.CENTER })
-        painel.addView(texto("GESTÃƒO DE FRENTES DE SERVIÃ‡O", 11f, claro, true).apply { gravity = Gravity.CENTER })
+        painel.addView(texto("GEST\u00C3O DE FRENTES DE SERVI\u00C7O", 11f, claro, true).apply { gravity = Gravity.CENTER })
         painel.addView(espaco(28))
         val cartao = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -106,7 +105,7 @@ class LoginActivity : Activity() {
         val entrar = botao(if (cadastro) "Solicitar acesso" else "Entrar")
         cartao.addView(entrar, LinearLayout.LayoutParams(-1, dp(52)))
         cartao.addView(espaco(12))
-        cartao.addView(botao(if (cadastro) "JÃ¡ tenho conta" else "Criar conta", Color.rgb(234, 242, 235), verde).apply {
+        cartao.addView(botao(if (cadastro) "J\u00E1 tenho conta" else "Criar conta", Color.rgb(234, 242, 235), verde).apply {
             setOnClickListener { formulario(!cadastro) }
         }, LinearLayout.LayoutParams(-1, dp(48)))
         if (!cadastro) {
@@ -118,8 +117,8 @@ class LoginActivity : Activity() {
                     val e = email.text.toString().trim()
                     if (e.isEmpty()) aviso("Informe seu e-mail no campo acima para recuperar a senha.")
                     else auth.sendPasswordResetEmail(e).addOnSuccessListener {
-                        aviso("Se o e-mail estiver cadastrado, vocÃª receberÃ¡ instruÃ§Ãµes para redefinir a senha.")
-                    }.addOnFailureListener { aviso("NÃ£o foi possÃ­vel enviar a recuperaÃ§Ã£o. Verifique o e-mail e a conexÃ£o.") }
+                        aviso("Se o e-mail estiver cadastrado, voc\u00EA receber\u00E1 instru\u00E7\u00F5es para redefinir a senha.")
+                    }.addOnFailureListener { aviso("N\u00E3o foi poss\u00EDvel enviar a recupera\u00E7\u00E3o. Verifique o e-mail e a conex\u00E3o.") }
                 }
             })
         }
@@ -144,7 +143,7 @@ class LoginActivity : Activity() {
                         )
                         db.collection("usuarios").document(uid).set(dados).addOnCompleteListener { gravacao ->
                             if (gravacao.isSuccessful) verificarAcesso()
-                            else { auth.signOut(); formulario(false); aviso("NÃ£o foi possÃ­vel registrar a solicitaÃ§Ã£o.") }
+                            else { auth.signOut(); formulario(false); aviso("N\u00E3o foi poss\u00EDvel registrar a solicita\u00E7\u00E3o.") }
                         }
                     }
                 }
@@ -160,22 +159,22 @@ class LoginActivity : Activity() {
 
     private fun verificarAcesso() {
         val usuario = auth.currentUser ?: run { formulario(false); return }
-        estrutura("Verificando autorizaÃ§Ã£o", "Aguarde enquanto confirmamos seu acesso.")
+        estrutura("Verificando autoriza\u00E7\u00E3o", "Aguarde enquanto confirmamos seu acesso.")
         db.collection("usuarios").document(usuario.uid).get()
             .addOnSuccessListener { documento ->
                 when (documento.getString("status")) {
                     "aprovado" -> if (documento.getString("papel") == "administrador") painelAdministrador() else abrirAplicativo()
                     "bloqueado" -> aguardando("Seu acesso foi bloqueado.")
-                    else -> aguardando("Seu cadastro aguarda aprovaÃ§Ã£o do administrador.")
+                    else -> aguardando("Seu cadastro aguarda aprova\u00E7\u00E3o do administrador.")
                 }
-            }.addOnFailureListener { aguardando("NÃ£o foi possÃ­vel verificar sua autorizaÃ§Ã£o. Verifique a internet.") }
+            }.addOnFailureListener { aguardando("N\u00E3o foi poss\u00EDvel verificar sua autoriza\u00E7\u00E3o. Verifique a internet.") }
     }
     private fun abrirAplicativo() { startActivity(Intent(this, MainActivity::class.java)); finish() }
     private fun painelAdministrador() {
         val c = estrutura("Painel do administrador", "Bem-vindo! Gerencie os acessos ou abra o aplicativo.")
         c.addView(botao("Abrir aplicativo").apply { setOnClickListener { abrirAplicativo() } }, LinearLayout.LayoutParams(-1, dp(52)))
         c.addView(espaco(12))
-        c.addView(botao("Gerenciar usuÃ¡rios").apply {
+        c.addView(botao("Gerenciar usu\u00E1rios").apply {
             setOnClickListener { startActivity(Intent(this@LoginActivity, AdminActivity::class.java)) }
         }, LinearLayout.LayoutParams(-1, dp(52)))
         c.addView(espaco(12))
