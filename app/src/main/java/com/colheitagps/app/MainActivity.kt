@@ -775,7 +775,7 @@ class MainActivity : Activity() {
         try {
             val original = nomeOriginalMapaEstoque(imagem)
             val extensao = if (imagem.extension.equals("png", true)) ".png" else ".jpg"
-            val nome = original.replace(Regex("[\\\\/:*?\\"<>|]"), "_") + extensao
+            val nome = original.replace(Regex("[^\\p{L}\\p{N} ._-]"), "_") + extensao
             val valores = android.content.ContentValues().apply {
                 put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, nome)
                 put(android.provider.MediaStore.Images.Media.MIME_TYPE,
