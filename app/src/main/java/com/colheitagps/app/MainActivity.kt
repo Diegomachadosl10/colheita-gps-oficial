@@ -154,6 +154,27 @@ class MainActivity : Activity() {
             } catch (e: Exception) { Toast.makeText(this, "Erro na foto: ${e.message}", Toast.LENGTH_LONG).show() }
             return
         }
+        if (requestCode == 309) {
+            val uri = data?.data ?: return
+            val id = fotoPendente ?: return
+            try {
+                val arquivo = File(filesDir, "campo_${System.currentTimeMillis()}.jpg")
+                contentResolver.openInputStream(uri)?.use { input -> arquivo.outputStream().use { input.copyTo(it) } }
+                val arr = dados("ocorrencias_campo")
+                for (i in 0 until arr.length()) {
+                    val obj = arr.optJSONObject(i) ?: continue
+                    if (obj.optString("id") == id) {
+                        val fotos = obj.optJSONArray("fotos") ?: JSONArray()
+                        fotos.put(arquivo.absolutePath)
+                        obj.put("fotos", fotos)
+                        break
+                    }
+                }
+                guardar("ocorrencias_campo", arr)
+                ocorrenciasCampo()
+            } catch (e: Exception) { Toast.makeText(this, "Erro ao anexar foto: ${e.message}", Toast.LENGTH_LONG).show() }
+            return
+        }
         if (requestCode == 301) {
             val uri = data?.data ?: return
             val id = fotoPendente ?: return
@@ -458,6 +479,7 @@ class MainActivity : Activity() {
                 menu.add("Início").setOnMenuItemClickListener { inicio(); true }
                 menu.add("Mapas").setOnMenuItemClickListener { biblioteca(); true }
                 menu.add("Pendências").setOnMenuItemClickListener { pendencias(); true }
+                menu.add("Ocorrências de campo").setOnMenuItemClickListener { ocorrenciasCampo(); true }
                 menu.add("Calendário").setOnMenuItemClickListener { calendario(); true }
                 menu.add("Caminhões").setOnMenuItemClickListener { caminhoes(); true }
                 menu.add("Relatórios de turno").setOnMenuItemClickListener { relatorios(); true }
@@ -491,6 +513,7 @@ class MainActivity : Activity() {
             Triple("PENDÊNCIAS", "Fotos e acompanhamento de manutenção", 4),
             Triple("CAMINHÕES", "Chegada e saída por voz ou digitação", 5),
             Triple("📅 CALENDÁRIO", "Consultar estoques, pendências e relatórios por dia", 6),
+            Triple("OCORRÊNCIAS DE CAMPO", "Buracos, erosões, estradas e carreadores", 7),
         )
         for ((titulo, subtitulo, tipo) in itens) {
             val item = cartao(titulo, subtitulo) {
@@ -502,6 +525,7 @@ class MainActivity : Activity() {
                     4 -> pendencias()
                     5 -> caminhoes()
                     6 -> calendario()
+                    7 -> ocorrenciasCampo()
                     else -> relatoriosTurno()
                 }
             }
@@ -1078,6 +1102,16 @@ class MainActivity : Activity() {
                 relatorios()
             }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
         }
+        coluna.addView(texto("OCORRÊNCIAS DE CAMPO", 16f, 0xFF80DDAA.toInt()))
+        val ocorrencias = dados("ocorrencias_campo")
+        for (i in ocorrencias.length() - 1 downTo 0) {
+            val item = ocorrencias.optJSONObject(i) ?: continue
+            if (dataRegistro(item) != dataInicial) continue
+            encontrados++
+            val idx = i
+            coluna.addView(cartao(item.optString("tipo"), item.optString("localizacao")) { opcoesOcorrencia(idx) },
+                LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
+        }
         if (encontrados == 0) coluna.addView(texto("Nenhum registro nesta data.", 14f))
     }
 
@@ -1085,9 +1119,12 @@ class MainActivity : Activity() {
         append("PENDÊNCIA DE MANUTENÇÃO - COLHEITA GPS\n")
         append("Data: ").append(dataRegistro(obj)).append("\n")
         append("O.S.: ").append(obj.optString("osPendencia").ifBlank { "Não informada" }).append("\n")
-        append("Equipamento / Local: ").append(obj.optString("equipamento")).append("\n")
+        append("Equipamento: ").append(obj.optString("equipamento")).append("\n")
         append("Pendência: ").append(obj.optString("descricao")).append("\n")
         append("Situação: ").append(if (obj.optBoolean("concluida", false)) "Concluída" else "Pendente")
+        if (obj.optBoolean("concluida", false) && obj.optString("dataConclusao").isNotBlank()) {
+            append("\nConcluída em: ").append(obj.optString("dataConclusao"))
+        }
     }
 
     private fun fotosPendencia(obj: JSONObject): List<File> {
@@ -1195,7 +1232,300 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun pendencias() = listarRegistros("pendencias", "Pendências de manutenção", true)
+    private fun pendencias() {
+        val coluna = pagina("Pendências de manutenção")
+        coluna.addView(botao("+ Novo registro") { editarRegistro("pendencias", -1, true) })
+        val arr = dados("pendencias")
+        coluna.addView(texto("PENDÊNCIAS EM ABERTO", 16f, Color.WHITE))
+        var abertas = 0
+        for (i in arr.length() - 1 downTo 0) {
+            val obj = arr.optJSONObject(i) ?: continue
+            if (obj.optBoolean("concluida", false)) continue
+            abertas++
+            val idx = i
+            coluna.addView(cartao(obj.optString("equipamento", "Equipamento"), obj.optString("descricao")) {
+                opcoesPendencia(idx)
+            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
+        }
+        if (abertas == 0) coluna.addView(texto("Nenhuma pendência em aberto.", 14f))
+        coluna.addView(botao("✓ Histórico de concluídas") { historicoPendencias() })
+    }
+
+    private fun historicoPendencias() {
+        val coluna = pagina("Pendências concluídas")
+        val arr = dados("pendencias")
+        var total = 0
+        for (i in arr.length() - 1 downTo 0) {
+            val obj = arr.optJSONObject(i) ?: continue
+            if (!obj.optBoolean("concluida", false)) continue
+            total++
+            val idx = i
+            coluna.addView(cartao(obj.optString("equipamento", "Equipamento"),
+                obj.optString("descricao") + " • Concluída em " + obj.optString("dataConclusao", "data não registrada")) {
+                opcoesPendencia(idx)
+            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
+        }
+        if (total == 0) coluna.addView(texto("Nenhuma pendência concluída.", 14f))
+    }
+
+    private fun mudarSituacaoPendencia(idx: Int) {
+        val arr = dados("pendencias")
+        val obj = arr.optJSONObject(idx) ?: return
+        val concluida = obj.optBoolean("concluida", false)
+        AlertDialog.Builder(this)
+            .setTitle(if (concluida) "Reabrir pendência?" else "Concluir pendência?")
+            .setMessage(if (concluida) "A pendência voltará à lista de pendentes. Fotos e informações serão preservadas."
+                else "Confirmar que a manutenção foi concluída? O registro ficará no histórico, com as fotos e informações.")
+            .setNegativeButton("Cancelar", null)
+            .setPositiveButton(if (concluida) "Reabrir" else "Concluir") { _, _ ->
+                obj.put("concluida", !concluida)
+                if (concluida) obj.remove("dataConclusao")
+                else obj.put("dataConclusao", java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", Locale("pt", "BR")).format(java.util.Date()))
+                guardar("pendencias", arr)
+                if (concluida) historicoPendencias() else pendencias()
+            }.show()
+    }
+
+    private fun opcoesPendencia(idx: Int) {
+        val arr = dados("pendencias")
+        val obj = arr.optJSONObject(idx) ?: return
+        val concluida = obj.optBoolean("concluida", false)
+        val opcoes = arrayOf("Compartilhar (WhatsApp / PDF)", "Editar", "Adicionar foto", "Ver fotos",
+            if (concluida) "↩ Reabrir pendência" else "✓ Concluir pendência", "Excluir")
+        AlertDialog.Builder(this).setTitle(obj.optString("equipamento", "Pendência"))
+            .setItems(opcoes) { _, escolha ->
+                when (escolha) {
+                    0 -> compartilharPendenciaMenu(obj)
+                    1 -> editarRegistro("pendencias", idx, true)
+                    2 -> {
+                        fotoPendente = obj.optString("id")
+                        startActivityForResult(Intent(Intent.ACTION_GET_CONTENT).apply { type = "image/*" }, 301)
+                    }
+                    3 -> {
+                        val existentes = fotosPendencia(obj)
+                        if (existentes.isEmpty()) Toast.makeText(this, "Sem foto", Toast.LENGTH_SHORT).show()
+                        else AlertDialog.Builder(this).setTitle("Fotos da pendência")
+                            .setItems(existentes.mapIndexed { i, _ -> "Foto ${i + 1}" }.toTypedArray()) { _, fotoIdx ->
+                                AlertDialog.Builder(this).setView(ImageView(this).apply {
+                                    setImageBitmap(BitmapFactory.decodeFile(existentes[fotoIdx].absolutePath))
+                                    adjustViewBounds = true
+                                }).setPositiveButton("Fechar", null).show()
+                            }.show()
+                    }
+                    4 -> mudarSituacaoPendencia(idx)
+                    5 -> remover("pendencias", idx) { if (concluida) historicoPendencias() else pendencias() }
+                }
+            }.show()
+    }
+    private fun ocorrenciasCampo(concluidas: Boolean = false) {
+        val coluna = pagina(if (concluidas) "Histórico de ocorrências" else "Ocorrências de campo")
+        if (!concluidas) coluna.addView(botao("+ Nova ocorrência") { editarOcorrencia(-1) })
+        val arr = dados("ocorrencias_campo")
+        var quantidade = 0
+        for (i in arr.length() - 1 downTo 0) {
+            val obj = arr.optJSONObject(i) ?: continue
+            if (obj.optBoolean("concluida", false) != concluidas) continue
+            quantidade++
+            val idx = i
+            coluna.addView(cartao(obj.optString("tipo", "Ocorrência"),
+                obj.optString("localizacao") + " • " + obj.optString("descricao")) { opcoesOcorrencia(idx) },
+                LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
+        }
+        if (quantidade == 0) coluna.addView(texto("Nenhum registro nesta lista.", 14f))
+        coluna.addView(botao(if (concluidas) "Voltar às abertas" else "✓ Histórico de concluídas") {
+            ocorrenciasCampo(!concluidas)
+        })
+    }
+
+    private fun editarOcorrencia(idx: Int) {
+        val atual = if (idx >= 0) dados("ocorrencias_campo").optJSONObject(idx) else null
+        val corpo = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(18), dp(8), dp(18), dp(8)) }
+        val tipos = arrayOf("Buraco", "Erosão", "Problema em curva", "Obstáculo", "Outro")
+        val tipo = Spinner(this).apply {
+            adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, tipos)
+            setSelection(tipos.indexOf(atual?.optString("tipo")).coerceAtLeast(0))
+        }
+        corpo.addView(texto("Tipo de ocorrência", 15f))
+        corpo.addView(tipo)
+        val localizacao = campo("Ex.: Estrada 5, carreador 2, talhão 10, curva 3", atual?.optString("localizacao") ?: "")
+        val descricao = campo("Descreva o problema encontrado", atual?.optString("descricao") ?: "")
+        corpo.addView(texto("Localização (digitação livre)", 15f))
+        corpo.addView(localizacao)
+        corpo.addView(texto("Descrição", 15f))
+        corpo.addView(descricao)
+        val gps = atual?.optString("gps") ?: ""
+        val coordenadas = campo("Coordenadas GPS (opcional)", gps)
+        corpo.addView(coordenadas)
+        corpo.addView(botao("📍 Usar minha localização GPS") {
+            val pos = local
+            if (pos != null) coordenadas.setText("${pos.latitude}, ${pos.longitude}")
+            else Toast.makeText(this, "GPS ainda não disponível", Toast.LENGTH_SHORT).show()
+        })
+        fotosFormulario = mutableListOf<String>().apply {
+            atual?.optJSONArray("fotos")?.let { fotos -> for (i in 0 until fotos.length()) add(fotos.optString(i)) }
+        }
+        val resumo = texto("Fotos anexadas: ${fotosFormulario.size}", 14f)
+        corpo.addView(resumo)
+        atualizarFotosFormulario = { resumo.text = "Fotos anexadas: ${fotosFormulario.size}" }
+        corpo.addView(botao("📷 Tirar foto") {
+            startActivityForResult(Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE), 308)
+        })
+        corpo.addView(botao("🖼 Escolher fotos da galeria") {
+            startActivityForResult(Intent(Intent.ACTION_GET_CONTENT).apply {
+                type = "image/*"; putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+            }, 307)
+        })
+        corpo.addView(botao("Remover foto selecionada") {
+            if (fotosFormulario.isNotEmpty()) AlertDialog.Builder(this).setTitle("Remover foto")
+                .setItems(fotosFormulario.mapIndexed { i, _ -> "Foto ${i + 1}" }.toTypedArray()) { _, pos ->
+                    fotosFormulario.removeAt(pos); atualizarFotosFormulario?.invoke()
+                }.show()
+        })
+        AlertDialog.Builder(this).setTitle(if (idx < 0) "Nova ocorrência de campo" else "Editar ocorrência")
+            .setView(ScrollView(this).apply { addView(corpo) })
+            .setNegativeButton("Cancelar", null)
+            .setPositiveButton("Salvar") { _, _ ->
+                val arr = dados("ocorrencias_campo")
+                val obj = atual ?: JSONObject().apply { put("id", System.currentTimeMillis().toString()) }
+                obj.put("tipo", tipos[tipo.selectedItemPosition])
+                obj.put("localizacao", localizacao.text.toString())
+                obj.put("descricao", descricao.text.toString())
+                obj.put("gps", coordenadas.text.toString())
+                obj.put("fotos", JSONArray().apply { fotosFormulario.filter { File(it).isFile }.forEach { put(it) } })
+                if (obj.optString("dataCadastro").isBlank()) obj.put("dataCadastro", dataHoje())
+                if (idx < 0) arr.put(obj)
+                guardar("ocorrencias_campo", arr)
+                atualizarFotosFormulario = null
+                ocorrenciasCampo()
+                AlertDialog.Builder(this).setTitle("Ocorrência salva")
+                    .setMessage("Deseja compartilhar agora?")
+                    .setNegativeButton("Agora não", null)
+                    .setPositiveButton("Compartilhar") { _, _ -> compartilharOcorrencia(obj) }.show()
+            }.show()
+    }
+
+    private fun opcoesOcorrencia(idx: Int) {
+        val obj = dados("ocorrencias_campo").optJSONObject(idx) ?: return
+        val concluida = obj.optBoolean("concluida", false)
+        AlertDialog.Builder(this).setTitle(obj.optString("tipo"))
+            .setItems(arrayOf("Visualizar / compartilhar", "Editar", "Adicionar foto", "Ver fotos",
+                if (concluida) "↩ Reabrir ocorrência" else "✓ Concluir ocorrência", "Excluir")) { _, opcao ->
+                when (opcao) {
+                    0 -> compartilharOcorrencia(obj)
+                    1 -> editarOcorrencia(idx)
+                    2 -> {
+                        fotoPendente = obj.optString("id")
+                        startActivityForResult(Intent(Intent.ACTION_GET_CONTENT).apply { type = "image/*" }, 309)
+                    }
+                    3 -> {
+                        val fotos = fotosPendencia(obj)
+                        if (fotos.isEmpty()) Toast.makeText(this, "Sem fotos", Toast.LENGTH_SHORT).show()
+                        else AlertDialog.Builder(this).setTitle("Fotos")
+                            .setItems(fotos.mapIndexed { i, _ -> "Foto ${i + 1}" }.toTypedArray()) { _, pos ->
+                                AlertDialog.Builder(this).setView(ImageView(this).apply {
+                                    setImageBitmap(BitmapFactory.decodeFile(fotos[pos].absolutePath))
+                                    adjustViewBounds = true
+                                }).setPositiveButton("Fechar", null).show()
+                            }.show()
+                    }
+                    4 -> AlertDialog.Builder(this)
+                        .setTitle(if (concluida) "Reabrir ocorrência?" else "Concluir ocorrência?")
+                        .setMessage("O registro e suas fotos continuarão salvos no histórico.")
+                        .setNegativeButton("Cancelar", null)
+                        .setPositiveButton("Confirmar") { _, _ ->
+                            val arr = dados("ocorrencias_campo")
+                            val item = arr.optJSONObject(idx) ?: return@setPositiveButton
+                            item.put("concluida", !concluida)
+                            if (concluida) item.remove("dataConclusao") else item.put("dataConclusao",
+                                java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", Locale("pt", "BR")).format(java.util.Date()))
+                            guardar("ocorrencias_campo", arr)
+                            ocorrenciasCampo(concluida)
+                        }.show()
+                    5 -> remover("ocorrencias_campo", idx) { ocorrenciasCampo(concluida) }
+                }
+            }.show()
+    }
+
+    private fun textoOcorrencia(obj: JSONObject): String = buildString {
+        append("OCORRÊNCIA DE CAMPO - COLHEITA GPS\n")
+        append("Data: ").append(dataRegistro(obj)).append("\n")
+        append("Tipo: ").append(obj.optString("tipo")).append("\n")
+        append("Localização: ").append(obj.optString("localizacao")).append("\n")
+        append("Descrição: ").append(obj.optString("descricao")).append("\n")
+        if (obj.optString("gps").isNotBlank()) append("GPS: ").append(obj.optString("gps")).append("\n")
+        append("Situação: ").append(if (obj.optBoolean("concluida", false)) "Concluída" else "Pendente")
+        if (obj.optBoolean("concluida", false)) append("\nConcluída em: ").append(obj.optString("dataConclusao"))
+    }
+
+    private fun compartilharOcorrencia(obj: JSONObject) {
+        val fotos = fotosPendencia(obj)
+        AlertDialog.Builder(this).setTitle("Compartilhar ocorrência")
+            .setItems(arrayOf("WhatsApp / mensagem sem foto", "WhatsApp / mensagem com foto",
+                "PDF sem foto", "PDF com fotos")) { _, opcao ->
+                when (opcao) {
+                    0 -> startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+                        type = "text/plain"; putExtra(Intent.EXTRA_TEXT, textoOcorrencia(obj))
+                    }, "Compartilhar ocorrência"))
+                    1 -> if (fotos.isEmpty()) Toast.makeText(this, "Sem fotos anexadas", Toast.LENGTH_LONG).show()
+                        else compartilharArquivoOcorrencia(obj, fotos.first())
+                    2 -> gerarPdfOcorrencia(obj, false)
+                    3 -> if (fotos.isEmpty()) Toast.makeText(this, "Sem fotos anexadas", Toast.LENGTH_LONG).show()
+                        else gerarPdfOcorrencia(obj, true)
+                }
+            }.show()
+    }
+
+    private fun compartilharArquivoOcorrencia(obj: JSONObject, foto: File) {
+        try {
+            if (Build.VERSION.SDK_INT < 29) { gerarPdfOcorrencia(obj, true); return }
+            val valores = android.content.ContentValues().apply {
+                put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, "ocorrencia_${System.currentTimeMillis()}.jpg")
+                put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+                put(android.provider.MediaStore.Images.Media.RELATIVE_PATH,
+                    android.os.Environment.DIRECTORY_PICTURES + "/ColheitaGPS")
+            }
+            val uri = contentResolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, valores)
+                ?: throw IOException("Não foi possível preparar a foto")
+            contentResolver.openOutputStream(uri)?.use { out -> foto.inputStream().use { it.copyTo(out) } }
+            startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+                type = "image/jpeg"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                putExtra(Intent.EXTRA_TEXT, textoOcorrencia(obj))
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                clipData = ClipData.newUri(contentResolver, "Foto da ocorrência", uri)
+            }, "Compartilhar ocorrência com foto"))
+        } catch (e: Exception) { Toast.makeText(this, "Erro ao compartilhar: ${e.message}", Toast.LENGTH_LONG).show() }
+    }
+
+    private fun gerarPdfOcorrencia(obj: JSONObject, comFotos: Boolean) {
+        try {
+            val doc = android.graphics.pdf.PdfDocument()
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK; textSize = 12f }
+            val pagina = doc.startPage(android.graphics.pdf.PdfDocument.PageInfo.Builder(595, 842, 1).create())
+            var y = 45f
+            for (linha in textoOcorrencia(obj).lines()) for (trecho in linha.chunked(75).ifEmpty { listOf("") }) {
+                pagina.canvas.drawText(trecho, 28f, y, paint); y += 20f
+            }
+            doc.finishPage(pagina)
+            if (comFotos) fotosPendencia(obj).forEachIndexed { i, foto ->
+                val bmp = BitmapFactory.decodeFile(foto.absolutePath) ?: return@forEachIndexed
+                val pg = doc.startPage(android.graphics.pdf.PdfDocument.PageInfo.Builder(595, 842, i + 2).create())
+                pg.canvas.drawText("Foto ${i + 1} da ocorrência", 28f, 35f, paint)
+                val escala = minOf(535f / bmp.width, 750f / bmp.height)
+                pg.canvas.drawBitmap(bmp, null, RectF(30f, 50f, 30f + bmp.width * escala,
+                    50f + bmp.height * escala), Paint(3))
+                doc.finishPage(pg); bmp.recycle()
+            }
+            val arquivo = File(cacheDir, "ocorrencia_${System.currentTimeMillis()}.pdf")
+            arquivo.outputStream().use { doc.writeTo(it) }; doc.close()
+            pdfPendente = arquivo
+            startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE); type = "application/pdf"
+                putExtra(Intent.EXTRA_TITLE, "Ocorrencia_Campo.pdf")
+            }, 303)
+        } catch (e: Exception) { Toast.makeText(this, "Erro ao gerar PDF: ${e.message}", Toast.LENGTH_LONG).show() }
+    }
+
     private fun relatoriosTurno() = relatorios()
     private fun listarRegistros(key: String, titulo: String, foto: Boolean) {
         val coluna = pagina(titulo)
@@ -1244,7 +1574,7 @@ class MainActivity : Activity() {
     private fun editarRegistro(key: String, idx: Int, foto: Boolean, turnoInicial: String = "A") {
         val atual = if (idx >= 0) dados(key).optJSONObject(idx) else null
         val corpo = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(18), dp(8), dp(18), dp(8)) }
-        val equipamento = campo(if (foto) "Equipamento / O.S." else "Turno (A, B ou C)", (if (foto) atual?.optString("equipamento") else atual?.optString("turno") ?: turnoInicial) ?: "")
+        val equipamento = campo(if (foto) "Equipamento" else "Turno (A, B ou C)", (if (foto) atual?.optString("equipamento") else atual?.optString("turno") ?: turnoInicial) ?: "")
         val descricao = campo(if (foto) "Defeito e localização" else "Ocorrências, serviços e pendências", atual?.optString("descricao") ?: "")
         corpo.addView(equipamento)
         val osPendencia = campo("O.S. da pendência (ex.: 12345)", if (foto) atual?.optString("osPendencia") ?: "" else "")
