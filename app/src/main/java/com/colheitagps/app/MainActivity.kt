@@ -107,7 +107,7 @@ class MainActivity : Activity() {
         if (requestCode == 306) {
             val uri = data?.data ?: return
             try {
-                val destino = File(filesDir, "foto_estoque_atual.jpg")
+                val destino = File(filesDir, "foto_estoque_${System.currentTimeMillis()}.jpg")
                 val bitmap = contentResolver.openInputStream(uri)?.use { entrada ->
                     BitmapFactory.decodeStream(entrada)
                 } ?: throw IOException("Imagem indisponível")
@@ -123,8 +123,7 @@ class MainActivity : Activity() {
                 getSharedPreferences("controle_colheita", 0).edit()
                     .putString("nome_foto_estoque", nomeFoto).apply()
                 val p = progresso().put("fotoEstoque", destino.absolutePath)
-                getSharedPreferences("controle_colheita", 0).edit()
-                    .putString("progresso", p.toString()).commit()
+                salvarEstoqueAtual(p)
                 estoque()
                 Toast.makeText(this, "Foto anexada ao estoque", Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
@@ -459,11 +458,12 @@ class MainActivity : Activity() {
                 menu.add("Início").setOnMenuItemClickListener { inicio(); true }
                 menu.add("Mapas").setOnMenuItemClickListener { biblioteca(); true }
                 menu.add("Pendências").setOnMenuItemClickListener { pendencias(); true }
+                menu.add("Calendário").setOnMenuItemClickListener { calendario(); true }
                 menu.add("Caminhões").setOnMenuItemClickListener { caminhoes(); true }
                 menu.add("Relatórios de turno").setOnMenuItemClickListener { relatorios(); true }
                 if (titulo == "Estoque de cana") {
                     menu.add("Compartilhar estoque").setOnMenuItemClickListener { escolherCompartilhamentoEstoque(); true }
-                    menu.add("Histórico do estoque").setOnMenuItemClickListener { historicoEstoque(); true }
+                    
                 }
                 menu.add("Exportar cópia de segurança").setOnMenuItemClickListener { exportarBackup(); true }
                 menu.add("Restaurar cópia de segurança").setOnMenuItemClickListener { solicitarRestauracaoBackup(); true }
@@ -490,6 +490,7 @@ class MainActivity : Activity() {
             Triple("RELATÓRIOS DE TURNO", "Resumo dos turnos A, B e C", 3),
             Triple("PENDÊNCIAS", "Fotos e acompanhamento de manutenção", 4),
             Triple("CAMINHÕES", "Chegada e saída por voz ou digitação", 5),
+            Triple("📅 CALENDÁRIO", "Consultar estoques, pendências e relatórios por dia", 6),
         )
         for ((titulo, subtitulo, tipo) in itens) {
             val item = cartao(titulo, subtitulo) {
@@ -500,6 +501,7 @@ class MainActivity : Activity() {
                     3 -> relatorios()
                     4 -> pendencias()
                     5 -> caminhoes()
+                    6 -> calendario()
                     else -> relatoriosTurno()
                 }
             }
@@ -529,17 +531,56 @@ class MainActivity : Activity() {
         return try { JSONArray(texto) } catch (_: Exception) { JSONArray() }
     }
 
+    private fun listaEstoques(): JSONArray = dados("estoques_salvos")
+    private fun salvarEstoqueAtual(obj: JSONObject) {
+        val arr = listaEstoques()
+        val id = obj.optString("id").ifBlank { System.currentTimeMillis().toString() }
+        obj.put("id", id)
+        if (obj.optString("dataCadastro").isBlank()) obj.put("dataCadastro", dataHoje())
+        var pos = -1
+        for (i in 0 until arr.length()) if (arr.optJSONObject(i)?.optString("id") == id) pos = i
+        if (pos >= 0) arr.put(pos, obj) else arr.put(obj)
+        guardar("estoques_salvos", arr)
+        getSharedPreferences("controle_colheita", 0).edit().putString("progresso", obj.toString()).commit()
+    }
+    private fun abrirEstoqueSalvo(obj: JSONObject) {
+        getSharedPreferences("controle_colheita", 0).edit()
+            .putString("progresso", obj.toString()).commit()
+        val lote = obj.optString("os")
+        val detalhe = "Lote: $lote\nTalhões: ${obj.optString("talhoes")}\nÁrea: ${obj.optString("areaRestante")} ha\nProdutividade: ${obj.optString("produtividade")} t/ha"
+        AlertDialog.Builder(this).setTitle("Estoque $lote").setMessage(detalhe)
+            .setItems(arrayOf("Editar estoque", "Compartilhar estoque", "Excluir estoque")) { _, escolha ->
+                when (escolha) {
+                    0 -> editarProgressoColheita(false)
+                    1 -> escolherCompartilhamentoEstoque()
+                    2 -> AlertDialog.Builder(this).setTitle("Excluir estoque?")
+                        .setPositiveButton("Excluir") { _, _ ->
+                            val arr = listaEstoques(); val novo = JSONArray()
+                            for (i in 0 until arr.length()) {
+                                val item = arr.optJSONObject(i) ?: continue
+                                if (item.optString("id") != obj.optString("id")) novo.put(item)
+                            }
+                            guardar("estoques_salvos", novo)
+                            getSharedPreferences("controle_colheita", 0).edit().remove("progresso").commit()
+                            estoque()
+                        }.setNegativeButton("Cancelar", null).show()
+                }
+            }.show()
+    }
     private fun estoque() {
         val coluna = pagina("Estoque de cana")
-        coluna.addView(texto("Informe apenas o que falta colher. A soma das pinturas fica no mapa.", 14f))
-        val p = progresso()
-        coluna.addView(texto("O.S.: ${p.optString("os").ifBlank { "Não informada" }}", 18f))
-        coluna.addView(texto("Talhões: ${p.optString("talhoes").ifBlank { "Não informados" }}", 16f))
-        coluna.addView(texto("Área restante: ${p.optString("areaRestante").ifBlank { "Não informada" }} ha", 18f))
-        coluna.addView(texto("Produtividade: ${p.optString("produtividade").ifBlank { "Não informada" }} t/ha", 16f))
-        coluna.addView(botao("Editar dados do estoque") { editarProgressoColheita() })
-        coluna.addView(botao("Compartilhar estoque") { escolherCompartilhamentoEstoque() })
-        fotoEstoque()?.let { coluna.addView(texto("Foto anexada: ${it.name}", 14f)) }
+        coluna.addView(botao("📅 Abrir calendário") { calendario() })
+        coluna.addView(botao("+ Novo estoque") { editarProgressoColheita(true) })
+        coluna.addView(texto("ESTOQUES SALVOS", 15f))
+        val arr = listaEstoques()
+        if (arr.length() == 0) coluna.addView(texto("Nenhum estoque cadastrado ainda.", 14f))
+        for (i in arr.length() - 1 downTo 0) {
+            val item = arr.optJSONObject(i) ?: continue
+            val lote = item.optString("os").ifBlank { "Sem lote" }
+            val detalhe = "Talhões: ${item.optString("talhoes")} • Área: ${item.optString("areaRestante")} ha • Produtividade: ${item.optString("produtividade")} t/ha"
+            coluna.addView(cartao(lote, detalhe) { abrirEstoqueSalvo(item) },
+                LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
+        }
     }
 
     private var mapaEstoqueSelecionado: File? = null
@@ -568,7 +609,7 @@ class MainActivity : Activity() {
         if (p.optString("os").isBlank() || p.optString("talhoes").isBlank() ||
             p.optString("areaRestante").isBlank() || p.optString("produtividade").isBlank()) {
             AlertDialog.Builder(this).setTitle("Complete o estoque")
-                .setMessage("Informe O.S., talhões, área restante e produtividade antes de compartilhar.")
+                .setMessage("Informe lote, talhões, área e produtividade antes de compartilhar.")
                 .setPositiveButton("Preencher") { _, _ -> editarProgressoColheita() }
                 .setNegativeButton("Cancelar", null).show()
             return
@@ -607,15 +648,16 @@ class MainActivity : Activity() {
         JSONObject(getSharedPreferences("controle_colheita", 0).getString("progresso", "{}") ?: "{}")
     } catch (_: Exception) { JSONObject() }
 
-    private fun editarProgressoColheita() {
-        val atual = progresso()
+    private fun editarProgressoColheita(novo: Boolean = false) {
+        val anterior = progresso()
+        val atual = if (novo) JSONObject() else anterior
         val corpo = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(18), dp(8), dp(18), dp(8))
         }
-        val os = campo("O.S. (ex.: K/39)", atual.optString("os"))
+        val os = campo("Lote (ex.: K/39)", atual.optString("os"))
         val talhoes = campo("Talhões (ex.: 1 a 10, 25, 301)", atual.optString("talhoes"))
-        val area = campo("Área que falta colher (ha)", atual.optString("areaRestante",
+        val area = campo("Área (ha)", atual.optString("areaRestante",
             atual.optString("areaTotal")))
         val produtividade = campo("Produtividade (toneladas/ha)", atual.optString("produtividade"))
         for (v in listOf(os, talhoes, area, produtividade)) corpo.addView(v)
@@ -651,6 +693,13 @@ class MainActivity : Activity() {
                 }.show()
         })
         corpo.addView(botao("Adicionar foto / mapa pintado") {
+            val rascunho = JSONObject().put("os", os.text.toString())
+                .put("talhoes", talhoes.text.toString())
+                .put("areaRestante", area.text.toString())
+                .put("produtividade", produtividade.text.toString())
+            atual.optString("id").takeIf { it.isNotBlank() }?.let { rascunho.put("id", it) }
+            atual.optString("fotoEstoque").takeIf { it.isNotBlank() }?.let { rascunho.put("fotoEstoque", it) }
+            salvarEstoqueAtual(rascunho)
             val mapas = mapasDisponiveisEstoque()
             val escolhas = if (mapas.isEmpty()) arrayOf("Escolher da galeria")
                 else arrayOf("Escolher da galeria", "Usar mapa pintado salvo")
@@ -662,8 +711,7 @@ class MainActivity : Activity() {
                         AlertDialog.Builder(this).setTitle("Mapa pintado salvo")
                             .setItems(nomes) { _, indice ->
                                 val obj = progresso().put("fotoEstoque", mapas[indice].absolutePath)
-                                getSharedPreferences("controle_colheita", 0).edit()
-                                    .putString("progresso", obj.toString()).commit()
+                                salvarEstoqueAtual(obj)
                                 estoque()
                             }.setNegativeButton("Cancelar", null).show()
                     }
@@ -671,31 +719,18 @@ class MainActivity : Activity() {
         })
         fotoEstoque()?.let { corpo.addView(texto("Foto atual: ${it.name}", 14f)) }
         val rolagem = ScrollView(this).apply { addView(corpo) }
-        AlertDialog.Builder(this).setTitle("Estoque restante da colheita").setView(rolagem)
+        AlertDialog.Builder(this).setTitle(if (novo) "Novo estoque" else "Editar estoque").setView(rolagem)
             .setNegativeButton("Cancelar", null).setPositiveButton("Salvar") { _, _ ->
                 // Campos são texto livre. Os exemplos não são regras de validação.
                 val obj = JSONObject().put("os", os.text.toString())
                     .put("talhoes", talhoes.text.toString())
                     .put("areaRestante", area.text.toString())
                     .put("produtividade", produtividade.text.toString())
-                run {
-                    atual.optString("fotoEstoque").takeIf { it.isNotBlank() }?.let {
-                        obj.put("fotoEstoque", it)
-                    }
-                    val salvo = getSharedPreferences("controle_colheita", 0).edit()
-                        .putString("progresso", obj.toString()).commit()
-                    if (!salvo) {
-                        Toast.makeText(this, "Erro ao gravar estoque. Tente novamente.", Toast.LENGTH_LONG).show()
-                        return@setPositiveButton
-                    }
-                    val historico = dados("historico_estoque")
-                    historico.put(JSONObject(obj.toString()).put("data",
-                        java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", Locale("pt", "BR"))
-                            .format(java.util.Date())))
-                    guardar("historico_estoque", historico)
-                    estoque()
-                    Toast.makeText(this, "Estoque salvo", Toast.LENGTH_SHORT).show()
-                }
+                atual.optString("id").takeIf { it.isNotBlank() }?.let { obj.put("id", it) }
+                atual.optString("fotoEstoque").takeIf { it.isNotBlank() }?.let { obj.put("fotoEstoque", it) }
+                salvarEstoqueAtual(obj)
+                estoque()
+                Toast.makeText(this, "Estoque salvo", Toast.LENGTH_SHORT).show()
             }.show()
     }
 
@@ -729,15 +764,12 @@ class MainActivity : Activity() {
         val sb = StringBuilder("ESTOQUE DE CANA - COLHEITA GPS\n")
         sb.append("Data: ").append(java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", br)
             .format(java.util.Date())).append("\n")
-        sb.append("O.S.: ").append(p.optString("os").ifBlank { "Não informada" }).append("\n")
+        sb.append("Lote: ").append(p.optString("os").ifBlank { "Não informada" }).append("\n")
         sb.append("Talhões: ").append(p.optString("talhoes").ifBlank { "Não informados" }).append("\n")
-        sb.append("Área que falta colher: ")
+        sb.append("Área: ")
             .append(restante?.let { "%.2f ha".format(br, it) } ?: "Não informada").append("\n")
         sb.append("Produtividade: ")
             .append(produt?.let { "%.2f t/ha".format(br, it) } ?: "Não informada").append("\n")
-        sb.append("Estimativa de toneladas restantes: ")
-            .append(if (restante != null && produt != null)
-                "%.2f t".format(br, restante * produt) else "Indisponível").append("\n")
         // Estoque não inclui movimentações de cana: somente o que falta colher.
 
         return sb.toString()
@@ -978,6 +1010,72 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun dataHoje(): String =
+        java.text.SimpleDateFormat("dd/MM/yyyy", Locale("pt", "BR")).format(java.util.Date())
+
+    private fun dataRegistro(obj: JSONObject): String {
+        val cadastrada = obj.optString("dataCadastro")
+        if (cadastrada.isNotBlank()) return cadastrada.take(10)
+        // Compatibilidade com registros anteriores: usar a data do identificador,
+        // quando ele representa o instante de criação em milissegundos.
+        val timestamp = obj.optString("id").toLongOrNull()
+        return if (timestamp != null && timestamp > 946684800000L && timestamp < 4102444800000L)
+            java.text.SimpleDateFormat("dd/MM/yyyy", Locale("pt", "BR")).format(java.util.Date(timestamp))
+        else obj.optString("data").take(10).ifBlank { "Sem data" }
+    }
+
+    private fun calendario(dataInicial: String = dataHoje()) {
+        val coluna = pagina("Calendário")
+        coluna.addView(botao("📅 Escolher data: $dataInicial") {
+            val partes = dataInicial.split("/")
+            val hoje = java.util.Calendar.getInstance()
+            val dia = partes.getOrNull(0)?.toIntOrNull() ?: hoje.get(java.util.Calendar.DAY_OF_MONTH)
+            val mes = partes.getOrNull(1)?.toIntOrNull()?.minus(1) ?: hoje.get(java.util.Calendar.MONTH)
+            val ano = partes.getOrNull(2)?.toIntOrNull() ?: hoje.get(java.util.Calendar.YEAR)
+            android.app.DatePickerDialog(this, { _, a, m, d ->
+                calendario(String.format(Locale("pt", "BR"), "%02d/%02d/%04d", d, m + 1, a))
+            }, ano, mes, dia).show()
+        })
+        coluna.addView(texto("Registros de $dataInicial", 18f, Color.WHITE))
+        val estoques = listaEstoques()
+        var encontrados = 0
+        coluna.addView(texto("ESTOQUES", 16f, 0xFF80DDAA.toInt()))
+        for (i in estoques.length() - 1 downTo 0) {
+            val item = estoques.optJSONObject(i) ?: continue
+            if (dataRegistro(item) != dataInicial) continue
+            encontrados++
+            val lote = item.optString("os").ifBlank { "Sem lote" }
+            coluna.addView(cartao(lote, "Talhões: ${item.optString("talhoes")} • Área: ${item.optString("areaRestante")} ha") {
+                abrirEstoqueSalvo(item)
+            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
+        }
+        coluna.addView(texto("PENDÊNCIAS", 16f, 0xFF80DDAA.toInt()))
+        val pend = dados("pendencias")
+        for (i in pend.length() - 1 downTo 0) {
+            val item = pend.optJSONObject(i) ?: continue
+            if (dataRegistro(item) != dataInicial) continue
+            encontrados++
+            val idx = i
+            coluna.addView(cartao(item.optString("equipamento", "Pendência"), item.optString("descricao")) {
+                AlertDialog.Builder(this).setTitle("Pendência")
+                    .setMessage(item.optString("descricao"))
+                    .setPositiveButton("Editar") { _, _ -> editarRegistro("pendencias", idx, true) }
+                    .setNegativeButton("Fechar", null).show()
+            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
+        }
+        coluna.addView(texto("RELATÓRIOS DE TURNO", 16f, 0xFF80DDAA.toInt()))
+        val rel = dados("relatorios_turno")
+        for (i in rel.length() - 1 downTo 0) {
+            val item = rel.optJSONObject(i) ?: continue
+            if (dataRegistro(item) != dataInicial) continue
+            encontrados++
+            coluna.addView(cartao("Turno ${item.optString("turno")}", item.optString("descricao")) {
+                relatorios()
+            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
+        }
+        if (encontrados == 0) coluna.addView(texto("Nenhum registro nesta data.", 14f))
+    }
+
     private fun pendencias() = listarRegistros("pendencias", "Pendências de manutenção", true)
     private fun relatoriosTurno() = relatorios()
     private fun listarRegistros(key: String, titulo: String, foto: Boolean) {
@@ -1076,6 +1174,7 @@ class MainActivity : Activity() {
                     obj.put("fotos", listaFotos)
                     obj.put("foto", if (listaFotos.length() > 0) listaFotos.optString(0) else "")
                 }
+                if (obj.optString("dataCadastro").isBlank()) obj.put("dataCadastro", dataHoje())
                 if (idx < 0) arr.put(obj)
                 guardar(key, arr)
                 if (foto) {
