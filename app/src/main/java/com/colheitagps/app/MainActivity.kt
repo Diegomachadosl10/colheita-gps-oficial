@@ -1393,19 +1393,9 @@ class MainActivity : Activity() {
             .show()
     }
 
-    private fun validarTalhoes(entrada: String): String? {
-        val escolhidos = sortedSetOf<Int>()
-        if (entrada.isBlank()) return null
-        for (parte in entrada.split(",")) {
-            val limites = parte.trim().split("-").map { it.trim().toIntOrNull() }
-            if (limites.size !in 1..2 || limites.any { it == null }) return null
-            val primeiro = limites.first()!!
-            val ultimo = limites.last()!!
-            if (primeiro !in 1..500 || ultimo !in 1..500 || ultimo < primeiro) return null
-            for (n in primeiro..ultimo) escolhidos.add(n)
-        }
-        return if (escolhidos.isEmpty()) null else escolhidos.joinToString(", ")
-    }
+    // Talhões da O.S. são texto livre, seguindo o mesmo padrão do Estoque.
+    // Preserva exatamente o que foi digitado, sem expandir ou reformatar intervalos.
+    private fun validarTalhoes(entrada: String): String? = entrada.takeIf { it.isNotBlank() }
 
     private fun ordens(id: String) {
         val pref = getSharedPreferences("ordens_servico", 0)
@@ -1451,7 +1441,10 @@ class MainActivity : Activity() {
                     setPadding(dp(18), dp(8), dp(18), dp(8))
                 }
                 val talhoesOs = EditText(this).apply {
-                    hint = "Talhões (ex.: 1-10, 25, 301)"
+                    hint = "Talhões (ex.: 1 ao 10, 1 a 10, 1,2,3,4,5)"
+                    setSingleLine(false)
+                    minLines = 2
+                    inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
                     setText(if (novo) "" else prefTalhoes.getString(id + "_" + dados[pos], "") ?: "")
                 }
                 corpoOs.addView(campo)
@@ -1472,7 +1465,7 @@ class MainActivity : Activity() {
                             }
                             guardar(dados)
                             ordens(id)
-                        } else Toast.makeText(this, "Informe O.S. e talhões válidos de 1 a 500", Toast.LENGTH_LONG).show()
+                        } else Toast.makeText(this, "Informe o número da O.S. e os talhões", Toast.LENGTH_LONG).show()
                     }
                     .setNegativeButton("Cancelar") { _, _ ->
                         ordens(id)
