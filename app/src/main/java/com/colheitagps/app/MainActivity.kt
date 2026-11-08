@@ -441,33 +441,52 @@ class MainActivity : Activity() {
 
     private fun estoque() {
         val coluna = pagina("Estoque de cana")
-        coluna.addView(texto("Área restante informada manualmente e movimentações por turno", 15f).apply {
-            setPadding(0, dp(14), 0, dp(8))
-        })
-        coluna.addView(botao("Adicionar movimentação") { novaMovimentacao() })
-        coluna.addView(botao("Editar O.S., talhões e área restante") { editarProgressoColheita() })
-        coluna.addView(botao("Compartilhar resumo por mensagem") { compartilharTextoEstoque() })
-        coluna.addView(botao("Compartilhar imagem do mapa e resumo") { compartilharEstoqueComMapa() })
-        coluna.addView(botao("Gerar PDF com mapa pintado") { gerarPdfEstoque() })
-        coluna.addView(botao("Salvar imagem do mapa pintado") { salvarImagemMapa() })
-        coluna.addView(botao("Histórico do estoque") { historicoEstoque() })
-        val dados = registros()
-        var saldo = 0.0
-        for (i in 0 until dados.length()) {
-            val o = dados.optJSONObject(i) ?: continue
-            val valor = o.optDouble("quantidade", 0.0)
-            saldo += if (o.optString("tipo") == "Entrada") valor else -valor
+        coluna.addView(texto("Informe apenas o que falta colher. A soma das pinturas fica no mapa.", 14f))
+        val p = progresso()
+        coluna.addView(texto("O.S.: ${p.optString("os").ifBlank { "Não informada" }}", 18f))
+        coluna.addView(texto("Talhões: ${p.optString("talhoes").ifBlank { "Não informados" }}", 16f))
+        coluna.addView(texto("Área restante: ${p.optString("areaRestante").ifBlank { "Não informada" }} ha", 18f))
+        coluna.addView(texto("Produtividade: ${p.optString("produtividade").ifBlank { "Não informada" }} t/ha", 16f))
+        coluna.addView(botao("Editar dados do estoque") { editarProgressoColheita() })
+        coluna.addView(botao("Compartilhar estoque") { escolherCompartilhamentoEstoque() })
+        coluna.addView(botao("Histórico") { historicoEstoque() })
+    }
+
+    private var mapaEstoqueSelecionado: File? = null
+    private fun mapasDisponiveisEstoque(): List<File> =
+        (filesDir.listFiles() ?: emptyArray<File>()).filter {
+            it.isFile && it.name.startsWith("mapa_relatorio_") && it.name.endsWith(".png")
+        }.sortedBy { it.name }
+
+    private fun escolherCompartilhamentoEstoque() {
+        val p = progresso()
+        if (p.optString("os").isBlank() || p.optString("talhoes").isBlank() ||
+            p.optString("areaRestante").isBlank() || p.optString("produtividade").isBlank()) {
+            AlertDialog.Builder(this).setTitle("Complete o estoque")
+                .setMessage("Informe O.S., talhões, área restante e produtividade antes de compartilhar.")
+                .setPositiveButton("Preencher") { _, _ -> editarProgressoColheita() }
+                .setNegativeButton("Cancelar", null).show()
+            return
         }
-        coluna.addView(texto("Saldo registrado: %.2f toneladas".format(Locale("pt", "BR"), saldo), 19f).apply {
-            setPadding(0, dp(18), 0, dp(12))
-        })
-        for (i in dados.length() - 1 downTo 0) {
-            val o = dados.optJSONObject(i) ?: continue
-            val resumo = "${o.optString("tipo")} • ${o.optDouble("quantidade")} t • Turno ${o.optString("turno")}"
-            val detalhe = "${o.optString("data")} • ${o.optString("os")} • ${o.optString("observacao")}"
-            coluna.addView(cartao(resumo, detalhe) {},
-                LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(9) })
+        val mapas = mapasDisponiveisEstoque()
+        if (mapas.isEmpty()) {
+            AlertDialog.Builder(this).setTitle("Compartilhar estoque")
+                .setItems(arrayOf("Mensagem sem mapa", "PDF sem mapa")) { _, op ->
+                    mapaEstoqueSelecionado = null
+                    if (op == 0) compartilharTextoEstoque() else gerarPdfEstoque()
+                }.show()
+            return
         }
+        val nomes = mapas.map { it.name.removePrefix("mapa_relatorio_").removeSuffix(".png") }.toTypedArray()
+        AlertDialog.Builder(this).setTitle("Selecione o mapa pintado")
+            .setSingleChoiceItems(nomes, -1) { dialogo, indice ->
+                mapaEstoqueSelecionado = mapas[indice]
+                dialogo.dismiss()
+                AlertDialog.Builder(this).setTitle("Compartilhar estoque")
+                    .setItems(arrayOf("Mensagem e foto (WhatsApp)", "PDF com mapa")) { _, op ->
+                        if (op == 0) compartilharEstoqueComMapa() else gerarPdfEstoque()
+                    }.show()
+            }.setNegativeButton("Cancelar", null).show()
     }
 
     private fun progresso(): JSONObject = try {
@@ -554,8 +573,8 @@ class MainActivity : Activity() {
 
     private fun arquivoMapaAtual(): File? {
         val id = getSharedPreferences("controle_colheita", 0).getString("ultimo_mapa", "") ?: ""
-        if (id.isBlank()) return null
-        return File(filesDir, "mapa_relatorio_$id.png").takeIf { it.exists() }
+        if (id.isBlank() && mapaEstoqueSelecionado == null) return null
+        return (mapaEstoqueSelecionado ?: File(filesDir, "mapa_relatorio_$id.png")).takeIf { it.exists() }
     }
 
     private fun textoEstoque(): String {
@@ -576,19 +595,8 @@ class MainActivity : Activity() {
         sb.append("Estimativa de toneladas restantes: ")
             .append(if (restante != null && produt != null)
                 "%.2f t".format(br, restante * produt) else "Indisponível").append("\n")
-        val arr = registros()
-        sb.append("\nMOVIMENTAÇÕES POR TURNO\n")
-        for (turno in listOf("A", "B", "C")) {
-            var entradas = 0.0
-            var saidas = 0.0
-            for (i in 0 until arr.length()) {
-                val o = arr.optJSONObject(i) ?: continue
-                if (o.optString("turno") != turno) continue
-                val q = o.optDouble("quantidade")
-                if (o.optString("tipo") == "Entrada") entradas += q else saidas += q
-            }
-            sb.append("Turno $turno: +%.2f t / -%.2f t\n".format(br, entradas, saidas))
-        }
+        // Estoque não inclui movimentações de cana: somente o que falta colher.
+
         return sb.toString()
     }
 
@@ -735,60 +743,24 @@ class MainActivity : Activity() {
     }
 
     private fun relatorios() {
-        val coluna = pagina("Relatórios de turno")
-        coluna.addView(texto("Escolha um turno para consultar e compartilhar o relatório completo.", 14f))
+        val coluna = pagina("Relatório diário de turno")
+        coluna.addView(texto("Registre o que aconteceu durante o turno, por escrita ou voz.", 14f))
         for (turno in listOf("A", "B", "C")) {
-            val movimentos = registros()
-            var entradas = 0.0; var saidas = 0.0
-            for (i in 0 until movimentos.length()) {
-                val o = movimentos.optJSONObject(i) ?: continue
-                if (o.optString("turno") != turno) continue
-                if (o.optString("tipo") == "Entrada") entradas += o.optDouble("quantidade")
-                else saidas += o.optDouble("quantidade")
-            }
-            val resumo = "Estoque: +%.2f t / -%.2f t".format(Locale("pt", "BR"), entradas, saidas)
-            coluna.addView(cartao("Turno $turno", resumo) { detalheTurno(turno) },
-                LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(14) })
+            coluna.addView(cartao("Turno $turno", "Relato, serviços e pendências") { detalheTurno(turno) },
+                LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
         }
-        coluna.addView(botao("+ Nova ocorrência") { editarRegistro("relatorios_turno", -1, false) })
     }
 
     private fun textoRelatorio(turno: String): String {
         val sb = StringBuilder("COLHEITA GPS - RELATÓRIO DO TURNO $turno\n")
-        sb.append("Emitido em: ").append(java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", Locale("pt", "BR")).format(java.util.Date())).append("\n\n")
-        var entradas = 0.0; var saidas = 0.0
-        sb.append("ESTOQUE DE CANA\n")
-        val movimentos = registros()
-        for (i in 0 until movimentos.length()) {
-            val o = movimentos.optJSONObject(i) ?: continue
-            if (o.optString("turno") != turno) continue
-            val q = o.optDouble("quantidade")
-            if (o.optString("tipo") == "Entrada") entradas += q else saidas += q
-            sb.append("- ").append(o.optString("tipo")).append(": ").append(q).append(" t | ")
-                .append(o.optString("data")).append(" | OS: ").append(o.optString("os"))
-                .append(" | ").append(o.optString("observacao")).append("\n")
-        }
-        sb.append("Total: +%.2f t / -%.2f t\n\n".format(Locale("pt", "BR"), entradas, saidas))
-        sb.append("CAMINHÕES\n")
-        val caminh = dados("caminhoes")
-        for (i in 0 until caminh.length()) {
-            val o = caminh.optJSONObject(i) ?: continue
-            if (o.optString("turno") != turno) continue
-            sb.append("- Caminhão ").append(o.optString("numero"))
-                .append(" | Entrada: ").append(o.optString("chegada"))
-                .append(" | Saída: ").append(o.optString("saida").ifBlank { "Pendente" }).append("\n")
-        }
-        sb.append("\nOCORRÊNCIAS, SERVIÇOS E PASSAGEM DE TURNO\n")
+        sb.append("Data: ").append(java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", Locale("pt", "BR")).format(java.util.Date())).append("\n")
         val ocorr = dados("relatorios_turno")
         for (i in 0 until ocorr.length()) {
             val o = ocorr.optJSONObject(i) ?: continue
-            if (o.optString("turno").trim().uppercase() == turno) sb.append("- ").append(o.optString("descricao")).append("\n")
-        }
-        sb.append("\nPENDÊNCIAS DE MANUTENÇÃO (GERAIS)\n")
-        val pend = dados("pendencias")
-        for (i in 0 until pend.length()) {
-            val o = pend.optJSONObject(i) ?: continue
-            sb.append("- ").append(o.optString("equipamento")).append(": ").append(o.optString("descricao")).append("\n")
+            if (o.optString("turno").trim().uppercase() != turno) continue
+            sb.append("\nO.S.: ").append(o.optString("os")).append("\n")
+            sb.append("Relato: ").append(o.optString("descricao")).append("\n")
+            sb.append("Pendências: ").append(o.optString("pendencias")).append("\n")
         }
         return sb.toString()
     }
@@ -855,8 +827,8 @@ class MainActivity : Activity() {
             val obj = arr.optJSONObject(i) ?: continue
             val idx = i
             val tituloItem = obj.optString("equipamento", obj.optString("turno", "Registro"))
-            coluna.addView(cartao(tituloItem, obj.optString("descricao")) {
-                val opcoes = if (foto) arrayOf("Editar", "Adicionar foto", "Ver foto", "Excluir")
+            coluna.addView(cartao(tituloItem + (if (foto && obj.optBoolean("concluida", false)) " • Concluída" else ""), obj.optString("descricao")) {
+                val opcoes = if (foto) arrayOf("Editar", "Adicionar foto", "Ver fotos", "Concluir / reabrir", "Excluir")
                               else arrayOf("Editar", "Excluir")
                 AlertDialog.Builder(this).setTitle(tituloItem).setItems(opcoes) { _, escolha ->
                     when {
@@ -878,6 +850,11 @@ class MainActivity : Activity() {
                                     }).setPositiveButton("Fechar", null).show()
                                 }.show()
                         }
+                        foto && escolha == 3 -> {
+                            obj.put("concluida", !obj.optBoolean("concluida", false))
+                            guardar(key, arr)
+                            pendencias()
+                        }
                         else -> remover(key, idx) { listarRegistros(key, titulo, foto) }
                     }
                 }.show()
@@ -890,6 +867,9 @@ class MainActivity : Activity() {
         val equipamento = campo(if (foto) "Equipamento / O.S." else "Turno (A, B ou C)", (if (foto) atual?.optString("equipamento") else atual?.optString("turno") ?: turnoInicial) ?: "")
         val descricao = campo(if (foto) "Defeito e localização" else "Ocorrências, serviços e pendências", atual?.optString("descricao") ?: "")
         corpo.addView(equipamento); corpo.addView(descricao)
+        val osRelatorio = campo("O.S. / lote (opcional)", atual?.optString("os") ?: "")
+        val pendenciasRelatorio = campo("Pendências para o próximo turno", atual?.optString("pendencias") ?: "")
+        if (!foto) { corpo.addView(osRelatorio); corpo.addView(pendenciasRelatorio) }
         if (!foto) corpo.addView(botao("🎤 Ditar ocorrência") { ouvir { fala ->
             descricao.setText((descricao.text.toString() + " " + fala).trim())
             Toast.makeText(this, "Confira o texto e salve o registro", Toast.LENGTH_SHORT).show()
@@ -900,9 +880,20 @@ class MainActivity : Activity() {
                 val obj = atual ?: JSONObject().apply { put("id", System.currentTimeMillis().toString()) }
                 obj.put(if (foto) "equipamento" else "turno", equipamento.text.toString())
                 obj.put("descricao", descricao.text.toString())
+                if (!foto) {
+                    obj.put("os", osRelatorio.text.toString())
+                    obj.put("pendencias", pendenciasRelatorio.text.toString())
+                }
                 if (idx < 0) arr.put(obj)
                 guardar(key, arr)
-                if (foto) pendencias() else relatorios()
+                if (foto) {
+                    pendencias()
+                    AlertDialog.Builder(this).setMessage("Deseja adicionar uma foto a esta pendência?")
+                        .setPositiveButton("Adicionar foto") { _, _ ->
+                            fotoPendente = obj.optString("id")
+                            startActivityForResult(Intent(Intent.ACTION_GET_CONTENT).apply { type = "image/*" }, 301)
+                        }.setNegativeButton("Agora não", null).show()
+                } else relatorios()
             }.show()
     }
     private fun caminhoes() {
@@ -1110,6 +1101,20 @@ class MainActivity : Activity() {
             .show()
     }
 
+    private fun validarTalhoes(entrada: String): String? {
+        val escolhidos = sortedSetOf<Int>()
+        if (entrada.isBlank()) return null
+        for (parte in entrada.split(",")) {
+            val limites = parte.trim().split("-").map { it.trim().toIntOrNull() }
+            if (limites.size !in 1..2 || limites.any { it == null }) return null
+            val primeiro = limites.first()!!
+            val ultimo = limites.last()!!
+            if (primeiro !in 1..500 || ultimo !in 1..500 || ultimo < primeiro) return null
+            for (n in primeiro..ultimo) escolhidos.add(n)
+        }
+        return if (escolhidos.isEmpty()) null else escolhidos.joinToString(", ")
+    }
+
     private fun ordens(id: String) {
         val pref = getSharedPreferences("ordens_servico", 0)
 
@@ -1131,8 +1136,9 @@ class MainActivity : Activity() {
         }
 
         val dados = lista()
+        val prefTalhoes = getSharedPreferences("talhoes_por_os", 0)
         val itens = (
-            dados.map { "O.S. $it" } +
+            dados.map { "O.S. $it • Talhões: ${prefTalhoes.getString(id + "_" + it, "Não informados")}" } +
                 "Adicionar número"
             ).toTypedArray()
 
@@ -1148,12 +1154,25 @@ class MainActivity : Activity() {
                     hint = "Número da O.S."
                 }
 
+                val corpoOs = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(dp(18), dp(8), dp(18), dp(8))
+                }
+                val talhoesOs = EditText(this).apply {
+                    hint = "Talhões (ex.: 1-10, 25, 301)"
+                    setText(if (novo) "" else prefTalhoes.getString(id + "_" + dados[pos], "") ?: "")
+                }
+                corpoOs.addView(campo)
+                corpoOs.addView(talhoesOs)
                 val dialogo = AlertDialog.Builder(this)
                     .setTitle(if (novo) "Nova O.S." else "Editar O.S.")
-                    .setView(campo)
+                    .setView(corpoOs)
                     .setPositiveButton("Salvar") { _, _ ->
                         val numero = campo.text.toString().trim()
-                        if (numero.isNotEmpty()) {
+                        val selecao = validarTalhoes(talhoesOs.text.toString())
+                        if (numero.isNotEmpty() && selecao != null) {
+                            if (!novo) prefTalhoes.edit().remove(id + "_" + dados[pos]).apply()
+                            prefTalhoes.edit().putString(id + "_" + numero, selecao).apply()
                             if (novo) {
                                 dados.add(numero)
                             } else {
@@ -1161,7 +1180,7 @@ class MainActivity : Activity() {
                             }
                             guardar(dados)
                             ordens(id)
-                        }
+                        } else Toast.makeText(this, "Informe O.S. e talhões válidos de 1 a 500", Toast.LENGTH_LONG).show()
                     }
                     .setNegativeButton("Cancelar") { _, _ ->
                         ordens(id)
@@ -1169,6 +1188,7 @@ class MainActivity : Activity() {
 
                 if (!novo) {
                     dialogo.setNeutralButton("Excluir") { _, _ ->
+                        prefTalhoes.edit().remove(id + "_" + dados[pos]).apply()
                         dados.removeAt(pos)
                         guardar(dados)
                         ordens(id)
@@ -1487,18 +1507,14 @@ class MainActivity : Activity() {
             else -> "BORRACHA"
         }
 
-        painel.addView(
-            texto(titulo, 13f, Color.WHITE).apply {
-                gravity = Gravity.CENTER
-            }
-        )
+        // Título removido para liberar espaço útil do mapa.
 
         val linha = LinearLayout(this)
 
         fun adicionar(s: String, acao: () -> Unit) {
             linha.addView(
                 botao(s, acao),
-                LinearLayout.LayoutParams(0, dp(48), 1f)
+                LinearLayout.LayoutParams(0, dp(42), 1f)
             )
         }
 
@@ -1510,7 +1526,7 @@ class MainActivity : Activity() {
                 v.desfazer()
             }
             adicionar(
-                if (tipo == 9) "Concluir" else "Fechar"
+                if (tipo == 7) "Concluir pintura" else "Concluir"
             ) {
                 if (tipo == 7) {
                     if (v.fecharArea()) escolherCor()
@@ -1535,7 +1551,7 @@ class MainActivity : Activity() {
             FrameLayout.LayoutParams(
                 -1, -2, Gravity.BOTTOM
             ).apply {
-                bottomMargin = dp(94)
+                bottomMargin = dp(70)
             }
         )
     }
@@ -2077,6 +2093,18 @@ class MapaView(context: Context) : View(context) {
                 }
             )
 
+            if (!areaFechada && pontos.isNotEmpty() && modo in 7..9) {
+                val ultimo = pontos.last()
+                val centro = PointF((width / 2f - dx) / escala, (height / 2f - dy) / escala)
+                val referencia = Paint(3).apply {
+                    color = 0xFF22A8FF.toInt()
+                    style = Paint.Style.STROKE
+                    strokeWidth = 2.5f / escala
+                    pathEffect = DashPathEffect(floatArrayOf(12f / escala, 7f / escala), 0f)
+                }
+                c.drawLine(ultimo.x, ultimo.y, centro.x, centro.y, referencia)
+                if (pontos.size > 1) c.drawLine(centro.x, centro.y, pontos.first().x, pontos.first().y, referencia)
+            }
             if (areaFechada) {
                 c.drawPath(
                     caminho(pontos, true),
@@ -2120,6 +2148,17 @@ class MapaView(context: Context) : View(context) {
         }
 
         c.restore()
+
+        // Indicador de hectares em pixels de tela: permanece legível com qualquer zoom.
+        hectaresPintados()?.let { ha ->
+            val legenda = String.format(Locale("pt", "BR"), "TOTAL PINTADO: %.2f ha", ha)
+            val fundo = Paint(3).apply { color = 0xDD143C2A.toInt() }
+            c.drawRoundRect(RectF(12f, 16f, minOf(width.toFloat() - 12f, 330f), 68f), 12f, 12f, fundo)
+            c.drawText(legenda, 24f, 49f, Paint(3).apply {
+                color = Color.WHITE; textSize = 19f
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            })
+        }
 
         if (modo in 7..9) {
             val x = width / 2f
