@@ -2,6 +2,8 @@
 package com.colheitagps.app
 
 import android.Manifest
+import android.speech.RecognizerIntent
+import android.net.Uri
 import android.app.*
 import android.content.*
 import android.content.pm.PackageManager
@@ -9,8 +11,6 @@ import android.content.res.ColorStateList
 import android.graphics.*
 import android.graphics.drawable.GradientDrawable
 import android.graphics.pdf.PdfRenderer
-import android.graphics.pdf.PdfDocument
-import androidx.core.content.FileProvider
 import android.location.*
 import android.os.*
 import android.provider.OpenableColumns
@@ -33,6 +33,72 @@ class MainActivity : Activity() {
     private var gpsListener: LocationListener? = null
     private var local: Location? = null
     private var status: TextView? = null
+    private var telaAtual = "inicio"
+    private var fotoPendente: String? = null
+    private var vozResultado: ((String) -> Unit)? = null
+    private fun dados(key: String): JSONArray = try {
+        JSONArray(getSharedPreferences("registros_v3", 0).getString(key, "[]"))
+    } catch (_: Exception) { JSONArray() }
+    private fun guardar(key: String, arr: JSONArray) {
+        getSharedPreferences("registros_v3", 0).edit().putString(key, arr.toString()).apply()
+    }
+    private fun remover(key: String, index: Int, retorno: () -> Unit) {
+        AlertDialog.Builder(this).setTitle("Excluir registro?")
+            .setMessage("Esta ação não poderá ser desfeita.")
+            .setNegativeButton("Cancelar", null)
+            .setPositiveButton("Excluir") { _, _ ->
+                val atual = dados(key)
+                val novo = JSONArray()
+                for (i in 0 until atual.length()) if (i != index) novo.put(atual.get(i))
+                guardar(key, novo)
+                retorno()
+            }.show()
+    }
+    private fun campo(hintTexto: String, valor: String = "") = EditText(this).apply {
+        hint = hintTexto
+        setText(valor)
+        setSingleLine(false)
+    }
+    private fun ouvir(resultado: (String) -> Unit) {
+        try {
+            vozResultado = resultado
+            startActivityForResult(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE, "pt-BR")
+                putExtra(RecognizerIntent.EXTRA_PROMPT, "Fale o número e horário do caminhão")
+            }, 302)
+        } catch (_: Exception) {
+            Toast.makeText(this, "Reconhecimento de voz indisponível neste aparelho", Toast.LENGTH_LONG).show()
+        }
+    }
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (resultCode != RESULT_OK) return
+        if (requestCode == 302) {
+            val fala = data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
+            if (fala != null) vozResultado?.invoke(fala)
+            vozResultado = null
+        }
+        if (requestCode == 301) {
+            val uri = data?.data ?: return
+            val id = fotoPendente ?: return
+            try {
+                val arquivo = File(filesDir, "pendencia_${id}_${System.currentTimeMillis()}.jpg")
+                contentResolver.openInputStream(uri)?.use { entrada -> arquivo.outputStream().use { entrada.copyTo(it) } }
+                val arr = dados("pendencias")
+                for (i in 0 until arr.length()) {
+                    val item = arr.getJSONObject(i)
+                    if (item.optString("id") == id) {
+                        item.put("foto", arquivo.absolutePath)
+                        break
+                    }
+                }
+                guardar("pendencias", arr)
+                pendencias()
+            } catch (_: Exception) { Toast.makeText(this, "Não foi possível salvar a foto", Toast.LENGTH_LONG).show() }
+        }
+    }
+
 
     private fun dp(n: Int) = (n * resources.displayMetrics.density).toInt()
 
@@ -134,6 +200,7 @@ class MainActivity : Activity() {
     }
 
     private fun pagina(titulo: String): LinearLayout {
+        telaAtual = if (titulo == "Colheita GPS 2.0") "inicio" else "pagina"
         val base = tela()
         val coluna = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -143,25 +210,21 @@ class MainActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        topo.addView(botao("Voltar") { inicio() })
-        topo.addView(texto(titulo, 20f, Color.WHITE).apply {
+        if (telaAtual != "inicio") topo.addView(botao("←") { voltarTela() })
+        topo.addView(texto(titulo, 22f, Color.WHITE).apply {
             setPadding(dp(12), 0, 0, 0)
-        }, LinearLayout.LayoutParams(0, -2, 1f))
+        })
         topo.addView(TextView(this).apply {
-            text = "⋮"
-            textSize = 28f
-            gravity = Gravity.CENTER
-            setTextColor(Color.WHITE)
-            setPadding(dp(10), 0, dp(10), 0)
-            setOnClickListener { v ->
-                PopupMenu(this@MainActivity, v).apply {
-                    menu.add("Início").setOnMenuItemClickListener { inicio(); true }
-                    menu.add("Pendências").setOnMenuItemClickListener { pendencias(); true }
-                    menu.add("Relatórios").setOnMenuItemClickListener { relatorios(); true }
-                    menu.add("Estoque • Turno C").setOnMenuItemClickListener { estoque(); true }
-                    show()
-                }
-            }
+            text = "⋮"; textSize = 26f; setTextColor(Color.WHITE)
+            setPadding(dp(12), 0, dp(8), 0)
+            setOnClickListener { v -> PopupMenu(this@MainActivity, v).apply {
+                menu.add("Início").setOnMenuItemClickListener { inicio(); true }
+                menu.add("Mapas").setOnMenuItemClickListener { biblioteca(); true }
+                menu.add("Pendências").setOnMenuItemClickListener { pendencias(); true }
+                menu.add("Caminhões").setOnMenuItemClickListener { caminhoes(); true }
+                menu.add("Relatórios de turno").setOnMenuItemClickListener { relatoriosTurno(); true }
+                show()
+            } }
         })
         coluna.addView(topo)
         val rolagem = ScrollView(this).apply { addView(coluna) }
@@ -179,9 +242,11 @@ class MainActivity : Activity() {
         val itens = listOf(
             Triple("MAPAS", "PDF georreferenciado, GPS e talhões", 0),
             Triple("ORDENS DE SERVIÇO", "Página exclusiva das O.S. por mapa", 1),
-            Triple("ESTOQUE DE CANA • TURNO C", "Controle separado do estoque", 2),
-            Triple("RELATÓRIOS", "Ocorrências, serviços e pendências por turno", 3),
-            Triple("PENDÊNCIAS DE MANUTENÇÃO", "Registrar e acompanhar serviços pendentes", 4)
+            Triple("ESTOQUE DE CANA", "Registrar entradas e saídas por turno", 2),
+            Triple("RELATÓRIOS", "Consultar registros dos turnos A, B e C", 3),
+            Triple("PENDÊNCIAS", "Fotos e acompanhamento de manutenção", 4),
+            Triple("CAMINHÕES", "Chegada e saída por voz ou digitação", 5),
+            Triple("RELATÓRIOS DE TURNO", "Ocorrências, serviços e pendências", 6)
         )
         for ((titulo, subtitulo, tipo) in itens) {
             val item = cartao(titulo, subtitulo) {
@@ -190,26 +255,15 @@ class MainActivity : Activity() {
                     1 -> paginaOrdens()
                     2 -> estoque()
                     3 -> relatorios()
-                    else -> pendencias()
+                    4 -> pendencias()
+                    5 -> caminhoes()
+                    else -> relatoriosTurno()
                 }
             }
             coluna.addView(item, LinearLayout.LayoutParams(-1, -2).apply {
                 topMargin = dp(16)
             })
         }
-        val frases = listOf(
-            "Segurança em primeiro lugar. Um bom turno começa com atenção.",
-            "Cada tarefa bem-feita fortalece toda a equipe.",
-            "Planejamento e cuidado fazem a diferença na colheita.",
-            "Trabalho em equipe transforma desafios em resultados.",
-            "Cuide de você e dos colegas. Voltar bem para casa é prioridade.",
-            "Organização hoje significa menos pendências amanhã.",
-            "Faça com atenção, registre com clareza e siga em frente."
-        )
-        val dia = java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_YEAR)
-        coluna.addView(texto("Mensagem do dia: ${frases[dia % frases.size]}", 14f, 0xFFB7E5C9.toInt()).apply {
-            setPadding(0, dp(22), 0, dp(4))
-        })
         coluna.addView(texto("Dados salvos neste aparelho. Sincronização online ainda não disponível.", 12f, 0xFFB6C9BD.toInt()).apply {
             setPadding(0, dp(22), 0, 0)
         })
@@ -235,7 +289,7 @@ class MainActivity : Activity() {
     }
 
     private fun estoque() {
-        val coluna = pagina("Estoque de cana • Turno C")
+        val coluna = pagina("Estoque de cana")
         coluna.addView(texto("Entradas e saídas de cana", 15f).apply {
             setPadding(0, dp(14), 0, dp(8))
         })
@@ -270,7 +324,7 @@ class MainActivity : Activity() {
         }
         val turno = Spinner(this).apply {
             adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item,
-                arrayOf("C"))
+                arrayOf("A", "B", "C"))
         }
         val quantidade = EditText(this).apply {
             hint = "Quantidade em toneladas"
@@ -308,210 +362,151 @@ class MainActivity : Activity() {
             }.setNegativeButton("Cancelar", null).show()
     }
 
-    private fun pendenciasDados(): JSONArray = try {
-        JSONArray(getSharedPreferences("controle_colheita", 0).getString("pendencias_v2", "[]"))
-    } catch (_: Exception) { JSONArray() }
-
-    private fun relatoriosDados(): JSONArray = try {
-        JSONArray(getSharedPreferences("controle_colheita", 0).getString("relatorios_v2", "[]"))
-    } catch (_: Exception) { JSONArray() }
-
-    private fun salvarDados(chave: String, dados: JSONArray) {
-        getSharedPreferences("controle_colheita", 0).edit().putString(chave, dados.toString()).apply()
-    }
-
-    private fun campo(hintTexto: String, linhas: Int = 1): EditText = EditText(this).apply {
-        hint = hintTexto
-        setSingleLine(linhas == 1)
-        if (linhas > 1) { minLines = linhas; gravity = Gravity.TOP }
-    }
-
-    private fun pendencias() {
-        val coluna = pagina("Pendências de manutenção")
-        coluna.addView(botao("+ Nova pendência") { editarPendencia(-1) })
-        val dados = pendenciasDados()
-        if (dados.length() == 0) coluna.addView(texto("Nenhuma pendência registrada.").apply {
-            setPadding(0, dp(16), 0, 0)
-        })
-        for (i in dados.length() - 1 downTo 0) {
-            val o = dados.optJSONObject(i) ?: continue
-            val titulo = "${if (o.optBoolean("concluida")) "✓ Concluída" else "● Pendente"} • ${o.optString("equipamento")}"
-            val detalhe = "O.S.: ${o.optString("os")} • ${o.optString("descricao")} • ${o.optString("data")}"
-            coluna.addView(cartao(titulo, detalhe) { editarPendencia(i) },
-                LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
-        }
-    }
-
-    private fun editarPendencia(indice: Int) {
-        val dados = pendenciasDados()
-        val anterior = if (indice >= 0) dados.optJSONObject(indice) else null
-        val corpo = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), dp(8), dp(18), dp(8))
-        }
-        val equipamento = campo("Equipamento / máquina").apply { setText(anterior?.optString("equipamento") ?: "") }
-        val os = campo("Número da O.S.").apply { setText(anterior?.optString("os") ?: "") }
-        val descricao = campo("Descreva a pendência", 3).apply { setText(anterior?.optString("descricao") ?: "") }
-        val concluida = CheckBox(this).apply {
-            text = "Serviço concluído"
-            isChecked = anterior?.optBoolean("concluida") ?: false
-        }
-        listOf(equipamento, os, descricao, concluida).forEach { corpo.addView(it) }
-        val builder = AlertDialog.Builder(this).setTitle(if (indice < 0) "Nova pendência" else "Editar pendência")
-            .setView(ScrollView(this).apply { addView(corpo) })
-            .setPositiveButton("Salvar") { _, _ ->
-                if (equipamento.text.isBlank() || descricao.text.isBlank()) {
-                    Toast.makeText(this, "Informe equipamento e descrição", Toast.LENGTH_LONG).show()
-                } else {
-                    val objeto = JSONObject().apply {
-                        put("equipamento", equipamento.text.toString().trim())
-                        put("os", os.text.toString().trim())
-                        put("descricao", descricao.text.toString().trim())
-                        put("concluida", concluida.isChecked)
-                        put("data", anterior?.optString("data")?.takeIf { it.isNotBlank() } ?: agora())
-                    }
-                    if (indice < 0) dados.put(objeto) else dados.put(indice, objeto)
-                    salvarDados("pendencias_v2", dados)
-                }
-                pendencias()
-            }.setNegativeButton("Cancelar", null)
-        if (indice >= 0) builder.setNeutralButton("Excluir") { _, _ ->
-            val novos = JSONArray()
-            for (i in 0 until dados.length()) if (i != indice) novos.put(dados.get(i))
-            salvarDados("pendencias_v2", novos)
-            pendencias()
-        }
-        builder.show()
-    }
-
-    private fun agora() = java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", Locale("pt", "BR"))
-        .format(java.util.Date())
-
     private fun relatorios() {
-        val coluna = pagina("Relatórios de turno")
-        coluna.addView(botao("+ Novo relatório de turno") { editarRelatorio() })
-        val dados = relatoriosDados()
-        if (dados.length() == 0) coluna.addView(texto("Nenhum relatório de turno criado.").apply {
-            setPadding(0, dp(16), 0, 0)
-        })
-        for (i in dados.length() - 1 downTo 0) {
-            val o = dados.optJSONObject(i) ?: continue
-            coluna.addView(cartao("Turno ${o.optString("turno")} • ${o.optString("data")}",
-                "O.S. ${o.optString("os")} • ${o.optString("acontecimentos")}") {
-                AlertDialog.Builder(this).setTitle("Relatório do turno ${o.optString("turno")}")
-                    .setMessage(textoRelatorio(o))
-                    .setPositiveButton("Compartilhar PDF") { _, _ -> compartilharPdf(o) }
-                    .setNeutralButton("Editar") { _, _ -> editarRelatorio(i) }
-                    .setNegativeButton("Fechar", null).show()
+        val coluna = pagina("Relatórios por turno")
+        val dados = registros()
+        if (dados.length() == 0) {
+            coluna.addView(texto("Nenhuma movimentação registrada.").apply {
+                setPadding(0, dp(20), 0, 0)
+            })
+        }
+        for (turno in listOf("A", "B", "C")) {
+            var entradas = 0.0
+            var saidas = 0.0
+            var total = 0
+            for (i in 0 until dados.length()) {
+                val o = dados.optJSONObject(i) ?: continue
+                if (o.optString("turno") != turno) continue
+                total++
+                if (o.optString("tipo") == "Entrada") entradas += o.optDouble("quantidade")
+                else saidas += o.optDouble("quantidade")
+            }
+            val descricao = "Registros: $total | Entradas: %.2f t | Saídas: %.2f t".format(
+                Locale("pt", "BR"), entradas, saidas)
+            coluna.addView(cartao("Turno $turno", descricao) {},
+                LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(14) })
+        }
+        coluna.addView(botao("Compartilhar resumo") {
+            val msg = StringBuilder("COLHEITA GPS - RESUMO POR TURNO\n")
+            for (turno in listOf("A", "B", "C")) {
+                var entrada = 0.0
+                var saida = 0.0
+                for (i in 0 until dados.length()) {
+                    val o = dados.optJSONObject(i) ?: continue
+                    if (o.optString("turno") == turno) {
+                        if (o.optString("tipo") == "Entrada") entrada += o.optDouble("quantidade")
+                        else saida += o.optDouble("quantidade")
+                    }
+                }
+                msg.append("Turno $turno: entrada %.2f t; saída %.2f t\n".format(
+                    Locale("pt", "BR"), entrada, saida))
+            }
+            startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TEXT, msg.toString())
+            }, "Compartilhar relatório"))
+        }.apply { setPadding(0, dp(12), 0, dp(12)) })
+    }
+
+    private fun pendencias() = listarRegistros("pendencias", "Pendências de manutenção", true)
+    private fun relatoriosTurno() = listarRegistros("relatorios_turno", "Relatórios de turno", false)
+    private fun listarRegistros(key: String, titulo: String, foto: Boolean) {
+        val coluna = pagina(titulo)
+        coluna.addView(botao("+ Novo registro") { editarRegistro(key, -1, foto) })
+        val arr = dados(key)
+        for (i in arr.length() - 1 downTo 0) {
+            val obj = arr.optJSONObject(i) ?: continue
+            val idx = i
+            val tituloItem = obj.optString("equipamento", obj.optString("turno", "Registro"))
+            coluna.addView(cartao(tituloItem, obj.optString("descricao")) {
+                val opcoes = if (foto) arrayOf("Editar", "Adicionar foto", "Ver foto", "Excluir")
+                              else arrayOf("Editar", "Excluir")
+                AlertDialog.Builder(this).setTitle(tituloItem).setItems(opcoes) { _, escolha ->
+                    when {
+                        escolha == 0 -> editarRegistro(key, idx, foto)
+                        foto && escolha == 1 -> {
+                            fotoPendente = obj.optString("id")
+                            startActivityForResult(Intent(Intent.ACTION_GET_CONTENT).apply { type = "image/*" }, 301)
+                        }
+                        foto && escolha == 2 -> {
+                            val caminho = obj.optString("foto")
+                            if (caminho.isEmpty() || !File(caminho).exists()) Toast.makeText(this, "Sem foto", Toast.LENGTH_SHORT).show()
+                            else AlertDialog.Builder(this).setView(ImageView(this).apply {
+                                setImageBitmap(BitmapFactory.decodeFile(caminho))
+                                adjustViewBounds = true
+                            }).setPositiveButton("Fechar", null).show()
+                        }
+                        else -> remover(key, idx) { listarRegistros(key, titulo, foto) }
+                    }
+                }.show()
             }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
         }
     }
-
-    private fun editarRelatorio(indice: Int = -1) {
-        val dados = relatoriosDados()
-        val anterior = if (indice >= 0) dados.optJSONObject(indice) else null
-        val corpo = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), dp(8), dp(18), dp(8))
-        }
-        val turno = Spinner(this).apply {
-            adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item,
-                arrayOf("A", "B", "C"))
-            setSelection(listOf("A", "B", "C").indexOf(anterior?.optString("turno") ?: "A").coerceAtLeast(0))
-        }
-        val os = campo("O.S. em andamento").apply { setText(anterior?.optString("os") ?: "") }
-        val acontecimentos = campo("Tudo o que aconteceu no turno", 3).apply { setText(anterior?.optString("acontecimentos") ?: "") }
-        val manutencoes = campo("Manutenções realizadas", 3).apply { setText(anterior?.optString("manutencoes") ?: "") }
-        val pendentes = campo("Pendências para o próximo turno", 3).apply { setText(anterior?.optString("pendentes") ?: "") }
-        corpo.addView(texto("Turno", 15f, Color.DKGRAY))
-        listOf(turno, os, acontecimentos, manutencoes, pendentes).forEach { corpo.addView(it) }
-        AlertDialog.Builder(this).setTitle("Relatório de turno")
-            .setView(ScrollView(this).apply { addView(corpo) })
-            .setPositiveButton("Salvar") { _, _ ->
-                val objeto = JSONObject().apply {
-                    put("turno", turno.selectedItem.toString())
-                    put("os", os.text.toString())
-                    put("acontecimentos", acontecimentos.text.toString())
-                    put("manutencoes", manutencoes.text.toString())
-                    put("pendentes", pendentes.text.toString())
-                    put("data", anterior?.optString("data")?.takeIf { it.isNotBlank() } ?: agora())
-                }
-                if (indice < 0) dados.put(objeto) else dados.put(indice, objeto)
-                salvarDados("relatorios_v2", dados)
-                relatorios()
-            }.setNegativeButton("Cancelar", null).show()
+    private fun editarRegistro(key: String, idx: Int, foto: Boolean) {
+        val atual = if (idx >= 0) dados(key).optJSONObject(idx) else null
+        val corpo = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(18), dp(8), dp(18), dp(8)) }
+        val equipamento = campo(if (foto) "Equipamento / O.S." else "Turno (A, B ou C)", (if (foto) atual?.optString("equipamento") else atual?.optString("turno")) ?: "")
+        val descricao = campo(if (foto) "Defeito e localização" else "Ocorrências, serviços e pendências", atual?.optString("descricao") ?: "")
+        corpo.addView(equipamento); corpo.addView(descricao)
+        AlertDialog.Builder(this).setTitle(if (idx < 0) "Novo registro" else "Editar registro")
+            .setView(corpo).setNegativeButton("Cancelar", null).setPositiveButton("Salvar") { _, _ ->
+                val arr = dados(key)
+                val obj = atual ?: JSONObject().apply { put("id", System.currentTimeMillis().toString()) }
+                obj.put(if (foto) "equipamento" else "turno", equipamento.text.toString())
+                obj.put("descricao", descricao.text.toString())
+                if (idx < 0) arr.put(obj)
+                guardar(key, arr)
+                listarRegistros(key, if (foto) "Pendências de manutenção" else "Relatórios de turno", foto)
+            }.show()
     }
-
-    private fun textoRelatorio(o: JSONObject): String {
-        val abertas = pendenciasDados()
-        val pendenciasAtuais = mutableListOf<String>()
-        for (i in 0 until abertas.length()) {
-            val p = abertas.optJSONObject(i) ?: continue
-            if (!p.optBoolean("concluida")) pendenciasAtuais.add(
-                "${p.optString("equipamento")} / O.S. ${p.optString("os")}: ${p.optString("descricao")}")
+    private fun caminhoes() {
+        val coluna = pagina("Controle de caminhões")
+        coluna.addView(botao("+ Registrar caminhão") { editarCaminhao(-1) })
+        val arr = dados("caminhoes")
+        for (i in arr.length() - 1 downTo 0) {
+            val idx = i
+            val o = arr.optJSONObject(i) ?: continue
+            coluna.addView(cartao("Caminhão ${o.optString("numero")}", "Turno ${o.optString("turno")} • Chegada ${o.optString("chegada")} • Saída ${o.optString("saida", "Pendente")}") {
+                AlertDialog.Builder(this).setItems(arrayOf("Editar chegada/saída", "Excluir")) { _, pos ->
+                    if (pos == 0) editarCaminhao(idx) else remover("caminhoes", idx) { caminhoes() }
+                }.show()
+            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
         }
-        return """COLHEITA GPS - RELATÓRIO DE TURNO
-Data: ${o.optString("data")}
-Turno: ${o.optString("turno")}
-O.S. em andamento: ${o.optString("os")}
-
-ACONTECIMENTOS DO TURNO
-${o.optString("acontecimentos")}
-
-MANUTENÇÕES REALIZADAS
-${o.optString("manutencoes")}
-
-PENDÊNCIAS INFORMADAS
-${o.optString("pendentes")}
-
-PENDÊNCIAS ABERTAS NO CONTROLE
-${if (pendenciasAtuais.isEmpty()) "Nenhuma" else pendenciasAtuais.joinToString("\n")}
-""".trimIndent()
     }
-
-    private fun compartilharPdf(o: JSONObject) {
-        try {
-            val doc = PdfDocument()
-            val linhas = mutableListOf<String>()
-            val tinta = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = Color.BLACK; textSize = 12f
-            }
-            val largura = 510f
-            for (linha in textoRelatorio(o).lines()) {
-                if (linha.isEmpty()) { linhas.add(""); continue }
-                var restante = linha
-                while (restante.isNotEmpty()) {
-                    val quantidade = tinta.breakText(restante, true, largura, null).coerceAtLeast(1)
-                    linhas.add(restante.take(quantidade))
-                    restante = restante.drop(quantidade)
-                }
-            }
-            val porPagina = 48
-            for (pagina in 0 until ((linhas.size + porPagina - 1) / porPagina).coerceAtLeast(1)) {
-                val info = PdfDocument.PageInfo.Builder(595, 842, pagina + 1).create()
-                val pg = doc.startPage(info)
-                val canvas = pg.canvas
-                for ((i, linha) in linhas.drop(pagina * porPagina).take(porPagina).withIndex()) {
-                    canvas.drawText(linha, 42f, 52f + i * 16f, tinta)
-                }
-                doc.finishPage(pg)
-            }
-            val arquivo = File(cacheDir, "relatorio_turno_${System.currentTimeMillis()}.pdf")
-            FileOutputStream(arquivo).use { doc.writeTo(it) }
-            doc.close()
-            val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", arquivo)
-            val intent = Intent(Intent.ACTION_SEND).apply {
-                type = "application/pdf"
-                putExtra(Intent.EXTRA_STREAM, uri)
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
-            startActivity(Intent.createChooser(intent, "Compartilhar relatório em PDF"))
-        } catch (e: Exception) {
-            Toast.makeText(this, "Não foi possível criar o PDF: ${e.message}", Toast.LENGTH_LONG).show()
-        }
+    private fun editarCaminhao(idx: Int) {
+        val atual = if (idx >= 0) dados("caminhoes").optJSONObject(idx) else null
+        val corpo = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(18), dp(8), dp(18), dp(8)) }
+        val numero = campo("Número do caminhão", atual?.optString("numero") ?: "")
+        val chegada = campo("Chegada (HH:mm)", atual?.optString("chegada") ?: "")
+        val saida = campo("Saída (HH:mm), opcional", atual?.optString("saida") ?: "")
+        val turno = Spinner(this).apply { adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, arrayOf("A", "B", "C")) }
+        if (atual != null) turno.setSelection(listOf("A", "B", "C").indexOf(atual.optString("turno")).coerceAtLeast(0))
+        corpo.addView(numero); corpo.addView(chegada); corpo.addView(saida); corpo.addView(turno)
+        corpo.addView(botao("🎤 Ditar informações") { ouvir { fala ->
+            // A fala é preenchida para revisão, evitando registrar números ou horários errados.
+            val digitos = Regex("(?:caminhão|caminhao)\\s*(?:número\\s*)?(\\d+)", RegexOption.IGNORE_CASE).find(fala)?.groupValues?.get(1)
+            if (digitos != null) numero.setText(digitos)
+            val horarios = Regex("\\b([01]?\\d|2[0-3])(?:[:h ]([0-5]\\d))?\\b").findAll(fala).map {
+                it.groupValues[1].padStart(2, '0') + ":" + it.groupValues[2].ifEmpty { "00" }
+            }.toList()
+            if (horarios.isNotEmpty()) chegada.setText(horarios[0])
+            if (horarios.size > 1) saida.setText(horarios[1])
+            Toast.makeText(this, "Confira os dados antes de salvar: $fala", Toast.LENGTH_LONG).show()
+        } })
+        AlertDialog.Builder(this).setTitle("Caminhão").setView(corpo)
+            .setNegativeButton("Cancelar", null).setPositiveButton("Salvar") { _, _ ->
+                if (numero.text.isBlank()) { Toast.makeText(this, "Informe o caminhão", Toast.LENGTH_SHORT).show(); return@setPositiveButton }
+                val arr = dados("caminhoes")
+                val obj = atual ?: JSONObject()
+                obj.put("numero", numero.text.toString()); obj.put("chegada", chegada.text.toString())
+                obj.put("saida", saida.text.toString()); obj.put("turno", turno.selectedItem.toString())
+                if (idx < 0) arr.put(obj)
+                guardar("caminhoes", arr); caminhoes()
+            }.show()
     }
 
     private fun biblioteca() {
+        telaAtual = "biblioteca"
         mapa?.salvar()
         mapa = null
         chaveAtual = ""
@@ -528,7 +523,7 @@ ${if (pendenciasAtuais.isEmpty()) "Nenhuma" else pendenciasAtuais.joinToString("
             setPadding(dp(20), dp(20), dp(20), dp(18))
         }
         cab.addView(texto("COLHEITA GPS 2.0", 23f, Color.WHITE))
-        cab.addView(botao("Menu principal") { inicio() })
+        cab.addView(botao("←") { inicio() })
         cab.addView(
             texto("Meus mapas de colheita", 14f, 0xFFB6DCC6.toInt())
         )
@@ -870,8 +865,6 @@ ${if (pendenciasAtuais.isEmpty()) "Nenhuma" else pendenciasAtuais.joinToString("
             carregar(imagem, id, geo)
         }
         mapa = visual
-        // Reaproveita a ultima posicao conhecida ao trocar de mapa.
-        local?.let { visual.atualizarGps(it.latitude, it.longitude) }
 
         base.addView(
             visual,
@@ -1147,11 +1140,9 @@ ${if (pendenciasAtuais.isEmpty()) "Nenhuma" else pendenciasAtuais.joinToString("
             local = p
             mapa?.atualizarGps(p.latitude, p.longitude)
 
-            val dentroDoMapa = mapa?.posicaoGpsNoMapa() == true
             status?.text = String.format(
                 Locale("pt", "BR"),
-                "%s • GPS ±%.0f m • %.5f, %.5f",
-                if (dentroDoMapa) "No mapa" else "Fora do mapa / sem georreferencia",
+                "GPS ±%.0f m • %.5f, %.5f",
                 p.accuracy,
                 p.latitude,
                 p.longitude
@@ -1188,14 +1179,18 @@ ${if (pendenciasAtuais.isEmpty()) "Nenhuma" else pendenciasAtuais.joinToString("
         }
     }
 
-    @Deprecated("Deprecated in Java")
-    override fun onBackPressed() {
-        if (chaveAtual.isNotEmpty()) {
-            biblioteca()
-        } else {
-            super.onBackPressed()
+    private fun voltarTela() {
+        when {
+            chaveAtual.isNotEmpty() -> biblioteca()
+            telaAtual == "inicio" -> AlertDialog.Builder(this)
+                .setTitle("Sair do Colheita GPS?")
+                .setNegativeButton("Cancelar", null)
+                .setPositiveButton("Sair") { _, _ -> finish() }.show()
+            else -> inicio()
         }
     }
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() { voltarTela() }
 
     override fun onPause() {
         super.onPause()
@@ -1457,8 +1452,6 @@ class MapaView(context: Context) : View(context) {
         gpsLon = lon
         invalidate()
     }
-
-    fun posicaoGpsNoMapa(): Boolean = gpsPixel() != null
 
     private fun gpsPixel(): PointF? {
         val b = imagem ?: return null
@@ -2044,8 +2037,7 @@ class GeoPdf private constructor(
 
                     if (
                         bbox[2] <= bbox[0] ||
-                        bbox[3] <= bbox[1] ||
-                        !(bbox + gpts + lpts).all { it.isFinite() }
+                        bbox[3] <= bbox[1]
                     ) continue
 
                     if (
