@@ -423,7 +423,7 @@ class MainActivity : Activity() {
                 doc.finishPage(pg)
             }
             arquivoMapaAtual()?.let { arquivo ->
-                val bitmap = BitmapFactory.decodeFile(arquivo)
+                val bitmap = BitmapFactory.decodeFile(arquivo.absolutePath)
                 if (bitmap != null) {
                     pagina++
                     val pg = doc.startPage(android.graphics.pdf.PdfDocument.PageInfo.Builder(595, 842, pagina).create())
