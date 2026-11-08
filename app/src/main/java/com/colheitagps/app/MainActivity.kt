@@ -1101,8 +1101,7 @@ class MainActivity : Activity() {
     private fun compartilharPendenciaMenu(obj: JSONObject) {
         val fotos = fotosPendencia(obj)
         val opcoes = arrayOf("WhatsApp / mensagem sem foto", "WhatsApp / mensagem com foto", "PDF sem foto", "PDF com foto")
-        AlertDialog.Builder(this).setTitle("Compartilhar pendência")
-            .setMessage("O.S.: " + obj.optString("osPendencia").ifBlank { "Não informada" })
+        AlertDialog.Builder(this).setTitle("Compartilhar pendência • O.S.: " + obj.optString("osPendencia").ifBlank { "Não informada" })
             .setItems(opcoes) { _, escolha ->
                 when (escolha) {
                     0 -> compartilharTextoPendencia(obj)
