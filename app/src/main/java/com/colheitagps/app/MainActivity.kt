@@ -395,6 +395,10 @@ class MainActivity : Activity() {
                 menu.add("Pendências").setOnMenuItemClickListener { pendencias(); true }
                 menu.add("Caminhões").setOnMenuItemClickListener { caminhoes(); true }
                 menu.add("Relatórios de turno").setOnMenuItemClickListener { relatorios(); true }
+                if (titulo == "Estoque de cana") {
+                    menu.add("Compartilhar estoque").setOnMenuItemClickListener { escolherCompartilhamentoEstoque(); true }
+                    menu.add("Histórico do estoque").setOnMenuItemClickListener { historicoEstoque(); true }
+                }
                 menu.add("Exportar cópia de segurança").setOnMenuItemClickListener { exportarBackup(); true }
                 menu.add("Restaurar cópia de segurança").setOnMenuItemClickListener { solicitarRestauracaoBackup(); true }
                 show()
@@ -468,34 +472,8 @@ class MainActivity : Activity() {
         coluna.addView(texto("Área restante: ${p.optString("areaRestante").ifBlank { "Não informada" }} ha", 18f))
         coluna.addView(texto("Produtividade: ${p.optString("produtividade").ifBlank { "Não informada" }} t/ha", 16f))
         coluna.addView(botao("Editar dados do estoque") { editarProgressoColheita() })
-        coluna.addView(botao("Adicionar / trocar foto do mapa") { escolherFotoEstoque() })
-        coluna.addView(botao("Usar mapa pintado salvo") {
-            val mapas = mapasDisponiveisEstoque()
-            if (mapas.isEmpty()) {
-                Toast.makeText(this, "Salve primeiro uma imagem no mapa pelo botão +", Toast.LENGTH_LONG).show()
-            } else {
-                val nomes = mapas.map { it.name.removePrefix("mapa_relatorio_").removeSuffix(".png") }.toTypedArray()
-                AlertDialog.Builder(this).setTitle("Escolher mapa pintado")
-                    .setItems(nomes) { _, indice ->
-                        val obj = progresso().put("fotoEstoque", mapas[indice].absolutePath)
-                        getSharedPreferences("controle_colheita", 0).edit()
-                            .putString("progresso", obj.toString()).commit()
-                        estoque()
-                    }.setNegativeButton("Cancelar", null).show()
-            }
-        })
-        fotoEstoque()?.let { foto ->
-            coluna.addView(texto("Foto anexada: ${foto.name}", 14f))
-            coluna.addView(botao("Remover foto anexada") {
-                val p = progresso()
-                p.remove("fotoEstoque")
-                getSharedPreferences("controle_colheita", 0).edit()
-                    .putString("progresso", p.toString()).commit()
-                estoque()
-            })
-        }
         coluna.addView(botao("Compartilhar estoque") { escolherCompartilhamentoEstoque() })
-        coluna.addView(botao("Histórico") { historicoEstoque() })
+        fotoEstoque()?.let { coluna.addView(texto("Foto anexada: ${it.name}", 14f)) }
     }
 
     private var mapaEstoqueSelecionado: File? = null
@@ -606,6 +584,26 @@ class MainActivity : Activity() {
                     }
                 }.show()
         })
+        corpo.addView(botao("Adicionar foto / mapa pintado") {
+            val mapas = mapasDisponiveisEstoque()
+            val escolhas = if (mapas.isEmpty()) arrayOf("Escolher da galeria")
+                else arrayOf("Escolher da galeria", "Usar mapa pintado salvo")
+            AlertDialog.Builder(this).setTitle("Adicionar foto")
+                .setItems(escolhas) { _, opcao ->
+                    if (opcao == 0) escolherFotoEstoque()
+                    else {
+                        val nomes = mapas.map { it.name.removePrefix("mapa_relatorio_").removeSuffix(".png") }.toTypedArray()
+                        AlertDialog.Builder(this).setTitle("Mapa pintado salvo")
+                            .setItems(nomes) { _, indice ->
+                                val obj = progresso().put("fotoEstoque", mapas[indice].absolutePath)
+                                getSharedPreferences("controle_colheita", 0).edit()
+                                    .putString("progresso", obj.toString()).commit()
+                                estoque()
+                            }.setNegativeButton("Cancelar", null).show()
+                    }
+                }.show()
+        })
+        fotoEstoque()?.let { corpo.addView(texto("Foto atual: ${it.name}", 14f)) }
         val rolagem = ScrollView(this).apply { addView(corpo) }
         AlertDialog.Builder(this).setTitle("Estoque restante da colheita").setView(rolagem)
             .setNegativeButton("Cancelar", null).setPositiveButton("Salvar") { _, _ ->
@@ -618,14 +616,19 @@ class MainActivity : Activity() {
                     atual.optString("fotoEstoque").takeIf { it.isNotBlank() }?.let {
                         obj.put("fotoEstoque", it)
                     }
-                    getSharedPreferences("controle_colheita", 0).edit()
+                    val salvo = getSharedPreferences("controle_colheita", 0).edit()
                         .putString("progresso", obj.toString()).commit()
+                    if (!salvo) {
+                        Toast.makeText(this, "Erro ao gravar estoque. Tente novamente.", Toast.LENGTH_LONG).show()
+                        return@setPositiveButton
+                    }
                     val historico = dados("historico_estoque")
                     historico.put(JSONObject(obj.toString()).put("data",
                         java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", Locale("pt", "BR"))
                             .format(java.util.Date())))
                     guardar("historico_estoque", historico)
                     estoque()
+                    Toast.makeText(this, "Estoque salvo", Toast.LENGTH_SHORT).show()
                 }
             }.show()
     }
@@ -1516,6 +1519,8 @@ class MainActivity : Activity() {
             resumoArea.text = "Destaque: $destaque    •    Total: $total"
         }
         visual.aoAtualizarArea = atualizarArea
+        // Recalcular após a criação da tela e após restaurar as pinturas.
+        resumoArea.post { atualizarArea() }
         base.addView(resumoArea, FrameLayout.LayoutParams(-1, dp(40), Gravity.TOP).apply {
             topMargin = dp(69)
         })
@@ -1845,6 +1850,7 @@ class MapaView(context: Context) : View(context) {
         pontos.clear()
         restaurar()
         aoAtualizarArea?.invoke()
+        post { aoAtualizarArea?.invoke() }
 
         post {
             if (width > 0 && height > 0) {
@@ -2450,10 +2456,15 @@ class MapaView(context: Context) : View(context) {
         if (imagem == null || geo == null) return null
         val validas = areas.filter { it.size >= 3 }
         if (validas.isEmpty()) return 0.0
-        val referencia = validas.firstOrNull { hectaresDaArea(it) != null } ?: return null
-        val hectaresReferencia = hectaresDaArea(referencia) ?: return null
+        val medidas = validas.map { hectaresDaArea(it) }
+        // Use as mesmas medições que aparecem dentro das pinturas.
+        // Se a união não puder ser estimada, exiba ao menos a soma das medidas.
+        val somaMedidas = medidas.filterNotNull().sum()
+        val referencia = validas.firstOrNull { hectaresDaArea(it) != null }
+            ?: return if (medidas.isEmpty()) 0.0 else null
+        val hectaresReferencia = hectaresDaArea(referencia) ?: return somaMedidas
         val pixelsReferencia = areaPixels(referencia)
-        if (pixelsReferencia <= 0.0) return null
+        if (pixelsReferencia <= 0.0) return somaMedidas
         // União rasterizada com resolução constante para limitar memória.
         val b = imagem ?: return null
         val w = minOf(1600, b.width)
@@ -2469,6 +2480,8 @@ class MapaView(context: Context) : View(context) {
             val preenchidos = pixels.count { Color.alpha(it) != 0 }
             val pixelsUniao = preenchidos.toDouble() * b.width / w * b.height / h
             return hectaresReferencia * pixelsUniao / pixelsReferencia
+        } catch (_: Exception) {
+            return somaMedidas
         } finally { mascara.recycle() }
     }
 
