@@ -1,17 +1,23 @@
+
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
     <application
         android:allowBackup="true"
-        android:label="Colheita GPS"
+        android:label="DM AGRO"
         android:icon="@drawable/colheita_gps_icone_correto"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
 
         <activity
             android:name="com.colheitagps.app.MainActivity"
+            android:exported="false" />
+
+        <activity
+            android:name="com.colheitagps.app.LoginActivity"
             android:exported="true">
 
             <intent-filter>
@@ -20,5 +26,7 @@
             </intent-filter>
 
         </activity>
+
     </application>
+
 </manifest>
