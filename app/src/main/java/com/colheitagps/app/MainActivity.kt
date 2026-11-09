@@ -31,7 +31,7 @@ class MainActivity : Activity() {
     // Falha de rede ou perfil desconhecido: acesso bloqueado.
     private var papelAtual = ""
     private var acessoConfirmado = false
-    private fun funcionarioRestrito() = papelAtual == "funcionario"
+    private fun funcionarioRestrito() = papelAtual == "funcionario" || papelAtual == "operador"
     private fun podeGerenciar() = acessoConfirmado &&
         (papelAtual == "administrador" || papelAtual == "supervisor")
     private fun exigirGestor(): Boolean {
@@ -55,7 +55,7 @@ class MainActivity : Activity() {
             .addOnSuccessListener { doc ->
                 val papel = doc.getString("papel").orEmpty().lowercase(Locale.ROOT)
                 if (doc.getString("status") == "aprovado" &&
-                    papel in setOf("administrador", "supervisor", "funcionario")) {
+                    papel in setOf("administrador", "supervisor", "funcionario", "operador")) {
                     papelAtual = papel
                     acessoConfirmado = true
                     apresentacao()
@@ -571,6 +571,11 @@ class MainActivity : Activity() {
             Triple("📅 CALENDÁRIO", "Consultar estoques, pendências e relatórios por dia", 6),
             Triple("OCORRÊNCIAS DE CAMPO", "Buracos, erosões, estradas e carreadores", 7),
         )
+        if (podeGerenciar()) {
+            coluna.addView(cartao("APROVAR USUÁRIOS", "Gerenciar solicitações de acesso") {
+                startActivity(Intent(this, AdminActivity::class.java))
+            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(16) })
+        }
         for ((titulo, subtitulo, tipo) in itens) {
             if (funcionarioRestrito() && tipo !in setOf(0, 4, 7)) continue
             val item = cartao(titulo, subtitulo) {

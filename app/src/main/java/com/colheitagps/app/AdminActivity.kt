@@ -34,6 +34,8 @@ class AdminActivity : Activity() {
         // Supervisor may query only pending operators from own front.
         val consulta=if(meuPapel=="administrador") db.collection("usuarios")
           else db.collection("usuarios").whereEqualTo("frenteId",minhaFrente)
+              .whereEqualTo("papel","operador")
+              .whereEqualTo("solicitacaoPerfil","operador")
         consulta.get().addOnSuccessListener { docs ->
             for(d in docs.documents) {
                 val uid=d.id
