@@ -1296,21 +1296,43 @@ class MainActivity : Activity() {
 
     private fun pendencias() {
         val coluna = pagina("Pendências de manutenção")
-        coluna.addView(botao("+ Novo registro") { editarRegistro("pendencias", -1, true) })
+        coluna.addView(botao("+ Nova pendência") { editarRegistro("pendencias", -1, true) })
         val arr = dados("pendencias")
-        coluna.addView(texto("PENDÊNCIAS EM ABERTO", 16f, Color.WHITE))
-        var abertas = 0
-        for (i in arr.length() - 1 downTo 0) {
+        val grupos = linkedMapOf<String, Int>()
+        for (i in 0 until arr.length()) {
             val obj = arr.optJSONObject(i) ?: continue
             if (obj.optBoolean("concluida", false)) continue
-            abertas++
-            val idx = i
-            coluna.addView(cartao(obj.optString("equipamento", "Equipamento"), obj.optString("descricao")) {
-                opcoesPendencia(idx)
+            val equipamento = obj.optString("equipamento").trim().ifBlank { "Sem equipamento" }
+            grupos[equipamento] = (grupos[equipamento] ?: 0) + 1
+        }
+        coluna.addView(texto("EQUIPAMENTOS COM PENDÊNCIAS", 16f, Color.WHITE))
+        for ((equipamento, quantidade) in grupos) {
+            coluna.addView(cartao("Equipamento $equipamento", "$quantidade pendência(s) em aberto") {
+                pendenciasEquipamento(equipamento)
             }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
         }
-        if (abertas == 0) coluna.addView(texto("Nenhuma pendência em aberto.", 14f))
+        if (grupos.isEmpty()) coluna.addView(texto("Nenhuma pendência em aberto.", 14f))
         coluna.addView(botao("✓ Histórico de concluídas") { historicoPendencias() })
+    }
+
+    private fun pendenciasEquipamento(equipamento: String) {
+        val coluna = pagina("Equipamento $equipamento")
+        coluna.addView(botao("+ Adicionar pendência") {
+            editarRegistro("pendencias", -1, true, equipamentoInicial = equipamento)
+        })
+        val arr = dados("pendencias")
+        var total = 0
+        for (i in arr.length() - 1 downTo 0) {
+            val obj = arr.optJSONObject(i) ?: continue
+            if (obj.optBoolean("concluida", false) || obj.optString("equipamento").trim() != equipamento) continue
+            total++
+            val idx = i
+            coluna.addView(cartao("• " + obj.optString("descricao").ifBlank { "Sem descrição" },
+                "Toque para editar, adicionar fotos ou concluir") { opcoesPendencia(idx) },
+                LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
+        }
+        if (total == 0) coluna.addView(texto("Nenhuma pendência aberta neste equipamento.", 14f))
+        coluna.addView(botao("← Voltar aos equipamentos") { pendencias() })
     }
 
     private fun historicoPendencias() {
@@ -1344,7 +1366,7 @@ class MainActivity : Activity() {
                 if (concluida) obj.remove("dataConclusao")
                 else obj.put("dataConclusao", java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", Locale("pt", "BR")).format(java.util.Date()))
                 guardar("pendencias", arr)
-                if (concluida) historicoPendencias() else pendencias()
+                if (concluida) pendencias() else historicoPendencias()
             }.show()
     }
 
@@ -1455,7 +1477,7 @@ class MainActivity : Activity() {
                 obj.put("gps", coordenadas.text.toString())
                 obj.put("fotos", JSONArray().apply { fotosFormulario.filter { File(it).isFile }.forEach { put(it) } })
                 if (obj.optString("dataCadastro").isBlank()) obj.put("dataCadastro", dataHoje())
-                if (idx < 0) arr.put(obj)
+                if (idx < 0) arr.put(obj) else arr.put(idx, obj)
                 guardar("ocorrencias_campo", arr)
                 atualizarFotosFormulario = null
                 ocorrenciasCampo()
@@ -1633,10 +1655,10 @@ class MainActivity : Activity() {
             }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
         }
     }
-    private fun editarRegistro(key: String, idx: Int, foto: Boolean, turnoInicial: String = "A") {
+    private fun editarRegistro(key: String, idx: Int, foto: Boolean, turnoInicial: String = "A", equipamentoInicial: String = "") {
         val atual = if (idx >= 0) dados(key).optJSONObject(idx) else null
         val corpo = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(18), dp(8), dp(18), dp(8)) }
-        val equipamento = campo(if (foto) "Equipamento" else "Turno (A, B ou C)", (if (foto) atual?.optString("equipamento") else atual?.optString("turno") ?: turnoInicial) ?: "")
+        val equipamento = campo(if (foto) "Equipamento" else "Turno (A, B ou C)", (if (foto) atual?.optString("equipamento") ?: equipamentoInicial else atual?.optString("turno") ?: turnoInicial))
         val descricao = campo(if (foto) "Defeito e localização" else "Ocorrências, serviços e pendências", atual?.optString("descricao") ?: "")
         corpo.addView(equipamento)
         val osPendencia = campo("O.S. da pendência (ex.: 12345)", if (foto) atual?.optString("osPendencia") ?: "" else "")
@@ -1692,11 +1714,11 @@ class MainActivity : Activity() {
                     obj.put("foto", if (listaFotos.length() > 0) listaFotos.optString(0) else "")
                 }
                 if (obj.optString("dataCadastro").isBlank()) obj.put("dataCadastro", dataHoje())
-                if (idx < 0) arr.put(obj)
+                if (idx < 0) arr.put(obj) else arr.put(idx, obj) else arr.put(idx, obj)
                 guardar(key, arr)
                 if (foto) {
                     atualizarFotosFormulario = null
-                    pendencias()
+                    pendenciasEquipamento(obj.optString("equipamento").trim())
                     AlertDialog.Builder(this).setTitle("Pendência salva")
                         .setMessage("Deseja compartilhar esta pendência agora?")
                         .setNegativeButton("Agora não", null)
@@ -1750,7 +1772,7 @@ class MainActivity : Activity() {
                 val obj = atual ?: JSONObject()
                 obj.put("numero", numero.text.toString()); obj.put("chegada", chegada.text.toString())
                 obj.put("saida", saida.text.toString()); obj.put("turno", turno.selectedItem.toString())
-                if (idx < 0) arr.put(obj)
+                if (idx < 0) arr.put(obj) else arr.put(idx, obj)
                 guardar("caminhoes", arr); caminhoes()
             }.show()
     }
