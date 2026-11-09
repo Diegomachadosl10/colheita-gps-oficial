@@ -6,6 +6,8 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.text.InputType
+import android.text.method.HideReturnsTransformationMethod
+import android.text.method.PasswordTransformationMethod
 import android.view.Gravity
 import android.view.View
 import android.widget.*
@@ -62,7 +64,7 @@ internal class AccessUi(private val activity: Activity) {
     }
     fun field(container: LinearLayout, label: String, password: Boolean = false): EditText {
         add(container, text(label, 13f, dark, true), 16)
-        return EditText(activity).apply {
+        val field = EditText(activity).apply {
             contentDescription = label
             textSize = 16f; setTextColor(dark); setHintTextColor(muted)
             setSingleLine(true); minHeight = dp(54)
@@ -72,8 +74,45 @@ internal class AccessUi(private val activity: Activity) {
             inputType = if (password) InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
                 else InputType.TYPE_CLASS_TEXT
             if (password) setTypeface(Typeface.DEFAULT)
-            add(container, this, 5)
         }
+        if (!password) {
+            add(container, field, 5)
+            return field
+        }
+        val fieldBackground = field.background
+        field.background = null
+        val row = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = fieldBackground
+        }
+        field.transformationMethod = PasswordTransformationMethod.getInstance()
+        row.addView(field, LinearLayout.LayoutParams(0, -2, 1f))
+        var visible = false
+        val eye = ImageButton(activity).apply {
+            setImageResource(R.drawable.ic_password_show)
+            imageTintList = null
+            contentDescription = "Mostrar senha: $label"
+            tooltipText = "Mostrar senha"
+            setPadding(dp(12), dp(12), dp(12), dp(12))
+            background = android.graphics.drawable.RippleDrawable(
+                ColorStateList.valueOf(0x22187447), background(Color.TRANSPARENT, 12), null
+            )
+            setOnClickListener {
+                val start = field.selectionStart
+                val end = field.selectionEnd
+                visible = !visible
+                field.transformationMethod = if (visible) HideReturnsTransformationMethod.getInstance()
+                    else PasswordTransformationMethod.getInstance()
+                if (start >= 0 && end >= 0) field.setSelection(start, end)
+                setImageResource(if (visible) R.drawable.ic_password_hide else R.drawable.ic_password_show)
+                contentDescription = "${if (visible) "Ocultar" else "Mostrar"} senha: $label"
+                tooltipText = if (visible) "Ocultar senha" else "Mostrar senha"
+            }
+        }
+        row.addView(eye, LinearLayout.LayoutParams(dp(48), dp(48)).apply { marginEnd = dp(4) })
+        add(container, row, 5)
+        return field
     }
     fun spinner(container: LinearLayout, label: String, values: Array<String>): Spinner {
         add(container, text(label, 13f, dark, true), 16)

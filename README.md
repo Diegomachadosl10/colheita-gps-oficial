@@ -16,6 +16,7 @@ O workflow executa `gradle testDebugUnitTest assembleDebug --no-daemon`, com Jav
 ## Como funciona o acesso
 
 - Cadastro e entrada usam a mesma matrícula, com zeros à esquerda preservados. Operadores e supervisores **não precisam de e-mail pessoal**.
+- Os campos de senha do login, cadastro e confirmação possuem um botão de olho para mostrar ou ocultar o texto. A senha começa oculta; alternar a visualização preserva o texto digitado e a posição do cursor.
 - O Firebase Authentication usa internamente `matricula.<matricula>@acesso.dm-agro.app`; esse endereço é um identificador técnico e não uma caixa de e-mail. O administrador mantém o acesso por seu e-mail já cadastrado.
 - A solicitação fica em `usuarios/<UID do Firebase Authentication>`, com `status: pendente`, `papel: operador`, `perfil: operador` e `solicitacaoPerfil: operador` ou `supervisor`. Pedir o perfil de supervisor não concede permissão.
 - Login e aplicativo usam a mesma validação: `status: aprovado` e papel conhecido. `papel` é a fonte principal; `perfil` atende contas antigas apenas quando `papel` está ausente ou vazio. Espaços, maiúsculas e acentos são normalizados. Papéis desconhecidos não são liberados.
