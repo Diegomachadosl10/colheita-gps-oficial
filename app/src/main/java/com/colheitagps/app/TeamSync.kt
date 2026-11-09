@@ -36,7 +36,7 @@ internal class TeamSync(context: Context, private val access: TeamAccess, val st
     private val preferences = TeamPolicy.preferences.associateWith { store.prefs(it) }
     private val prefListener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ -> if (!applying && !stopped) execute { scan(); flush() } }
     private val poll = object : Runnable {
-        override fun run() { if (!stopped) { execute { scan(); flush(); scanFiles() }; handler.postDelayed(this, 12000) } }
+        override fun run() { if (!stopped) { execute { scan(); flush(); if (TeamPolicy.AUTOMATIC_ATTACHMENTS) scanFiles() }; handler.postDelayed(this, 12000) } }
     }
     private fun execute(action: () -> Unit) {
         if (!stopped) try { worker.execute {
@@ -79,7 +79,7 @@ internal class TeamSync(context: Context, private val access: TeamAccess, val st
         handler.post(poll)
     }
     fun available(value: Boolean) { available = value; if (value) execute { scan(); applyRemote(); flush() } }
-    fun retry() { execute { scan(); applyRemote(); flush(); scanFiles() } }
+    fun retry() { execute { scan(); applyRemote(); flush(); if (TeamPolicy.AUTOMATIC_ATTACHMENTS) scanFiles() } }
     fun stop() {
         stopped = true; subscription?.remove(); handler.removeCallbacks(poll)
         preferences.values.forEach { it.unregisterOnSharedPreferenceChangeListener(prefListener) }
@@ -116,7 +116,7 @@ internal class TeamSync(context: Context, private val access: TeamAccess, val st
                     val obj = arr.optJSONObject(i) ?: continue
                     if (obj.optString("id").isBlank()) { obj.put("id", UUID.randomUUID().toString()); assigned = true }
                     val recordKey = obj.getString("id")
-                    val wire = proposed("item", group, recordKey, store.encode(obj.toString()))
+                    val wire = proposed("item", group, recordKey, store.encode((if (TeamPolicy.AUTOMATIC_ATTACHMENTS) obj else TeamContent.textOnly(obj)).toString()))
                     if (obj.has("__syncBase")) wire.put("__syncBase", obj.getLong("__syncBase"))
                     now[id("item", group, recordKey)] = wire
                 }
@@ -179,7 +179,7 @@ internal class TeamSync(context: Context, private val access: TeamAccess, val st
         val conflicts = local.all.keys.count { it.startsWith("c_") }
         val errors = local.all.keys.count { it.startsWith("e_") }
         if (errors > 0) announce("$errors registros ou anexos permanecem somente neste aparelho. Toque em Sincronização.")
-        else if (conflicts == 0) announce(if (pending == 0) "Registros sincronizados" else "$pending alterações aguardando envio")
+        else if (conflicts == 0) announce(if (pending == 0) "Registros sincronizados • fotos e PDFs por compartilhamento" else "$pending alterações aguardando envio")
     }
     private fun applyRemote() {
         if (!available || !active()) return
@@ -193,6 +193,7 @@ internal class TeamSync(context: Context, private val access: TeamAccess, val st
             try {
                 if (!available) break
                 if (data.getString("tipo") == "arquivo") {
+                    if (!TeamPolicy.AUTOMATIC_ATTACHMENTS) { remote.remove(key); continue }
                     download(data)
                     local.edit().putString("b_$key", data.toString()).commit()
                     remote.remove(key); changed = true
@@ -210,10 +211,16 @@ internal class TeamSync(context: Context, private val access: TeamAccess, val st
                             val obj = current.optJSONObject(i) ?: continue
                             if (obj.optString("id") == data.getString("chave")) {
                                 found = true
-                                if (!data.optBoolean("excluido")) result.put(JSONObject(store.decode(data.getString("conteudo"))))
+                                if (!data.optBoolean("excluido")) {
+                                    val incoming = JSONObject(store.decode(data.getString("conteudo")))
+                                    result.put(if (TeamPolicy.AUTOMATIC_ATTACHMENTS) incoming else TeamContent.preserveLocalMedia(incoming, obj))
+                                }
                             } else result.put(obj)
                         }
-                        if (!found && !data.optBoolean("excluido")) result.put(JSONObject(store.decode(data.getString("conteudo"))))
+                        if (!found && !data.optBoolean("excluido")) {
+                            val incoming = JSONObject(store.decode(data.getString("conteudo")))
+                            result.put(if (TeamPolicy.AUTOMATIC_ATTACHMENTS) incoming else TeamContent.preserveLocalMedia(incoming, null))
+                        }
                         prefs.edit().putString(prefKey, result.toString()).commit()
                     }
                     "preferencia" -> {
@@ -329,7 +336,8 @@ internal class TeamSync(context: Context, private val access: TeamAccess, val st
         "${local.all.keys.count { it.startsWith("q_") }} alterações aguardando envio\n" +
         "${local.all.keys.count { it.startsWith("c_") }} conflitos preservados\n" +
         "${local.all.keys.count { it.startsWith("e_") }} registros ou arquivos acima do limite de envio\n" +
-        "Os anexos são enviados quando há conexão. Alterações simultâneas não sobrescrevem sua cópia local."
+        (if (TeamPolicy.AUTOMATIC_ATTACHMENTS) "Anexos automáticos quando há conexão. " else "Plano gratuito: fotos e PDFs ficam neste aparelho e são compartilhados manualmente. ") +
+        "Alterações simultâneas preservam uma cópia local."
     fun useSharedCopies() { execute {
         for (key in local.all.keys.filter { it.startsWith("c_") }) {
             val id = key.removePrefix("c_")

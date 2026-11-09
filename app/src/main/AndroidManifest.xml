@@ -11,6 +11,14 @@
         android:icon="@drawable/colheita_gps_icone_correto"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
 
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/shared_paths" />
+        </provider>
+
         <activity
             android:name="com.colheitagps.app.MainActivity"
             android:exported="false" />

@@ -212,7 +212,7 @@ class MainActivity : Activity() {
     }
     private fun mostrarFotos(record: JSONObject) {
         val photos = fotosPendencia(record)
-        if (photos.isEmpty()) { Toast.makeText(this, "Fotos ainda não disponíveis neste aparelho.", Toast.LENGTH_LONG).show(); return }
+        if (photos.isEmpty()) { Toast.makeText(this, "As fotos são compartilhadas separadamente. Peça ao autor para enviá-las.", Toast.LENGTH_LONG).show(); return }
         AlertDialog.Builder(this).setTitle("Fotos").setItems(photos.indices.map { "Foto ${it + 1}" }.toTypedArray()) { _, index ->
             AlertDialog.Builder(this).setView(ImageView(this).apply {
                 setImageBitmap(BitmapFactory.decodeFile(photos[index].absolutePath)); adjustViewBounds = true
@@ -2017,7 +2017,7 @@ class MainActivity : Activity() {
         cab.addView(texto("COLHEITA GPS 2.0", 23f, Color.WHITE))
         cab.addView(botao("←") { inicio() })
         cab.addView(
-            texto("Meus mapas de colheita", 14f, 0xFFB6DCC6.toInt())
+            texto("Mapas desta equipe neste aparelho. Receba o PDF compartilhado e importe pelo botão +.", 14f, 0xFFB6DCC6.toInt())
         )
         coluna.addView(cab)
 
@@ -2102,17 +2102,30 @@ class MainActivity : Activity() {
         AlertDialog.Builder(this)
             .setTitle(nome(id))
             .setItems(
-                arrayOf("Abrir", "O.S. de trabalho", "Renomear", "Excluir")
+                arrayOf("Abrir", "O.S. de trabalho", "Renomear", "Excluir", "Compartilhar PDF")
             ) { _, i ->
                 when (i) {
                     0 -> abrir(id)
                     1 -> ordens(id)
                     2 -> renomear(id)
                     3 -> excluir(id)
+                    4 -> compartilharMapaPdf(id)
                 }
             }.show()
     }
 
+    private fun compartilharMapaPdf(id: String) {
+        val file = File(pasta(), "$id.pdf")
+        if (!file.isFile) return
+        val uri = androidx.core.content.FileProvider.getUriForFile(applicationContext, "$packageName.files", file)
+        startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+            type = "application/pdf"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            putExtra(Intent.EXTRA_TEXT, nome(id))
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            clipData = ClipData.newUri(contentResolver, "Mapa da equipe", uri)
+        }, "Compartilhar mapa PDF"))
+    }
     private fun renomear(id: String) {
         pausarSincronizacao()
         if (teamSync?.canEditMap(id) == false) { teamSync?.available(hasWindowFocus() && mapa == null); Toast.makeText(this, "Somente o responsável pelo mapa ou o supervisor pode renomeá-lo.", Toast.LENGTH_LONG).show(); return }

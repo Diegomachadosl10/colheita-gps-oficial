@@ -1,6 +1,7 @@
 package com.colheitagps.app
 
 internal object TeamPolicy {
+    const val AUTOMATIC_ATTACHMENTS = false // Spark: never contact paid Storage for uploads or downloads.
     const val PRIMARY_ADMIN_UID = "Z8zjZP3iWjRSD6imwiDO4VLboOY2"
     val fronts = linkedMapOf(
         "santo_inacio" to "Santo Inácio", "santa_ines" to "Santa Inês", "itororo" to "Itororó",

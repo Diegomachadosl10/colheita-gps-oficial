@@ -1,5 +1,7 @@
 # Ativar equipes no Firebase — DM AGRO 1.1.0
 
+**Plano obrigatório nesta entrega: Spark gratuito. Não fazer upgrade nem ativar faturamento.** O envio automático de anexos está desativado no APK.
+
 O código foi preparado para o projeto **dm-agro-c0e04**. O administrador principal é exclusivamente o UID **Z8zjZP3iWjRSD6imwiDO4VLboOY2**, informado pelo proprietário nesta conversa. Esse UID é um identificador público de autorização, não uma senha nem uma chave de serviço.
 
 **As regras deste pacote são uma proposta testada localmente. Ainda não foram publicadas no projeto real.** Não instale o APK 1.1.0 para uso diário antes de concluir esta configuração. A versão 1.0.3 continua disponível na conversa.
@@ -14,7 +16,7 @@ As novas regras:
 - Permitem que supervisores aprovados aprovem/bloqueiem apenas operadores e tratoristas da própria frente e turno. Somente o principal aprova supervisores ou ajusta equipes.
 - Mantêm o cadastro próprio como solicitação pendente. O cadastro não pode autoaprovar nem alterar a própria equipe após criação.
 - Isolam registros em `equipes/<frente>_<turno>/registros/<id>`, conferindo equipe, autoria e revisão em cada gravação. Alterações antigas não sobrescrevem versões novas.
-- Isolam fotos/PDFs em `equipes/<equipe>/arquivos/<autor>/<hash>` no Storage, sem criar links públicos de download.
+- Nesta versão gratuita, fotos e PDFs ficam no aparelho. O usuário pode compartilhar fotos pelas opções existentes e PDFs por **Compartilhar PDF** no menu do mapa. Os registros de texto, aprovações e pinturas continuam sendo sincronizados pelo Firestore.
 - Preservam a coleção antiga `pendencias`, com leitura do próprio autor e do principal. Como os registros antigos não têm equipe confiável, o acesso amplo dos supervisores foi removido; os dados não são apagados.
 - Não apagam usuários nem registros existentes. Exclusões da nova coleção são marcas sincronizadas, e os objetos de anexos são preservados no Storage.
 
@@ -40,15 +42,13 @@ Em **Índices → Composto → Adicionar índice**, crie:
 
 Coleção: **usuarios**. Escopo da consulta: **Coleção**. Aguarde o estado **Ativado/Pronto**. O mesmo índice está descrito em `firestore.indexes.json`. Se o console informar que o índice já existe, mantenha o existente.
 
-## 3. Storage: permitir fotos e mapas por equipe
+## 3. Manter o Storage sem ativação
 
-1. Abra **Storage** no mesmo projeto: https://console.firebase.google.com/project/dm-agro-c0e04/storage .
-2. O bucket esperado pelo aplicativo é **dm-agro-c0e04.firebasestorage.app**. Se aparecer **Começar**, o Storage ainda precisa ser ativado. Se o console pedir mudança de plano, avise antes de confirmar, para avaliarmos esse requisito de cobrança.
-3. Na aba **Regras**, guarde o texto atual e compartilhe-o se houver regras de outro uso que precisem ser preservadas. Este projeto Android não usava o SDK Storage antes desta integração.
-4. Para este aplicativo, o conteúdo proposto está em `storage.rules`. As permissões são somente para os caminhos novos de equipes; os demais caminhos ficam fechados.
-5. Ao publicar regras que consultam o Firestore, o console poderá pedir a ativação da integração entre Storage e Firestore. Essa integração é necessária para conferir a equipe do usuário.
+A tela **Fazer upgrade do projeto** é do Storage. Não clique nesse botão. O proprietário confirmou que o plano deve continuar gratuito. Não é necessário publicar regras do Storage nem cadastrar uma conta de faturamento para esta versão.
 
-Os arquivos têm limite de **menos de 100 MB** por anexo. Registros muito grandes e anexos acima desse limite permanecem locais e aparecem como pendência na sincronização.
+**Limite desta entrega:** o texto das pendências e ocorrências aparece automaticamente na mesma equipe; fotos e PDFs precisam ser enviados manualmente. Quem recebe um mapa PDF pode importá-lo com o botão **+**; sendo o mesmo PDF, as pinturas e os demais dados associados ao identificador do mapa são compartilhados pela equipe. O aplicativo preserva fotos locais quando recebe alterações de texto de outro aparelho e não envia caminhos privados de fotos ao servidor.
+
+O arquivo `storage.rules` permanece somente como preparação testada em emulador, sem publicação ou uso pelo APK gratuito. Qualquer envio automático de anexos por outro serviço exigirá uma implementação específica; não está ativado nesta versão.
 
 ## 4. Instalar e testar em dois celulares
 
@@ -56,7 +56,7 @@ Atualize sobre o APK anterior, sem desinstalar nem limpar os dados. A assinatura
 
 1. Entre como principal, escolha uma equipe e aprove um supervisor da frente e turno correspondentes.
 2. No supervisor, confirme que só aparecem solicitações de operadores/tratoristas daquela equipe; pedidos de supervisor e de outros turnos devem ficar indisponíveis.
-3. No operador aprovado, crie uma pendência e uma ocorrência com foto. Com internet, confira os registros no supervisor e no administrador na mesma equipe. Os anexos podem levar mais tempo que o texto; acompanhe **Sincronização**.
+3. No operador aprovado, crie uma pendência e uma ocorrência com foto. Com internet, confira os textos no supervisor e no administrador na mesma equipe. A foto deve continuar no aparelho do autor, com compartilhamento manual disponível. Não deve haver tentativa de ativar Storage ou cobrança.
 4. Teste um supervisor da mesma frente com outro turno. Ele não deve acessar os registros anteriores.
 5. Com o aplicativo já aberto, desligue a internet, crie um registro, religue a internet e aguarde o envio. A fila é preservada no aparelho. A abertura de uma nova sessão exige conexão para validar o acesso.
 6. Teste alterações simultâneas: conflitos devem preservar uma cópia local, em vez de sobrescrever outro aparelho. A opção **Sincronização** mostra as pendências e permite recarregar a versão compartilhada. As cópias conflitantes ficam na pasta `conflitos` da equipe, incluída no backup.
@@ -71,6 +71,6 @@ A troca de equipe de um usuário não move registros antigos para a nova equipe.
 
 ## Verificações realizadas e limites
 
-Os testes de regras são executados com dados fictícios no projeto local `demo-dm-agro`; não usam nem modificam usuários ou registros reais. Os testes Android verificam políticas, isolamento local, referências de fotos e migração preservando originais. A compilação gera o APK de teste; o teste final com o projeto real depende da publicação das regras, do índice, do Storage e dos dois celulares.
+Os testes de regras são executados com dados fictícios no projeto local `demo-dm-agro`; não usam nem modificam usuários ou registros reais. Os testes Android verificam políticas, isolamento local, referências de fotos e migração preservando originais. A compilação gera o APK de teste; o teste final com o projeto real depende da publicação das regras, do índice e dos dois celulares. O Storage não é usado pelo APK gratuito.
 
 A credencial antiga do João (80911) continua sendo um caso separado de Firebase Authentication: a aprovação no Firestore não cria nem redefine uma senha.
