@@ -1714,7 +1714,7 @@ class MainActivity : Activity() {
                     obj.put("foto", if (listaFotos.length() > 0) listaFotos.optString(0) else "")
                 }
                 if (obj.optString("dataCadastro").isBlank()) obj.put("dataCadastro", dataHoje())
-                if (idx < 0) arr.put(obj) else arr.put(idx, obj) else arr.put(idx, obj)
+                if (idx < 0) arr.put(obj) else arr.put(idx, obj)
                 guardar(key, arr)
                 if (foto) {
                     atualizarFotosFormulario = null
