@@ -63,4 +63,15 @@ class TeamStoreTest {
         store.importLegacy()
         assertEquals(2, org.json.JSONArray(store.prefs("registros_v3").getString("pendencias", "[]")).length())
     }
+    @Test fun operatorMapNamesAndPaintingsDoNotEnterTheSupervisorCatalog() {
+        val store = TeamStore(RuntimeEnvironment.getApplication(), "santo_inacio_A")
+        store.privateMapPrefs("mapas", "op1").edit().putString("mapaA", "Mapa particular").commit()
+        store.privateMapPrefs("pinturas", "op1").edit().putString("mapaA", "{desenho}").commit()
+        assertNull(store.prefs("mapas").getString("mapaA", null))
+        assertNull(store.privateMapPrefs("mapas", "op2").getString("mapaA", null))
+        assertNull(store.prefs("pinturas").getString("mapaA", null))
+        assertFalse("mapas" in TeamPolicy.operatorGroups)
+        assertFalse("pinturas" in TeamPolicy.operatorGroups)
+    }
+
 }

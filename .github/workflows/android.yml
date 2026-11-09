@@ -4,6 +4,17 @@ on:
   push:
     branches: [main, dm-agro-login]
   workflow_dispatch:
+    inputs:
+      publicar_atualizacao:
+        description: Publicar atualização para os aplicativos instalados
+        type: boolean
+        required: false
+        default: false
+      melhorias:
+        description: Melhorias que aparecerão no aplicativo
+        type: string
+        required: false
+        default: Melhorias e correções do DM AGRO.
 
 permissions:
   contents: read
@@ -48,19 +59,36 @@ jobs:
       - name: Configurar Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Preparar ferramentas para conferir o APK
+        run: sdkmanager "build-tools;35.0.0"
+
       - name: Configurar Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
 
-      - name: Preservar assinatura dos próximos APKs de teste
-        uses: actions/cache@v4
-        with:
-          path: ~/.android/debug.keystore
-          key: dm-agro-debug-keystore-v1-${{ github.ref_name }}
+      - name: Restaurar a assinatura permanente
+        env:
+          ANDROID_UPDATE_KEYSTORE_BASE64: ${{ secrets.ANDROID_UPDATE_KEYSTORE_BASE64 }}
+        run: python3 scripts/restore-signing.py
 
       - name: Testar permissões e gerar APK
-        run: gradle testDebugUnitTest assembleDebug --no-daemon
+        run: |
+          python3 -m unittest discover -s scripts -p 'test_*.py'
+          gradle testDebugUnitTest assembleDebug --no-daemon
+
+      - name: Preparar atualização e conferir assinatura
+        env:
+          UPDATE_NOTES: ${{ inputs.melhorias || 'Melhorias e correções do DM AGRO.' }}
+        run: |
+          python3 scripts/prepare-update.py --apk app/build/outputs/apk/debug/app-debug.apk --output release --build-tools "$ANDROID_HOME/build-tools/35.0.0"
+
+      - name: Disponibilizar pacote da atualização
+        uses: actions/upload-artifact@v4
+        with:
+          name: DM-AGRO-Atualizacao
+          path: release/
+          if-no-files-found: error
 
       - name: Disponibilizar APK
         uses: actions/upload-artifact@v4
@@ -76,3 +104,20 @@ jobs:
           name: DM-AGRO-Testes
           path: app/build/reports/tests/testDebugUnitTest/
           if-no-files-found: ignore
+
+  publish-update:
+    if: github.event_name == 'workflow_dispatch' && inputs.publicar_atualizacao && github.ref == 'refs/heads/dm-agro-login'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: DM-AGRO-Atualizacao
+          path: release
+      - name: Publicar arquivos completos para a atualização interna
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/publish-update.py

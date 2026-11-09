@@ -119,3 +119,20 @@ test('pinturas e imagens derivadas permitem colaboração sem liberar mapas e ti
   await assertSucceeds(setDoc(doc(db('supA'),...name),record('supA','mapas',1,{tipo:'preferencia'})));
   await assertFails(updateDoc(doc(db('opA'),...name),{conteudo:'renomeado',versao:2,editadoPor:'opA',atualizadoEm:serverTimestamp()}));
 });
+
+test('apenas o principal exclui acesso e um supervisor não pode reativá-lo', async () => {
+  await assertFails(updateDoc(doc(db('supA'),'usuarios','opA'),{status:'excluido'}));
+  await assertSucceeds(updateDoc(doc(db(owner),'usuarios','opA'),{status:'excluido',excluidoPor:owner,excluidoEm:serverTimestamp()}));
+  await assertFails(updateDoc(doc(db('supA'),'usuarios','opA'),{status:'aprovado',papel:'operador',perfil:'operador'}));
+  await assertFails(updateDoc(doc(db('supA'),'usuarios','opA'),{status:'bloqueado',papel:'operador',perfil:'operador'}));
+  await assertFails(updateDoc(doc(db(owner),'usuarios',owner),{status:'excluido'}));
+  await assertSucceeds(getDoc(doc(db(owner),'configuracao','exclusaoUsuarios')));
+  await assertFails(getDoc(doc(db('supA'),'configuracao','exclusaoUsuarios')));
+  await assertFails(setDoc(doc(db('opA'),'equipes',team,'registros','apos-exclusao'),record()));
+});
+test('catálogo de equipamento usa os mesmos limites de equipe das pendências', async () => {
+  const item=record('opA','pendencias',1,{chave:'equipamento_21569',conteudo:JSON.stringify({id:'equipamento_21569',categoriaRegistro:'equipamento',equipamento:'21569'})});
+  await assertSucceeds(setDoc(doc(db('opA'),'equipes',team,'registros','equipamento'),item));
+  await assertSucceeds(getDoc(doc(db('supA'),'equipes',team,'registros','equipamento')));
+  await assertFails(getDoc(doc(db('supB'),'equipes',team,'registros','equipamento')));
+});

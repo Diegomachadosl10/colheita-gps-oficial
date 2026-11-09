@@ -84,6 +84,7 @@ class LoginActivity : Activity() {
                 if (result.isSuccessful) verify() else notice(errorMessage(result.exception ?: Exception()))
             }
         }
+        ui.button(card, "Verificar atualização", true) { if (!busy) startActivity(Intent(this, UpdateActivity::class.java)) }
         ui.button(card, "Solicitar acesso", true) { if (!busy) register() }
         ui.button(card, "Recuperar senha", true) {
             if (!busy) {
@@ -111,8 +112,7 @@ class LoginActivity : Activity() {
         val name = ui.field(card, "Nome completo")
         val front = ui.spinner(card, "Frente", frentes)
         val shift = ui.spinner(card, "Turno", arrayOf("A", "B", "C")).apply { setSelection(2) }
-        val role = ui.spinner(card, "Tipo de acesso solicitado", arrayOf("Operador", "Tratorista", "Supervisor"))
-        val job = ui.field(card, "Função (ex.: operador de colhedora)")
+        val role = ui.spinner(card, "Tipo de acesso solicitado", arrayOf("Operador", "Supervisor"))
         val password = if (!existing) ui.field(card, "Criar senha (mínimo 8 caracteres)", true) else null
         val confirmation = if (!existing) ui.field(card, "Confirmar senha", true) else null
         val submit = ui.button(card, "Enviar solicitação") {}
@@ -128,9 +128,9 @@ class LoginActivity : Activity() {
             }
             val data = hashMapOf<String, Any>(
                 "nome" to n, "matricula" to m, "frenteId" to ids[front.selectedItemPosition],
-                "turno" to shift.selectedItem.toString(), "funcao" to job.text.toString().trim(),
+                "turno" to shift.selectedItem.toString(), "funcao" to role.selectedItem.toString(),
                 "papel" to "operador", "perfil" to "operador",
-                "solicitacaoPerfil" to when (role.selectedItemPosition) { 2 -> "supervisor"; 1 -> "tratorista"; else -> "operador" },
+                "solicitacaoPerfil" to if (role.selectedItemPosition == 1) "supervisor" else "operador",
                 "status" to "pendente", "criadoEm" to FieldValue.serverTimestamp()
             )
             busy = true; submit.isEnabled = false; submit.text = "Enviando…"
@@ -172,7 +172,8 @@ class LoginActivity : Activity() {
                     if (auth.currentUser?.email?.matches(Regex("matricula\\.[0-9]{1,20}@acesso\\.dm-agro\\.app")) == true) register(true)
                     else status("Cadastro não localizado", "O administrador precisa conferir o documento usuarios com o UID desta conta. A sessão sozinha não autoriza acesso.")
                 }
-                TeamPolicy.allowed(auth.currentUser?.uid.orEmpty(), data) -> if (TeamPolicy.primary(auth.currentUser?.uid.orEmpty())) adminPanel() else openApp()
+                TeamPolicy.allowed(auth.currentUser?.uid.orEmpty(), data) -> if (TeamPolicy.primary(auth.currentUser?.uid.orEmpty())) adminPanel(data) else openApp()
+                AccessPolicy.normalized(data["status"]) == "excluido" -> status("Acesso encerrado", "Seu acesso foi excluído pelo administrador principal. Procure o administrador para esclarecer seu cadastro.")
                 AccessPolicy.normalized(data["status"]) == "bloqueado" -> status("Acesso bloqueado", "Procure o administrador principal para revisar seu acesso.")
                 AccessPolicy.normalized(data["status"]) == "aprovado" -> status("Perfil precisa de revisão", "Sua conta foi aprovada, mas o perfil está ausente ou inválido. Peça ao administrador para conferir o cadastro.")
                 else -> {
@@ -195,8 +196,9 @@ class LoginActivity : Activity() {
     private fun openApp() {
         startActivity(Intent(this, MainActivity::class.java)); finish()
     }
-    private fun adminPanel() {
-        val card = page("Painel do administrador", "Controle de acesso exclusivo do administrador principal.")
+    private fun adminPanel(data: Map<String, Any>) {
+        val name = data["nome"]?.toString()?.trim().orEmpty().ifBlank { "Administrador" }
+        val card = page("Painel do administrador", "Olá, $name. Gerencie os acessos ou abra o aplicativo.")
         ui.button(card, "Abrir aplicativo") { openApp() }
         ui.button(card, "Gerenciar usuários", true) { startActivity(Intent(this, AdminActivity::class.java)) }
         ui.button(card, "Sair da conta", true) { logout() }

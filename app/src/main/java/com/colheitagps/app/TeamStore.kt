@@ -13,6 +13,24 @@ internal class TeamStore(context: Context, val team: String) {
     init { require(team in TeamPolicy.fronts.keys.flatMap { f -> TeamPolicy.shifts.map { "${f}_$it" } }) }
     val files = File(app.filesDir, "equipes/$team").apply { mkdirs() }
     val cache = File(app.cacheDir, "equipes/$team").apply { mkdirs() }
+    fun privateMapPrefs(name: String, uid: String): SharedPreferences {
+        require(name in setOf("mapas", "pinturas"))
+        val owner = java.security.MessageDigest.getInstance("SHA-256").digest(uid.toByteArray()).joinToString("") { "%02x".format(it) }
+        return app.getSharedPreferences("mapa_privado_${team}_${owner}_$name", Context.MODE_PRIVATE)
+    }
+    fun preservePreviousMaps(uid: String) {
+        val target = privateMapPrefs("mapas", uid)
+        if (target.getBoolean("_migrado", false)) return
+        val names = target.edit()
+        val drawings = privateMapPrefs("pinturas", uid).edit()
+        for ((key, value) in prefs("mapas").all) {
+            if (value is String && File(files, "mapas/$key.pdf").isFile) {
+                names.putString(key, value)
+                prefs("pinturas").getString(key, null)?.let { drawings.putString(key, it) }
+            }
+        }
+        drawings.commit(); names.putBoolean("_migrado", true).commit()
+    }
     fun prefs(name: String): SharedPreferences = app.getSharedPreferences("equipe_${team}_$name", Context.MODE_PRIVATE)
     fun encode(value: String): String = codec(value, true)
     fun decode(value: String): String = codec(value, false)

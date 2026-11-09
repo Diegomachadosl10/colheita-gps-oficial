@@ -149,6 +149,10 @@ internal class TeamSync(context: Context, private val access: TeamAccess, val st
                     check(active())
                     val doc = tx.get(records.document(key))
                     val revision = (doc.get("versao") as? Number)?.toLong() ?: 0L
+                    val existingEquipment = change.getString("grupo") == "pendencias" &&
+                        try { MaintenanceRecords.isEquipment(JSONObject(change.getString("conteudo"))) } catch (_: Exception) { false }
+                    if (existingEquipment && change.getLong("base") == 0L && doc.exists() && doc.getString("conteudo") == change.getString("conteudo") && doc.getBoolean("excluido") != true)
+                        return@runTransaction JSONObject(doc.data.orEmpty())
                     check(revision == change.getLong("base")) { "CONFLITO_DE_VERSAO" }
                     val data = mutableMapOf<String, Any>(
                         "equipeId" to store.team, "frenteId" to store.team.substringBeforeLast('_'), "turno" to store.team.substringAfterLast('_'),

@@ -39,11 +39,14 @@ class MainActivity : Activity() {
     private var syncLabel: TextView? = null
     private var syncMessage = "Conectando à equipe…"
     private var refreshList: (() -> Unit)? = null
+    private var returnToParent: (() -> Unit)? = null
     private val syncUiHandler = Handler(Looper.getMainLooper())
     private var refreshPending = false
 
     override fun getSharedPreferences(name: String, mode: Int): SharedPreferences =
-        if (name in TeamPolicy.preferences && teamStore != null) teamStore!!.prefs(name)
+        if (name in setOf("mapas", "pinturas") && teamStore != null && teamAccess?.manages == false)
+            teamStore!!.privateMapPrefs(name, teamAccess!!.uid)
+        else if (name in TeamPolicy.preferences && teamStore != null) teamStore!!.prefs(name)
         else super.getSharedPreferences(name, mode)
     override fun getFilesDir(): File = teamStore?.files ?: super.getFilesDir()
     override fun getCacheDir(): File = teamStore?.cache ?: super.getCacheDir()
@@ -61,6 +64,7 @@ class MainActivity : Activity() {
         profileWatch?.remove()
         teamStore = TeamStore(applicationContext, id)
         teamAccess = access
+        if (!access.manages) teamStore!!.preservePreviousMaps(access.uid)
         papelAtual = access.role
         podeAprovarUsuarios = access.manages
         acessoConfirmado = true
@@ -168,13 +172,14 @@ class MainActivity : Activity() {
     private var imagemPendente: File? = null
     private var vozResultado: ((String) -> Unit)? = null
     private fun dados(key: String): JSONArray = synchronized(teamStore?.lock ?: this) {
-        val array = try { JSONArray(getSharedPreferences("registros_v3", 0).getString(key, "[]")) } catch (_: Exception) { JSONArray() }
+        val raw = try { JSONArray(getSharedPreferences("registros_v3", 0).getString(key, "[]")) } catch (_: Exception) { JSONArray() }
+        val array = if (key == "pendencias") MaintenanceRecords.issues(raw) else raw
         var assigned = false
         for (i in 0 until array.length()) {
             val record = array.optJSONObject(i) ?: continue
             if (record.optString("id").isBlank()) { record.put("id", java.util.UUID.randomUUID().toString()); assigned = true }
         }
-        if (assigned) getSharedPreferences("registros_v3", 0).edit().putString(key, array.toString()).commit()
+        if (assigned) guardar(key, array)
         for (i in 0 until array.length()) array.optJSONObject(i)?.let { record ->
             record.put("__syncBase", teamSync?.baseRevision(key, record.optString("id")) ?: 0L)
         }
@@ -192,7 +197,14 @@ class MainActivity : Activity() {
         return false
     }
     private fun guardar(key: String, arr: JSONArray) {
-        getSharedPreferences("registros_v3", 0).edit().putString(key, arr.toString()).apply()
+        synchronized(teamStore?.lock ?: this) {
+            val prefs = getSharedPreferences("registros_v3", 0)
+            val value = if (key == "pendencias") {
+                val old = try { JSONArray(prefs.getString(key, "[]")) } catch (_: Exception) { JSONArray() }
+                MaintenanceRecords.merge(arr, old)
+            } else arr
+            prefs.edit().putString(key, value.toString()).apply()
+        }
     }
     private fun comRegistroAtual(group: String, id: String, action: (Int) -> Unit) {
         pausarSincronizacao()
@@ -622,7 +634,7 @@ class MainActivity : Activity() {
 
     private fun arquivos() =
         pasta().listFiles()
-            ?.filter { it.extension.equals("pdf", true) }
+            ?.filter { it.extension.equals("pdf", true) && prefs().contains(it.nameWithoutExtension) }
             ?.sortedBy { it.name }
             ?: emptyList()
 
@@ -644,7 +656,8 @@ class MainActivity : Activity() {
         return caixa
     }
 
-    private fun pagina(titulo: String): LinearLayout {
+    private fun pagina(titulo: String, parent: () -> Unit = { inicio() }): LinearLayout {
+        returnToParent = if (titulo == "Colheita GPS 2.0") null else parent
         telaAtual = if (titulo == "Colheita GPS 2.0") "inicio" else "pagina"
         teamSync?.available(hasWindowFocus() && mapa == null)
         refreshList = when (titulo) {
@@ -681,6 +694,7 @@ class MainActivity : Activity() {
                     sairDaConta()
                     true
                 }
+                menu.add("Verificar atualização").setOnMenuItemClickListener { startActivity(Intent(this@MainActivity, UpdateActivity::class.java)); true }
                 menu.add("Sincronização").setOnMenuItemClickListener { syncDetails(); true }
                 if (teamAccess?.primary == true) menu.add("Trocar equipe").setOnMenuItemClickListener { chooseTeam(teamAccess!!); true }
                 menu.add("Início").setOnMenuItemClickListener { inicio(); true }
@@ -712,6 +726,10 @@ class MainActivity : Activity() {
         mapa = null
         status = null
         val coluna = pagina("Colheita GPS 2.0")
+        val displayName = teamAccess?.profile?.get("nome")?.toString()?.trim().orEmpty().ifBlank { "Usuário" }
+        coluna.addView(texto("Olá, $displayName", 23f, Color.WHITE).apply {
+            setTypeface(null, Typeface.BOLD); setPadding(0, dp(16), 0, dp(2))
+        })
         syncLabel = texto("${TeamPolicy.label(teamStore!!.team)}\n$syncMessage", 14f, 0xFFB6DCC6.toInt()).also {
             it.setPadding(0, dp(12), 0, dp(6)); it.setOnClickListener { syncDetails() }
             coluna.addView(it)
@@ -727,6 +745,7 @@ class MainActivity : Activity() {
                     }.show()
             })
         }
+        coluna.addView(botao("Verificar atualização") { startActivity(Intent(this, UpdateActivity::class.java)) })
         coluna.addView(botao("Sair da conta") { sairDaConta() }.apply {
             textSize = 16f
             setTypeface(null, Typeface.BOLD)
@@ -836,7 +855,7 @@ class MainActivity : Activity() {
     private fun estoque() {
         if (!exigirGestor()) return
         val coluna = pagina("Estoque de cana")
-        coluna.addView(botao("📅 Abrir calendário") { calendario() })
+        coluna.addView(botao("📅 Abrir calendário") { calendario(parent = { estoque() }) })
         coluna.addView(botao("+ Novo estoque") { editarProgressoColheita(true) })
         coluna.addView(texto("ESTOQUES SALVOS", 15f))
         val arr = listaEstoques()
@@ -1236,7 +1255,7 @@ class MainActivity : Activity() {
     }
 
     private fun detalheTurno(turno: String) {
-        val coluna = pagina("Relatório do turno $turno")
+        val coluna = pagina("Relatório do turno $turno", parent = { relatorios() })
         refreshList = { detalheTurno(turno) }
         coluna.addView(texto(textoRelatorio(turno), 14f).apply { setPadding(0, dp(15), 0, dp(15)) })
         coluna.addView(botao("+ Registrar ocorrência") { editarRegistro("relatorios_turno", -1, false, turno) })
@@ -1302,10 +1321,10 @@ class MainActivity : Activity() {
         else obj.optString("data").take(10).ifBlank { "Sem data" }
     }
 
-    private fun calendario(dataInicial: String = dataHoje()) {
+    private fun calendario(dataInicial: String = dataHoje(), parent: () -> Unit = { inicio() }) {
         if (!exigirGestor()) return
-        val coluna = pagina("Calendário")
-        refreshList = { calendario(dataInicial) }
+        val coluna = pagina("Calendário", parent)
+        refreshList = { calendario(dataInicial, parent) }
         coluna.addView(botao("📅 Escolher data: $dataInicial") {
             val partes = dataInicial.split("/")
             val hoje = java.util.Calendar.getInstance()
@@ -1313,7 +1332,7 @@ class MainActivity : Activity() {
             val mes = partes.getOrNull(1)?.toIntOrNull()?.minus(1) ?: hoje.get(java.util.Calendar.MONTH)
             val ano = partes.getOrNull(2)?.toIntOrNull() ?: hoje.get(java.util.Calendar.YEAR)
             android.app.DatePickerDialog(this, { _, a, m, d ->
-                calendario(String.format(Locale("pt", "BR"), "%02d/%02d/%04d", d, m + 1, a))
+                calendario(String.format(Locale("pt", "BR"), "%02d/%02d/%04d", d, m + 1, a), parent)
             }, ano, mes, dia).show()
         })
         coluna.addView(texto("Registros de $dataInicial", 18f, Color.WHITE))
@@ -1483,57 +1502,77 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun maintenanceCatalog(): JSONArray = synchronized(teamStore?.lock ?: this) {
+        val prefs = getSharedPreferences("registros_v3", 0)
+        val raw = try { JSONArray(prefs.getString("pendencias", "[]")) } catch (_: Exception) { JSONArray() }
+        val merged = MaintenanceRecords.merge(MaintenanceRecords.issues(raw), raw)
+        if (merged.toString() != raw.toString()) prefs.edit().putString("pendencias", merged.toString()).apply()
+        merged
+    }
+    private fun cadastrarEquipamento() {
+        pausarSincronizacao()
+        val input = campo("Número do equipamento (ex.: 21569)")
+        AlertDialog.Builder(this).setTitle("Cadastrar equipamento da equipe").setView(input)
+            .setNegativeButton("Cancelar", null).setPositiveButton("Salvar") { _, _ ->
+                val number = MaintenanceRecords.number(input.text.toString())
+                if (number.isBlank() || number.length > 80) {
+                    Toast.makeText(this, "Informe um equipamento com até 80 caracteres.", Toast.LENGTH_LONG).show()
+                    return@setPositiveButton
+                }
+                synchronized(teamStore?.lock ?: this) {
+                    val all = maintenanceCatalog()
+                    if (MaintenanceRecords.ensureEquipment(all, number)) getSharedPreferences("registros_v3", 0).edit().putString("pendencias", all.toString()).apply()
+                }
+                pendenciasEquipamento(number)
+            }.show()
+    }
     private fun pendencias() {
         val coluna = pagina("Pendências de manutenção")
+        coluna.addView(botao("+ Cadastrar equipamento") { cadastrarEquipamento() })
         coluna.addView(botao("+ Nova pendência") { editarRegistro("pendencias", -1, true) })
-        val arr = dados("pendencias")
-        val grupos = linkedMapOf<String, Int>()
-        for (i in 0 until arr.length()) {
-            val obj = arr.optJSONObject(i) ?: continue
-            if (obj.optBoolean("concluida", false)) continue
-            val equipamento = obj.optString("equipamento").trim().ifBlank { "Sem equipamento" }
-            grupos[equipamento] = (grupos[equipamento] ?: 0) + 1
+        val equipment = MaintenanceRecords.summaries(maintenanceCatalog())
+        coluna.addView(texto("EQUIPAMENTOS DA EQUIPE", 16f, Color.WHITE))
+        for (item in equipment) {
+            val description = if (item.open == 0) "Sem pendências abertas • ${item.completed} concluídas" else "${item.open} em aberto • ${item.completed} concluídas"
+            coluna.addView(cartao("Equipamento ${item.number}", description) { pendenciasEquipamento(item.number) },
+                LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
         }
-        coluna.addView(texto("EQUIPAMENTOS COM PENDÊNCIAS", 16f, Color.WHITE))
-        for ((equipamento, quantidade) in grupos) {
-            coluna.addView(cartao("Equipamento $equipamento", "$quantidade pendência(s) em aberto") {
-                pendenciasEquipamento(equipamento)
-            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
-        }
-        if (grupos.isEmpty()) coluna.addView(texto("Nenhuma pendência em aberto.", 14f))
-        coluna.addView(botao("✓ Histórico de concluídas") { historicoPendencias() })
+        if (equipment.isEmpty()) coluna.addView(texto("Cadastre um equipamento para acompanhar as pendências desta equipe.", 14f))
+        coluna.addView(botao("✓ Histórico de todas as concluídas") { historicoPendencias() })
     }
-
-    private fun pendenciasEquipamento(equipamento: String) {
-        val coluna = pagina("Equipamento $equipamento")
-        refreshList = { pendenciasEquipamento(equipamento) }
-        coluna.addView(botao("+ Adicionar pendência") {
-            editarRegistro("pendencias", -1, true, equipamentoInicial = equipamento)
+    private fun pendenciasEquipamento(equipamento: String, concluidas: Boolean = false) {
+        val number = MaintenanceRecords.number(equipamento)
+        val coluna = pagina(if (concluidas) "Histórico $number" else "Equipamento $number",
+            parent = { if (concluidas) pendenciasEquipamento(number) else pendencias() })
+        refreshList = { pendenciasEquipamento(number, concluidas) }
+        if (!concluidas) coluna.addView(botao("+ Adicionar pendência") {
+            editarRegistro("pendencias", -1, true, equipamentoInicial = number)
         })
         val arr = dados("pendencias")
         var total = 0
         for (i in arr.length() - 1 downTo 0) {
             val obj = arr.optJSONObject(i) ?: continue
-            if (obj.optBoolean("concluida", false) || obj.optString("equipamento").trim() != equipamento) continue
+            if (obj.optBoolean("concluida", false) != concluidas || MaintenanceRecords.number(obj.optString("equipamento")) != number) continue
             total++
-            val idx = i
             coluna.addView(cartao("• " + obj.optString("descricao").ifBlank { "Sem descrição" },
-                "Toque para editar, adicionar fotos ou concluir") { comRegistroAtual("pendencias", obj.optString("id")) { opcoesPendencia(it) } },
-                LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
+                if (concluidas) "Toque para consultar ou reabrir" else "Toque para editar, adicionar fotos ou concluir") {
+                comRegistroAtual("pendencias", obj.optString("id")) { opcoesPendencia(it) }
+            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
         }
-        if (total == 0) coluna.addView(texto("Nenhuma pendência aberta neste equipamento.", 14f))
+        if (total == 0) coluna.addView(texto(if (concluidas) "Nenhuma pendência concluída neste equipamento." else "Nenhuma pendência aberta. O equipamento continua salvo para novos registros.", 14f))
+        coluna.addView(botao(if (concluidas) "Voltar às pendências abertas" else "✓ Histórico deste equipamento") {
+            pendenciasEquipamento(number, !concluidas)
+        })
         coluna.addView(botao("← Voltar aos equipamentos") { pendencias() })
     }
-
     private fun historicoPendencias() {
-        val coluna = pagina("Pendências concluídas")
+        val coluna = pagina("Pendências concluídas", parent = { pendencias() })
         val arr = dados("pendencias")
         var total = 0
         for (i in arr.length() - 1 downTo 0) {
             val obj = arr.optJSONObject(i) ?: continue
             if (!obj.optBoolean("concluida", false)) continue
             total++
-            val idx = i
             coluna.addView(cartao(obj.optString("equipamento", "Equipamento"),
                 obj.optString("descricao") + " • Concluída em " + obj.optString("dataConclusao", "data não registrada")) {
                 comRegistroAtual("pendencias", obj.optString("id")) { opcoesPendencia(it) }
@@ -1558,7 +1597,7 @@ class MainActivity : Activity() {
                 if (concluida) obj.remove("dataConclusao")
                 else obj.put("dataConclusao", java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", Locale("pt", "BR")).format(java.util.Date()))
                 guardar("pendencias", arr)
-                if (concluida) pendencias() else historicoPendencias()
+                pendenciasEquipamento(obj.optString("equipamento"))
             }.show()
     }
 
@@ -1597,12 +1636,12 @@ class MainActivity : Activity() {
                             }.show()
                     }
                     4 -> mudarSituacaoPendencia(idx)
-                    5 -> remover("pendencias", idx) { if (concluida) historicoPendencias() else pendencias() }
+                    5 -> remover("pendencias", idx) { pendenciasEquipamento(obj.optString("equipamento"), concluida) }
                 }
             }.show()
     }
     private fun ocorrenciasCampo(concluidas: Boolean = false) {
-        val coluna = pagina(if (concluidas) "Histórico de ocorrências" else "Ocorrências de campo")
+        val coluna = pagina(if (concluidas) "Histórico de ocorrências" else "Ocorrências de campo", parent = { if (concluidas) ocorrenciasCampo() else inicio() })
         refreshList = { ocorrenciasCampo(concluidas) }
         if (!concluidas) coluna.addView(botao("+ Nova ocorrência") { editarOcorrencia(-1) })
         val arr = dados("ocorrencias_campo")
@@ -1873,6 +1912,15 @@ class MainActivity : Activity() {
         if (!exigirEdicao(key, atual)) return
         val corpo = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(18), dp(8), dp(18), dp(8)) }
         val equipamento = campo(if (foto) "Equipamento" else "Turno (A, B ou C)", (if (foto) atual?.optString("equipamento") ?: equipamentoInicial else atual?.optString("turno") ?: turnoInicial))
+        if (foto) {
+            if (equipamentoInicial.isNotBlank() || atual != null) equipamento.isEnabled = false
+            if (equipamentoInicial.isBlank() && atual == null) corpo.addView(botao("Escolher equipamento salvo") {
+                val equipment = MaintenanceRecords.summaries(maintenanceCatalog())
+                if (equipment.isEmpty()) Toast.makeText(this, "Nenhum equipamento salvo. Informe o número no campo.", Toast.LENGTH_LONG).show()
+                else AlertDialog.Builder(this).setTitle("Equipamentos da equipe")
+                    .setItems(equipment.map { it.number }.toTypedArray()) { _, position -> equipamento.setText(equipment[position].number) }.show()
+            })
+        }
         if (!foto) { equipamento.setText(teamStore!!.team.substringAfterLast('_')); equipamento.isEnabled = false }
         val descricao = campo(if (foto) "Defeito e localização" else "Ocorrências, serviços e pendências", atual?.optString("descricao") ?: "")
         corpo.addView(equipamento)
@@ -1913,9 +1961,13 @@ class MainActivity : Activity() {
         } })
         AlertDialog.Builder(this).setTitle(if (idx < 0) "Novo registro" else "Editar registro")
             .setView(corpo).setNegativeButton("Cancelar", null).setPositiveButton("Salvar") { _, _ ->
+                if (foto && (MaintenanceRecords.number(equipamento.text.toString()).isBlank() || equipamento.text.length > 80 || descricao.text.isBlank())) {
+                    Toast.makeText(this, "Informe o equipamento (até 80 caracteres) e descreva a pendência.", Toast.LENGTH_LONG).show()
+                    return@setPositiveButton
+                }
                 val arr = dados(key)
                 val obj = atual ?: JSONObject().apply { put("id", System.currentTimeMillis().toString()) }
-                obj.put(if (foto) "equipamento" else "turno", if (foto) equipamento.text.toString() else teamStore!!.team.substringAfterLast('_'))
+                obj.put(if (foto) "equipamento" else "turno", if (foto) MaintenanceRecords.number(equipamento.text.toString()) else teamStore!!.team.substringAfterLast('_'))
                 obj.put("descricao", descricao.text.toString())
                 if (!foto) {
                     obj.put("os", osRelatorio.text.toString())
@@ -1998,6 +2050,7 @@ class MainActivity : Activity() {
     private fun biblioteca() {
         refreshList = { biblioteca() }
         telaAtual = "biblioteca"
+        returnToParent = { inicio() }
         mapa?.salvar()
         mapa = null
         chaveAtual = ""
@@ -2128,7 +2181,7 @@ class MainActivity : Activity() {
     }
     private fun renomear(id: String) {
         pausarSincronizacao()
-        if (teamSync?.canEditMap(id) == false) { teamSync?.available(hasWindowFocus() && mapa == null); Toast.makeText(this, "Somente o responsável pelo mapa ou o supervisor pode renomeá-lo.", Toast.LENGTH_LONG).show(); return }
+        if (teamAccess?.manages == true && teamSync?.canEditMap(id) == false) { teamSync?.available(hasWindowFocus() && mapa == null); Toast.makeText(this, "Somente o responsável pelo mapa ou o supervisor pode renomeá-lo.", Toast.LENGTH_LONG).show(); return }
         val entrada = EditText(this).apply {
             setText(nome(id))
             setSingleLine(true)
@@ -2150,14 +2203,14 @@ class MainActivity : Activity() {
 
     private fun excluir(id: String) {
         pausarSincronizacao()
-        if (teamSync?.canEditMap(id) == false) { teamSync?.available(hasWindowFocus() && mapa == null); Toast.makeText(this, "Somente o responsável pelo mapa ou o supervisor pode excluí-lo.", Toast.LENGTH_LONG).show(); return }
+        if (teamAccess?.manages == true && teamSync?.canEditMap(id) == false) { teamSync?.available(hasWindowFocus() && mapa == null); Toast.makeText(this, "Somente o responsável pelo mapa ou o supervisor pode excluí-lo.", Toast.LENGTH_LONG).show(); return }
         AlertDialog.Builder(this)
             .setTitle("Excluir mapa?")
             .setMessage(
                 "Isso também apaga as pinturas e os números de O.S. deste mapa."
             )
             .setPositiveButton("Excluir") { _, _ ->
-                File(pasta(), "$id.pdf").delete()
+                // The PDF may also be used by another local profile. Remove only this profile/catalog reference.
                 prefs().edit().remove(id).apply()
                 getSharedPreferences("pinturas", 0)
                     .edit().remove(id).apply()
@@ -2427,6 +2480,8 @@ class MainActivity : Activity() {
             carregar(imagem, id, geo)
         }
         mapa = visual
+        telaAtual = "mapa"
+        returnToParent = { biblioteca() }
         pausarSincronizacao()
         visual.aoEditarArea = { ferramenta(7, manterPontos = true) }
 
@@ -2750,6 +2805,7 @@ class MainActivity : Activity() {
     }
 
     private fun voltarTela() {
+        returnToParent?.let { it(); return }
         when {
             telaAtual == "inicio" -> moveTaskToBack(true)
             chaveAtual.isNotEmpty() -> biblioteca()

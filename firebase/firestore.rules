@@ -32,6 +32,7 @@ service cloud.firestore {
           && request.resource.data.perfil == request.resource.data.papel
           && frenteValida(request.resource.data.frenteId) && turnoValido(request.resource.data.turno))
         || (supervisorDoUsuario(resource.data)
+          && resource.data.status != 'excluido'
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['papel','perfil','status'])
           && request.resource.data.papel == resource.data.solicitacaoPerfil
           && request.resource.data.perfil == request.resource.data.papel
@@ -39,6 +40,7 @@ service cloud.firestore {
       );
       allow delete: if false;
     }
+    match /configuracao/exclusaoUsuarios { allow get: if principal(); allow list, write: if false; }
     // Readiness probe. No document needs to be created and clients cannot change it.
     match /configuracao/equipes { allow get: if logado(); allow list, write: if false; }
     function grupoOperador(g) { return g in ['pendencias','ocorrencias_campo','mapas','pinturas','arquivos']; }

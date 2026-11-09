@@ -58,6 +58,9 @@ class AdminActivity : Activity() {
                     if (state != "bloqueado") ui.button(item, "Bloquear acesso", true) {
                         if (!busy) confirm(user.id, name, AccessPolicy.role(data).ifEmpty { role }, "bloqueado")
                     }
+                    if (access.primary) ui.button(item, "Excluir usuário", true) {
+                        if (!busy) requestRemoval(user.id, name)
+                    }
                     if (access.primary) ui.button(item, "Ajustar frente e turno", true) {
                         if (!busy) adjustTeam(user.id, name)
                     }
@@ -90,6 +93,37 @@ class AdminActivity : Activity() {
             tx.update(target, mapOf("papel" to role, "perfil" to role, "status" to status))
             null
         }.addOnCompleteListener { busy = false; if (!isDestroyed) { if (it.isSuccessful) load() else notice("Alteração recusada. Atualize a lista e confira suas permissões.") } }
+    }
+    private fun requestRemoval(uid: String, name: String) {
+        val actor = auth.currentUser?.uid ?: return
+        if (!TeamPolicy.primary(actor) || uid == actor || TeamPolicy.primary(uid)) return
+        busy = true
+        db.document("configuracao/exclusaoUsuarios").get(Source.SERVER).addOnCompleteListener {
+            busy = false
+            if (isDestroyed || isFinishing) return@addOnCompleteListener
+            if (!it.isSuccessful) {
+                notice("Antes de excluir usuários, publique o ajuste de permissões desta versão. Ele impede que um supervisor reative um usuário excluído por você.")
+                return@addOnCompleteListener
+            }
+            AlertDialog.Builder(this).setTitle("Excluir acesso de $name?")
+                .setMessage("A pessoa sairá da lista ativa e perderá o acesso ao aplicativo. A matrícula continuará reservada. Registros, pendências e fotos serão preservados.")
+                .setNegativeButton("Cancelar", null).setPositiveButton("Excluir acesso") { _, _ ->
+                    if (busy) return@setPositiveButton
+                    busy = true
+                    val target = db.collection("usuarios").document(uid)
+                    db.runTransaction { tx ->
+                        check(auth.currentUser?.uid == actor && TeamPolicy.primary(actor) && !TeamPolicy.primary(uid))
+                        val data = tx.get(target).data ?: error("Cadastro não encontrado")
+                        val role = AccessPolicy.role(data).takeIf { it in TeamPolicy.leafRoles + "supervisor" } ?: "operador"
+                        tx.update(target, mapOf("status" to "excluido", "papel" to role, "perfil" to role,
+                            "excluidoPor" to actor, "excluidoEm" to com.google.firebase.firestore.FieldValue.serverTimestamp()))
+                        null
+                    }.addOnCompleteListener { result ->
+                        busy = false
+                        if (result.isSuccessful) load() else notice("Não foi possível excluir o acesso. Confira a conexão e tente novamente.")
+                    }
+                }.show()
+        }
     }
     private fun adjustTeam(uid: String, name: String) {
         val body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
