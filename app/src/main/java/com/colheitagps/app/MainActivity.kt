@@ -23,8 +23,62 @@ import java.util.zip.ZipOutputStream
 import java.security.MessageDigest
 import java.util.Locale
 import kotlin.math.*
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
 
 class MainActivity : Activity() {
+    // Permissões obtidas do cadastro aprovado no Firestore.
+    // Falha de rede ou perfil desconhecido: acesso bloqueado.
+    private var papelAtual = ""
+    private var acessoConfirmado = false
+    private fun funcionarioRestrito() = papelAtual == "funcionario"
+    private fun podeGerenciar() = acessoConfirmado &&
+        (papelAtual == "administrador" || papelAtual == "supervisor")
+    private fun exigirGestor(): Boolean {
+        if (podeGerenciar()) return true
+        Toast.makeText(this, "Função exclusiva de supervisor ou administrador", Toast.LENGTH_LONG).show()
+        return false
+    }
+    private fun carregarPermissoes() {
+        val usuario = FirebaseAuth.getInstance().currentUser
+        if (usuario == null) {
+            startActivity(Intent(this, LoginActivity::class.java))
+            finish()
+            return
+        }
+        val espera = tela()
+        espera.addView(texto("Verificando permissões...", 18f).apply {
+            gravity = Gravity.CENTER
+        }, FrameLayout.LayoutParams(-1, -1))
+        setContentView(espera)
+        FirebaseFirestore.getInstance().collection("usuarios").document(usuario.uid).get()
+            .addOnSuccessListener { doc ->
+                val papel = doc.getString("papel").orEmpty().lowercase(Locale.ROOT)
+                if (doc.getString("status") == "aprovado" &&
+                    papel in setOf("administrador", "supervisor", "funcionario")) {
+                    papelAtual = papel
+                    acessoConfirmado = true
+                    apresentacao()
+                } else {
+                    AlertDialog.Builder(this).setTitle("Acesso não autorizado")
+                        .setMessage("Sua conta precisa estar aprovada.")
+                        .setCancelable(false).setPositiveButton("Voltar ao login") { _, _ ->
+                            startActivity(Intent(this, LoginActivity::class.java))
+                            finish()
+                        }.show()
+                }
+            }
+            .addOnFailureListener {
+                AlertDialog.Builder(this).setTitle("Sem verificação de acesso")
+                    .setMessage("Conecte-se à internet para verificar suas permissões.")
+                    .setCancelable(false).setPositiveButton("Tentar novamente") { _, _ ->
+                        carregarPermissoes()
+                    }.setNegativeButton("Voltar") { _, _ ->
+                        startActivity(Intent(this, LoginActivity::class.java))
+                        finish()
+                    }.show()
+            }
+    }
     private val verde = Color.rgb(20,139,81)
     private val escuro = Color.rgb(18,26,22)
     private var raiz: FrameLayout? = null
@@ -203,6 +257,7 @@ class MainActivity : Activity() {
 
 
     private fun exportarBackup() {
+        if (!exigirGestor()) return
         startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
             type = "application/zip"
@@ -238,6 +293,7 @@ class MainActivity : Activity() {
 
 
     private fun solicitarRestauracaoBackup() {
+        if (!exigirGestor()) return
         AlertDialog.Builder(this)
             .setTitle("Restaurar cópia de segurança")
             .setMessage("Os dados atuais poderão ser substituídos. Faça um backup antes de continuar.")
@@ -396,7 +452,7 @@ class MainActivity : Activity() {
         if (Build.VERSION.SDK_INT >= 30) {
             window.setDecorFitsSystemWindows(false)
         }
-        if (savedInstanceState == null) apresentacao() else inicio()
+        carregarPermissoes()
     }
 
     private fun tela(): FrameLayout =
@@ -480,15 +536,15 @@ class MainActivity : Activity() {
                 menu.add("Mapas").setOnMenuItemClickListener { biblioteca(); true }
                 menu.add("Pendências").setOnMenuItemClickListener { pendencias(); true }
                 menu.add("Ocorrências de campo").setOnMenuItemClickListener { ocorrenciasCampo(); true }
-                menu.add("Calendário").setOnMenuItemClickListener { calendario(); true }
-                menu.add("Caminhões").setOnMenuItemClickListener { caminhoes(); true }
-                menu.add("Relatórios de turno").setOnMenuItemClickListener { relatorios(); true }
-                if (titulo == "Estoque de cana") {
+                if (podeGerenciar()) menu.add("Calendário").setOnMenuItemClickListener { calendario(); true }
+                if (podeGerenciar()) menu.add("Caminhões").setOnMenuItemClickListener { caminhoes(); true }
+                if (podeGerenciar()) menu.add("Relatórios de turno").setOnMenuItemClickListener { relatorios(); true }
+                if (podeGerenciar() && titulo == "Estoque de cana") {
                     menu.add("Compartilhar estoque").setOnMenuItemClickListener { escolherCompartilhamentoEstoque(); true }
                     
                 }
-                menu.add("Exportar cópia de segurança").setOnMenuItemClickListener { exportarBackup(); true }
-                menu.add("Restaurar cópia de segurança").setOnMenuItemClickListener { solicitarRestauracaoBackup(); true }
+                if (podeGerenciar()) menu.add("Exportar cópia de segurança").setOnMenuItemClickListener { exportarBackup(); true }
+                if (podeGerenciar()) menu.add("Restaurar cópia de segurança").setOnMenuItemClickListener { solicitarRestauracaoBackup(); true }
                 show()
             } }
         })
@@ -516,6 +572,7 @@ class MainActivity : Activity() {
             Triple("OCORRÊNCIAS DE CAMPO", "Buracos, erosões, estradas e carreadores", 7),
         )
         for ((titulo, subtitulo, tipo) in itens) {
+            if (funcionarioRestrito() && tipo !in setOf(0, 4, 7)) continue
             val item = cartao(titulo, subtitulo) {
                 when (tipo) {
                     0 -> biblioteca()
@@ -537,6 +594,7 @@ class MainActivity : Activity() {
     }
 
     private fun paginaOrdens() {
+        if (!exigirGestor()) return
         val coluna = pagina("Ordens de serviço")
         coluna.addView(texto("Selecione um mapa para consultar ou editar suas O.S.", 14f).apply {
             setPadding(0, dp(16), 0, dp(8))
@@ -593,6 +651,7 @@ class MainActivity : Activity() {
             }.show()
     }
     private fun estoque() {
+        if (!exigirGestor()) return
         val coluna = pagina("Estoque de cana")
         coluna.addView(botao("📅 Abrir calendário") { calendario() })
         coluna.addView(botao("+ Novo estoque") { editarProgressoColheita(true) })
@@ -630,6 +689,7 @@ class MainActivity : Activity() {
         }.sortedBy { it.name }
 
     private fun escolherCompartilhamentoEstoque() {
+        if (!exigirGestor()) return
         val p = progresso()
         if (p.optString("os").isBlank() || p.optString("talhoes").isBlank() ||
             p.optString("areaRestante").isBlank() || p.optString("produtividade").isBlank()) {
@@ -965,6 +1025,7 @@ class MainActivity : Activity() {
     }
 
     private fun relatorios() {
+        if (!exigirGestor()) return
         val coluna = pagina("Relatório diário de turno")
         coluna.addView(texto("Registre o que aconteceu durante o turno, por escrita ou voz.", 14f))
         for (turno in listOf("A", "B", "C")) {
@@ -1054,6 +1115,7 @@ class MainActivity : Activity() {
     }
 
     private fun calendario(dataInicial: String = dataHoje()) {
+        if (!exigirGestor()) return
         val coluna = pagina("Calendário")
         coluna.addView(botao("📅 Escolher data: $dataInicial") {
             val partes = dataInicial.split("/")
@@ -1643,6 +1705,7 @@ class MainActivity : Activity() {
             }.show()
     }
     private fun caminhoes() {
+        if (!exigirGestor()) return
         val coluna = pagina("Controle de caminhões")
         coluna.addView(botao("+ Registrar caminhão") { editarCaminhao(-1) })
         val arr = dados("caminhoes")
