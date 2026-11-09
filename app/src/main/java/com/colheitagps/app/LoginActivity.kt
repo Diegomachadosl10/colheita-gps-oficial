@@ -20,6 +20,7 @@ class LoginActivity : Activity() {
     private val db by lazy { FirebaseFirestore.getInstance() }
     private lateinit var ui: AccessUi
     private var busy = false
+    private var onLoginPage = false
     private var waiting = false
     private var listener: ListenerRegistration? = null
     private var attempt = 0
@@ -39,6 +40,7 @@ class LoginActivity : Activity() {
 
     private fun page(title: String, description: String): LinearLayout {
         waiting = false
+        onLoginPage = false
         listener?.remove(); listener = null
         return ui.page(title, description)
     }
@@ -55,12 +57,13 @@ class LoginActivity : Activity() {
             "ERROR_OPERATION_NOT_ALLOWED" -> "O acesso por senha está indisponível no Firebase. Informe o administrador."
             "ERROR_WEAK_PASSWORD" -> "Escolha uma senha com pelo menos 8 caracteres."
             else -> if (registering) "Não foi possível criar a conta. Confira os dados e tente novamente."
-                else "Matrícula ou senha incorreta. Use a mesma matrícula do cadastro, incluindo zeros à esquerda."
+                else "Identificação ou senha incorreta. Para matrícula, use o mesmo número do cadastro, incluindo zeros à esquerda."
         }
         else -> "Não foi possível concluir. Verifique a conexão e tente novamente."
     }
     private fun login() {
         val card = page("Bem-vindo de volta", "Entre com sua matrícula e senha. O administrador também pode usar seu e-mail cadastrado.")
+        onLoginPage = true
         val id = ui.field(card, "Matrícula ou e-mail do administrador")
         val password = ui.field(card, "Senha", true)
         val enter = ui.button(card, "Entrar") {}
@@ -204,5 +207,8 @@ class LoginActivity : Activity() {
         ui.button(card, "Voltar ao login", true) { logout() }
     }
     @Deprecated("Deprecated in Java")
-    override fun onBackPressed() { if (!busy) logout() }
+    override fun onBackPressed() {
+        if (busy) return
+        if (onLoginPage) finish() else logout()
+    }
 }
