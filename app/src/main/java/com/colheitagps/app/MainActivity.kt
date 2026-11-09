@@ -31,6 +31,7 @@ class MainActivity : Activity() {
     // Falha de rede ou perfil desconhecido: acesso bloqueado.
     private var papelAtual = ""
     private var acessoConfirmado = false
+    private var podeAprovarUsuarios = false
     private fun funcionarioRestrito() = papelAtual == "funcionario" || papelAtual == "operador"
     private fun podeGerenciar() = acessoConfirmado &&
         (papelAtual == "administrador" || papelAtual == "supervisor")
@@ -51,34 +52,31 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER
         }, FrameLayout.LayoutParams(-1, -1))
         setContentView(espera)
-        FirebaseFirestore.getInstance().collection("usuarios").document(usuario.uid).get()
-            .addOnSuccessListener { doc ->
-                val papel = doc.getString("papel").orEmpty().lowercase(Locale.ROOT)
-                if (doc.getString("status") == "aprovado" &&
-                    papel in setOf("administrador", "supervisor", "funcionario", "operador")) {
-                    papelAtual = papel
-                    acessoConfirmado = true
-                    apresentacao()
-                } else {
-                    AlertDialog.Builder(this).setTitle("Acesso não autorizado")
-                        .setMessage("Sua conta precisa estar aprovada.")
-                        .setCancelable(false).setPositiveButton("Voltar ao login") { _, _ ->
-                            startActivity(Intent(this, LoginActivity::class.java))
-                            finish()
-                        }.show()
-                }
-            }
-            .addOnFailureListener {
-                AlertDialog.Builder(this).setTitle("Sem verificação de acesso")
-                    .setMessage("Conecte-se à internet para verificar suas permissões.")
-                    .setCancelable(false).setPositiveButton("Tentar novamente") { _, _ ->
-                        carregarPermissoes()
-                    }.setNegativeButton("Voltar") { _, _ ->
-                        startActivity(Intent(this, LoginActivity::class.java))
-                        finish()
+        AccessRepository.load(this, { data ->
+            if (AccessPolicy.approved(data)) {
+                papelAtual = AccessPolicy.role(data)
+                podeAprovarUsuarios = AccessPolicy.canApprove(data)
+                acessoConfirmado = true
+                apresentacao()
+            } else {
+                acessoConfirmado = false
+                AlertDialog.Builder(this).setTitle("Acesso não autorizado")
+                    .setMessage("Sua conta precisa de aprovação e de um perfil válido. Procure o administrador principal.")
+                    .setCancelable(false).setPositiveButton("Voltar ao login") { _, _ ->
+                        AccessRepository.logout(this)
                     }.show()
             }
+        }, {
+            AlertDialog.Builder(this).setTitle("Sem verificação de acesso")
+                .setMessage("Conecte-se à internet para verificar suas permissões.")
+                .setCancelable(false).setPositiveButton("Tentar novamente") { _, _ ->
+                    carregarPermissoes()
+                }.setNegativeButton("Voltar ao login") { _, _ ->
+                    AccessRepository.logout(this)
+                }.show()
+        })
     }
+
     private val verde = Color.rgb(20,139,81)
     private val escuro = Color.rgb(18,26,22)
     private var raiz: FrameLayout? = null
@@ -532,6 +530,11 @@ class MainActivity : Activity() {
             text = "⋮"; textSize = 26f; setTextColor(Color.WHITE)
             setPadding(dp(12), 0, dp(8), 0)
             setOnClickListener { v -> PopupMenu(this@MainActivity, v).apply {
+                menu.add("Sair da conta").setOnMenuItemClickListener {
+                    mapa?.salvar()
+                    AccessRepository.logout(this@MainActivity)
+                    true
+                }
                 menu.add("Início").setOnMenuItemClickListener { inicio(); true }
                 menu.add("Mapas").setOnMenuItemClickListener { biblioteca(); true }
                 menu.add("Pendências").setOnMenuItemClickListener { pendencias(); true }
@@ -571,7 +574,7 @@ class MainActivity : Activity() {
             Triple("📅 CALENDÁRIO", "Consultar estoques, pendências e relatórios por dia", 6),
             Triple("OCORRÊNCIAS DE CAMPO", "Buracos, erosões, estradas e carreadores", 7),
         )
-        if (podeGerenciar()) {
+        if (acessoConfirmado && podeAprovarUsuarios) {
             coluna.addView(cartao("APROVAR USUÁRIOS", "Gerenciar solicitações de acesso") {
                 startActivity(Intent(this, AdminActivity::class.java))
             }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(16) })

@@ -2,8 +2,16 @@ name: Gerar APK Colheita GPS
 
 on:
   push:
-    branches: [main]
+    branches: [main, dm-agro-login]
   workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Serializa builds da mesma ramificação para manter a chave de teste no cache.
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -19,16 +27,34 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Configurar Android SDK
+        uses: android-actions/setup-android@v3
+
       - name: Configurar Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
 
-      - name: Gerar APK
-        run: gradle assembleDebug --no-daemon
+      - name: Preservar assinatura dos próximos APKs de teste
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: dm-agro-debug-keystore-v1-${{ github.ref_name }}
+
+      - name: Testar permissões e gerar APK
+        run: gradle testDebugUnitTest assembleDebug --no-daemon
 
       - name: Disponibilizar APK
         uses: actions/upload-artifact@v4
         with:
-          name: Colheita-GPS-APK
+          name: DM-AGRO-APK
           path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+      - name: Disponibilizar resultados dos testes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: DM-AGRO-Testes
+          path: app/build/reports/tests/testDebugUnitTest/
+          if-no-files-found: ignore

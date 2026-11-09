@@ -1,125 +1,208 @@
 package com.colheitagps.app
 
-import android.app.*
-import android.content.*
-import android.graphics.Color
+import android.app.Activity
+import android.app.AlertDialog
+import android.content.Intent
 import android.os.Bundle
 import android.text.InputType
-import android.view.*
-import android.widget.*
+import android.widget.LinearLayout
+import com.google.firebase.FirebaseNetworkException
+import com.google.firebase.FirebaseTooManyRequestsException
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.FirebaseAuthException
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.ListenerRegistration
+import com.google.firebase.firestore.MetadataChanges
 
 class LoginActivity : Activity() {
     private val auth by lazy { FirebaseAuth.getInstance() }
     private val db by lazy { FirebaseFirestore.getInstance() }
-    private lateinit var root: LinearLayout
-    private val frentes = arrayOf("Santo Inácio","Santa Inês","Itororó","Cafeara","Lupionópolis","Colorado","Sandovalina","Jardim Olinda","Itaguajé")
-    private val ids = arrayOf("santo_inacio","santa_ines","itororo","cafeara","lupionopolis","colorado","sandovalina","jardim_olinda","itaguaje")
-    private fun interno(m: String) = "matricula.${m}@acesso.dm-agro.app"
-    private fun aviso(s: String) = AlertDialog.Builder(this).setMessage(s).setPositiveButton("OK",null).show()
-    private fun campo(h: String, password: Boolean = false) = EditText(this).apply {
-        hint=h; setSingleLine(true); textSize=16f
-        inputType=if(password) InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD else InputType.TYPE_CLASS_TEXT
+    private lateinit var ui: AccessUi
+    private var busy = false
+    private var waiting = false
+    private var listener: ListenerRegistration? = null
+    private var attempt = 0
+    private val frentes = arrayOf("Santo Inácio", "Santa Inês", "Itororó", "Cafeara", "Lupionópolis", "Colorado", "Sandovalina", "Jardim Olinda", "Itaguajé")
+    private val ids = arrayOf("santo_inacio", "santa_ines", "itororo", "cafeara", "lupionopolis", "colorado", "sandovalina", "jardim_olinda", "itaguaje")
+    private fun notice(message: String) {
+        if (!isFinishing && !isDestroyed) AlertDialog.Builder(this).setMessage(message).setPositiveButton("OK", null).show()
     }
-    private fun titulo(s: String) { root.addView(TextView(this).apply { text=s; textSize=23f; setTextColor(Color.rgb(16,70,48)); setPadding(0,12,0,20) }) }
-    private fun botao(s:String, click:()->Unit) { root.addView(Button(this).apply { text=s; isAllCaps=false; setOnClickListener { click() } }) }
-    private fun add(v:View) { root.addView(v,LinearLayout.LayoutParams(-1,-2)) }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        root=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(28,32,28,28) }
-        setContentView(ScrollView(this).apply { addView(root) })
-        if(auth.currentUser!=null) verificarAcesso() else entrar()
+        ui = AccessUi(this)
+        if (auth.currentUser == null) login() else verify()
     }
-    private fun entrar() {
-        root.removeAllViews(); titulo("DM AGRO — Entrar")
-        val matricula=campo("Matrícula ou e-mail do administrador")
-        val senha=campo("Senha",true)
-        add(matricula); add(senha)
-        botao("Entrar") {
-            val id=matricula.text.toString().trim()
-            val pass=senha.text.toString()
-            if(id.isBlank()||pass.isBlank()) { aviso("Informe matrícula e senha."); return@botao }
-            val email=if(id.contains("@")) id else if(id.matches(Regex("[0-9]{1,20}"))) interno(id) else {
-                aviso("Informe uma matrícula numérica ou o e-mail do administrador."); return@botao
-            }
-            auth.signInWithEmailAndPassword(email,pass).addOnSuccessListener { verificarAcesso() }
-                .addOnFailureListener { aviso("Não foi possível entrar. Confira matrícula e senha.") }
-        }
-        botao("Criar conta") { cadastro() }
-        botao("Esqueci minha senha (administrador)") {
-            val e=matricula.text.toString().trim()
-            if(!e.contains("@")) aviso("Para contas por matrícula, solicite ao administrador a recuperação de acesso.")
-            else auth.sendPasswordResetEmail(e).addOnSuccessListener { aviso("Confira seu e-mail.") }
-                .addOnFailureListener { aviso("Não foi possível enviar a recuperação.") }
-        }
+    override fun onStart() { super.onStart(); if (waiting) watchApproval() }
+    override fun onStop() { listener?.remove(); listener = null; super.onStop() }
+    override fun onDestroy() { attempt++; listener?.remove(); super.onDestroy() }
+
+    private fun page(title: String, description: String): LinearLayout {
+        waiting = false
+        listener?.remove(); listener = null
+        return ui.page(title, description)
     }
-    private fun cadastro() {
-        root.removeAllViews(); titulo("Solicitar acesso — DM AGRO")
-        val matricula=campo("Número de matrícula")
-        matricula.inputType=InputType.TYPE_CLASS_NUMBER
-        val nome=campo("Nome completo")
-        val frente=Spinner(this).apply { adapter=ArrayAdapter(this@LoginActivity,android.R.layout.simple_spinner_dropdown_item,frentes) }
-        val turno=Spinner(this).apply { adapter=ArrayAdapter(this@LoginActivity,android.R.layout.simple_spinner_dropdown_item,arrayOf("A","B","C")); setSelection(2) }
-        val perfil=Spinner(this).apply { adapter=ArrayAdapter(this@LoginActivity,android.R.layout.simple_spinner_dropdown_item,arrayOf("Operador","Supervisor")) }
-        val funcao=campo("Função (ex.: operador de colhedora)")
-        val senha=campo("Criar senha (mínimo 8 caracteres)",true)
-        val confirmar=campo("Confirmar senha",true)
-        add(matricula);add(nome)
-        add(TextView(this).apply { text="Frente" });add(frente)
-        add(TextView(this).apply { text="Turno" });add(turno)
-        add(TextView(this).apply { text="Tipo de acesso solicitado" });add(perfil)
-        add(funcao);add(senha);add(confirmar)
-        botao("Solicitar cadastro") {
-            val m=matricula.text.toString().trim()
-            val n=nome.text.toString().trim()
-            val s=senha.text.toString()
-            if(!m.matches(Regex("[0-9]{1,20}"))||n.length<3||s.length<8||s!=confirmar.text.toString()) {
-                aviso("Confira matrícula numérica, nome e senhas iguais com pelo menos 8 caracteres.");return@botao
+    private fun logout() {
+        attempt++; busy = false
+        auth.signOut(); login()
+    }
+    private fun errorMessage(error: Exception, registering: Boolean = false): String = when {
+        error is FirebaseNetworkException -> "Sem conexão com o serviço de acesso. Verifique a internet e tente novamente."
+        error is FirebaseTooManyRequestsException -> "Muitas tentativas. Aguarde alguns minutos e tente novamente."
+        error is FirebaseAuthException -> when (error.errorCode) {
+            "ERROR_EMAIL_ALREADY_IN_USE" -> "Esta matrícula já possui uma conta. Use Entrar com a senha cadastrada."
+            "ERROR_USER_DISABLED" -> "Esta conta foi desativada. Procure o administrador principal."
+            "ERROR_OPERATION_NOT_ALLOWED" -> "O acesso por senha está indisponível no Firebase. Informe o administrador."
+            "ERROR_WEAK_PASSWORD" -> "Escolha uma senha com pelo menos 8 caracteres."
+            else -> if (registering) "Não foi possível criar a conta. Confira os dados e tente novamente."
+                else "Matrícula ou senha incorreta. Use a mesma matrícula do cadastro, incluindo zeros à esquerda."
+        }
+        else -> "Não foi possível concluir. Verifique a conexão e tente novamente."
+    }
+    private fun login() {
+        val card = page("Bem-vindo de volta", "Entre com sua matrícula e senha. O administrador também pode usar seu e-mail cadastrado.")
+        val id = ui.field(card, "Matrícula ou e-mail do administrador")
+        val password = ui.field(card, "Senha", true)
+        val enter = ui.button(card, "Entrar") {}
+        enter.setOnClickListener {
+            if (busy) return@setOnClickListener
+            val value = id.text.toString().trim()
+            val secret = password.text.toString()
+            val email = when {
+                value.matches(Regex("[0-9]{1,20}")) -> AccessPolicy.internalEmail(value)
+                android.util.Patterns.EMAIL_ADDRESS.matcher(value).matches() -> value
+                else -> { notice("Informe a matrícula numérica ou o e-mail cadastrado do administrador."); return@setOnClickListener }
             }
-            val solicitado=if(perfil.selectedItemPosition==1) "supervisor" else "operador"
-            // Authentication uses an internal address; no personal email is collected.
-            auth.createUserWithEmailAndPassword(interno(m),s).addOnSuccessListener {
-                val uid=auth.currentUser?.uid ?: return@addOnSuccessListener
-                val dados=hashMapOf<String,Any>(
-                    "nome" to n, "matricula" to m, "frenteId" to ids[frente.selectedItemPosition],
-                    "turno" to turno.selectedItem.toString(), "funcao" to funcao.text.toString().trim(),
-                    "papel" to "operador", "perfil" to "operador", "solicitacaoPerfil" to solicitado,
-                    "status" to "pendente", "criadoEm" to FieldValue.serverTimestamp()
-                )
-                db.collection("usuarios").document(uid).set(dados).addOnSuccessListener { verificarAcesso() }
-                    .addOnFailureListener {
-                        auth.signOut(); entrar()
-                        aviso("Conta criada, mas não foi possível salvar a solicitação. Procure o administrador.")
+            if (secret.isBlank()) { notice("Informe sua senha."); return@setOnClickListener }
+            busy = true; enter.isEnabled = false; enter.text = "Entrando…"
+            auth.signInWithEmailAndPassword(email, secret).addOnCompleteListener { result ->
+                if (isDestroyed) return@addOnCompleteListener
+                busy = false; enter.isEnabled = true; enter.text = "Entrar"
+                if (result.isSuccessful) verify() else notice(errorMessage(result.exception ?: Exception()))
+            }
+        }
+        ui.button(card, "Solicitar acesso", true) { if (!busy) register() }
+        ui.button(card, "Recuperar senha", true) {
+            if (!busy) {
+                val email = id.text.toString().trim()
+                if (!email.contains("@") || email.endsWith("@acesso.dm-agro.app", true)) {
+                    notice("Contas por matrícula não usam e-mail pessoal. Para recuperar uma senha esquecida, procure o administrador principal. Não crie outra conta para a mesma matrícula.")
+                } else {
+                    busy = true
+                    auth.sendPasswordResetEmail(email).addOnCompleteListener {
+                        busy = false
+                        notice(if (it.isSuccessful) "Se este e-mail estiver cadastrado, você receberá as instruções de recuperação." else errorMessage(it.exception ?: Exception()))
                     }
-            }.addOnFailureListener { aviso("Não foi possível cadastrar. Matrícula já utilizada ou falha de conexão.") }
-        }
-        botao("Voltar para entrar") { entrar() }
-    }
-    private fun verificarAcesso() {
-        val user=auth.currentUser ?: run { entrar();return }
-        root.removeAllViews();titulo("Verificando autorização...")
-        db.collection("usuarios").document(user.uid).get().addOnSuccessListener { d ->
-            when(d.getString("status")) {
-                "aprovado" -> if(d.getString("papel")=="administrador") painelAdmin() else {
-                    startActivity(Intent(this,MainActivity::class.java));finish()
                 }
-                "bloqueado" -> pendente("Seu acesso foi bloqueado.")
-                else -> pendente("Aguardando aprovação. Operadores: supervisor da frente. Supervisores: administrador.")
             }
-        }.addOnFailureListener { pendente("Não foi possível consultar sua autorização. Verifique a conexão.") }
+        }
     }
-    private fun painelAdmin() {
-        root.removeAllViews();titulo("DM AGRO — Administrador")
-        botao("Abrir aplicativo") { startActivity(Intent(this,MainActivity::class.java));finish() }
-        botao("Gerenciar usuários") { startActivity(Intent(this,AdminActivity::class.java)) }
-        botao("Sair") { auth.signOut();entrar() }
+    private fun register(existing: Boolean = false) {
+        val card = page(if (existing) "Concluir solicitação" else "Solicitar acesso",
+            "Operadores e supervisores só entram após a aprovação do administrador principal. Não é necessário e-mail pessoal.")
+        val matricula = ui.field(card, "Número de matrícula").apply { inputType = InputType.TYPE_CLASS_NUMBER }
+        if (existing) {
+            matricula.setText(auth.currentUser?.email?.substringBefore("@")?.removePrefix("matricula."))
+            matricula.isEnabled = false
+        }
+        val name = ui.field(card, "Nome completo")
+        val front = ui.spinner(card, "Frente", frentes)
+        val shift = ui.spinner(card, "Turno", arrayOf("A", "B", "C")).apply { setSelection(2) }
+        val role = ui.spinner(card, "Tipo de acesso solicitado", arrayOf("Operador", "Supervisor"))
+        val job = ui.field(card, "Função (ex.: operador de colhedora)")
+        val password = if (!existing) ui.field(card, "Criar senha (mínimo 8 caracteres)", true) else null
+        val confirmation = if (!existing) ui.field(card, "Confirmar senha", true) else null
+        val submit = ui.button(card, "Enviar solicitação") {}
+        submit.setOnClickListener {
+            if (busy) return@setOnClickListener
+            val m = matricula.text.toString().trim()
+            val n = name.text.toString().trim()
+            val secret = password?.text?.toString().orEmpty()
+            if (!m.matches(Regex("[0-9]{1,20}")) || n.length < 3 ||
+                (!existing && (secret.length < 8 || secret != confirmation?.text?.toString()))) {
+                notice("Confira a matrícula, o nome e as senhas iguais com pelo menos 8 caracteres.")
+                return@setOnClickListener
+            }
+            val data = hashMapOf<String, Any>(
+                "nome" to n, "matricula" to m, "frenteId" to ids[front.selectedItemPosition],
+                "turno" to shift.selectedItem.toString(), "funcao" to job.text.toString().trim(),
+                "papel" to "operador", "perfil" to "operador",
+                "solicitacaoPerfil" to if (role.selectedItemPosition == 1) "supervisor" else "operador",
+                "status" to "pendente", "criadoEm" to FieldValue.serverTimestamp()
+            )
+            busy = true; submit.isEnabled = false; submit.text = "Enviando…"
+            fun saveRequest() {
+                val user = auth.currentUser ?: run { busy = false; login(); return }
+                val doc = db.collection("usuarios").document(user.uid)
+                // A retry may create the missing request, but can never replace an approved profile.
+                db.runTransaction { transaction ->
+                    if (!transaction.get(doc).exists()) transaction.set(doc, data)
+                    null
+                }.addOnCompleteListener {
+                    if (isDestroyed) return@addOnCompleteListener
+                    busy = false
+                    if (it.isSuccessful) verify() else {
+                        register(true)
+                        notice("Sua conta de acesso foi criada, mas a solicitação não foi salva. Confira a internet e toque em Enviar solicitação. Se sair, entre novamente com a mesma matrícula e senha para concluir.")
+                    }
+                }
+            }
+            if (existing) saveRequest() else auth.createUserWithEmailAndPassword(AccessPolicy.internalEmail(m), secret)
+                .addOnCompleteListener {
+                    if (isDestroyed) return@addOnCompleteListener
+                    if (it.isSuccessful) saveRequest() else {
+                        busy = false; submit.isEnabled = true; submit.text = "Enviar solicitação"
+                        notice(errorMessage(it.exception ?: Exception(), true))
+                    }
+                }
+        }
+        ui.button(card, "Voltar ao login", true) { if (!busy) logout() }
     }
-    private fun pendente(s:String) {
-        root.removeAllViews();titulo("Status da conta")
-        add(TextView(this).apply { text=s })
-        botao("Verificar novamente") { verificarAcesso() }
-        botao("Sair") { auth.signOut();entrar() }
+    private fun verify() {
+        if (auth.currentUser == null) { login(); return }
+        val token = ++attempt
+        page("Verificando acesso", "Consultando sua autorização no servidor…")
+        AccessRepository.load(this, { data ->
+            if (token != attempt || isDestroyed) return@load
+            when {
+                data == null -> {
+                    if (auth.currentUser?.email?.matches(Regex("matricula\\.[0-9]{1,20}@acesso\\.dm-agro\\.app")) == true) register(true)
+                    else status("Cadastro não localizado", "O administrador precisa conferir o documento usuarios com o UID desta conta. A sessão sozinha não autoriza acesso.")
+                }
+                AccessPolicy.approved(data) -> if (AccessPolicy.canApprove(data)) adminPanel() else openApp()
+                AccessPolicy.normalized(data["status"]) == "bloqueado" -> status("Acesso bloqueado", "Procure o administrador principal para revisar seu acesso.")
+                AccessPolicy.normalized(data["status"]) == "aprovado" -> status("Perfil precisa de revisão", "Sua conta foi aprovada, mas o perfil está ausente ou inválido. Peça ao administrador para conferir o cadastro.")
+                else -> {
+                    status("Aguardando aprovação", "Sua solicitação foi enviada. Somente o administrador principal pode aprovar operadores e supervisores. Esta tela acompanha a aprovação quando há conexão.")
+                    waiting = true; watchApproval()
+                }
+            }
+        }, {
+            if (token == attempt && !isDestroyed) status("Não foi possível verificar", "Conecte-se à internet e tente novamente. Sua aprovação será consultada no servidor.")
+        })
     }
+    private fun watchApproval() {
+        if (listener != null || !waiting) return
+        val uid = auth.currentUser?.uid ?: return
+        listener = db.collection("usuarios").document(uid).addSnapshotListener(MetadataChanges.INCLUDE) { doc, _ ->
+            if (!waiting || isDestroyed || auth.currentUser?.uid != uid || doc == null || doc.metadata.isFromCache) return@addSnapshotListener
+            if (AccessPolicy.normalized(doc.data?.get("status")) in setOf("aprovado", "bloqueado")) verify()
+        }
+    }
+    private fun openApp() {
+        startActivity(Intent(this, MainActivity::class.java)); finish()
+    }
+    private fun adminPanel() {
+        val card = page("Painel do administrador", "Controle de acesso exclusivo do administrador principal.")
+        ui.button(card, "Abrir aplicativo") { openApp() }
+        ui.button(card, "Gerenciar usuários", true) { startActivity(Intent(this, AdminActivity::class.java)) }
+        ui.button(card, "Sair da conta", true) { logout() }
+    }
+    private fun status(title: String, message: String) {
+        val card = page(title, message)
+        ui.button(card, "Verificar novamente") { verify() }
+        ui.button(card, "Voltar ao login", true) { logout() }
+    }
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() { if (!busy) logout() }
 }
