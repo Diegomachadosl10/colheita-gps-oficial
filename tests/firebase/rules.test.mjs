@@ -88,6 +88,24 @@ test('assinante do supervisor recebe a criação do operador', async () => {
   await setDoc(doc(db('opA'),'equipes',team,'registros','live'),record());
   await received;
 });
+test('chuva por turno usa as regras existentes, com correção pelo autor ou gestor e isolamento entre equipes', async () => {
+  const key='chuva_2026-11-09';
+  const path=['equipes',team,'registros',key];
+  const rain=record('opA','ocorrencias_campo',1,{chave:key,conteudo:JSON.stringify({id:key,categoriaRegistro:'chuva',dataCadastro:'09/11/2026',chuvaMm:'0',frenteId:'santo_inacio',turno:'A'})});
+  await assertSucceeds(setDoc(doc(db('opA'),...path),rain));
+  const snapshot=await assertSucceeds(getDoc(doc(db('supA'),...path)));
+  assert.equal(JSON.parse(snapshot.data().conteudo).chuvaMm,'0');
+  await assertSucceeds(getDoc(doc(db(owner),...path)));
+  await assertSucceeds(getDoc(doc(db('opA2'),...path)));
+  await assertFails(getDoc(doc(db('supB'),...path)));
+  await assertFails(getDoc(doc(db('supOutra'),...path)));
+  await assertFails(updateDoc(doc(db('opA2'),...path),{editadoPor:'opA2',versao:2,atualizadoEm:serverTimestamp(),conteudo:rain.conteudo}));
+  await assertSucceeds(updateDoc(doc(db('opA'),...path),{editadoPor:'opA',versao:2,atualizadoEm:serverTimestamp(),conteudo:JSON.stringify({...JSON.parse(rain.conteudo),chuvaMm:'12.5'})}));
+  await assertSucceeds(updateDoc(doc(db('supA'),...path),{editadoPor:'supA',versao:3,atualizadoEm:serverTimestamp(),conteudo:JSON.stringify({...JSON.parse(rain.conteudo),chuvaMm:'15'})}));
+  const shiftB=['equipes','santo_inacio_B','registros',key];
+  await assertSucceeds(setDoc(doc(db('opB'),...shiftB),{...rain,autorUid:'opB',editadoPor:'opB',equipeId:'santo_inacio_B',turno:'B'}));
+  assert.equal(JSON.parse((await getDoc(doc(db('supA'),...path))).data().conteudo).chuvaMm,'15');
+});
 test('pendências antigas sem equipe não são liberadas a todos os supervisores', async () => {
   await env.withSecurityRulesDisabled(c => setDoc(doc(c.firestore(),'pendencias','antiga'),{autorId:'opA',descricao:'Legado'}));
   await assertSucceeds(getDoc(doc(db(owner),'pendencias','antiga')));

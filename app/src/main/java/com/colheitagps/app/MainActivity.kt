@@ -701,6 +701,7 @@ class MainActivity : Activity() {
                 menu.add("Mapas").setOnMenuItemClickListener { biblioteca(); true }
                 menu.add("Pendências").setOnMenuItemClickListener { pendencias(); true }
                 menu.add("Ocorrências de campo").setOnMenuItemClickListener { ocorrenciasCampo(); true }
+                menu.add("Registro de chuva").setOnMenuItemClickListener { chuvas(); true }
                 if (podeGerenciar()) menu.add("Calendário").setOnMenuItemClickListener { calendario(); true }
                 if (podeGerenciar()) menu.add("Caminhões").setOnMenuItemClickListener { caminhoes(); true }
                 if (podeGerenciar()) menu.add("Relatórios de turno").setOnMenuItemClickListener { relatorios(); true }
@@ -766,6 +767,7 @@ class MainActivity : Activity() {
             Triple("CAMINHÕES", "Chegada e saída por voz ou digitação", 5),
             Triple("📅 CALENDÁRIO", "Consultar estoques, pendências e relatórios por dia", 6),
             Triple("OCORRÊNCIAS DE CAMPO", "Buracos, erosões, estradas e carreadores", 7),
+            Triple("REGISTRO DE CHUVA", "Chuva em milímetros por data e turno", 8),
         )
         if (acessoConfirmado && podeAprovarUsuarios) {
             coluna.addView(cartao(if (teamAccess?.primary == true) "GERENCIAR USUÁRIOS" else "APROVAR MINHA EQUIPE", "Gerenciar solicitações de acesso") {
@@ -773,7 +775,7 @@ class MainActivity : Activity() {
             }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(16) })
         }
         for ((titulo, subtitulo, tipo) in itens) {
-            if (funcionarioRestrito() && tipo !in setOf(0, 4, 7)) continue
+            if (funcionarioRestrito() && tipo !in setOf(0, 4, 7, 8)) continue
             val item = cartao(titulo, subtitulo) {
                 when (tipo) {
                     0 -> biblioteca()
@@ -784,6 +786,7 @@ class MainActivity : Activity() {
                     5 -> caminhoes()
                     6 -> calendario()
                     7 -> ocorrenciasCampo()
+                    8 -> chuvas()
                     else -> relatoriosTurno()
                 }
             }
@@ -1376,11 +1379,21 @@ class MainActivity : Activity() {
         val ocorrencias = dados("ocorrencias_campo")
         for (i in ocorrencias.length() - 1 downTo 0) {
             val item = ocorrencias.optJSONObject(i) ?: continue
+            if (RainRecords.isRain(item)) continue
             if (dataRegistro(item) != dataInicial) continue
             encontrados++
             val idx = i
             coluna.addView(cartao(item.optString("tipo"), item.optString("localizacao")) { comRegistroAtual("ocorrencias_campo", item.optString("id")) { opcoesOcorrencia(it) } },
                 LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
+        }
+        coluna.addView(texto("CHUVA DO TURNO", 16f, 0xFF80DDAA.toInt()))
+        for (item in RainRecords.readings(ocorrencias).filter { it.optString("dataCadastro") == dataInicial }) {
+            encontrados++
+            coluna.addView(cartao("Chuva • ${RainRecords.label(item)}", item.optString("observacaoChuva")) {
+                comRegistroAtual(RainRecords.GROUP, item.optString("id")) { index ->
+                    dados(RainRecords.GROUP).optJSONObject(index)?.let { detalhesChuva(it) }
+                }
+            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
         }
         if (encontrados == 0) coluna.addView(texto("Nenhum registro nesta data.", 14f))
     }
@@ -1640,6 +1653,133 @@ class MainActivity : Activity() {
                 }
             }.show()
     }
+    private fun chuvas() {
+        val store = teamStore ?: return
+        val coluna = pagina("Registro de chuva")
+        refreshList = { chuvas() }
+        coluna.addView(texto(TeamPolicy.label(store.team), 17f, 0xFF80DDAA.toInt()).apply {
+            setPadding(0, dp(16), 0, dp(8))
+        })
+        val leituras = RainRecords.readings(dados(RainRecords.GROUP))
+        val hoje = leituras.firstOrNull { it.optString("dataCadastro") == dataHoje() }
+        coluna.addView(cartao("HOJE • ${dataHoje()}", hoje?.let(RainRecords::label) ?: "Chuva ainda não registrada") {
+            formularioChuva(dataHoje())
+        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
+        coluna.addView(botao("+ Registrar chuva por data") {
+            val hojeData = java.util.Calendar.getInstance()
+            DatePickerDialog(this, { _, ano, mes, dia ->
+                formularioChuva(String.format(Locale.ROOT, "%02d/%02d/%04d", dia, mes + 1, ano))
+            }, hojeData.get(java.util.Calendar.YEAR), hojeData.get(java.util.Calendar.MONTH),
+                hojeData.get(java.util.Calendar.DAY_OF_MONTH)).apply {
+                datePicker.maxDate = System.currentTimeMillis()
+            }.show()
+        })
+        coluna.addView(texto("Um acumulado por dia e turno. Informe 0 quando não chover. Ao corrigir, substitua pelo acumulado completo do turno.",
+            14f, 0xFFB6C9BD.toInt()).apply { setPadding(0, dp(8), 0, dp(16)) })
+        coluna.addView(texto("HISTÓRICO DO TURNO", 17f, 0xFF80DDAA.toInt()))
+        if (leituras.isEmpty()) coluna.addView(texto("Nenhum registro de chuva nesta equipe.", 15f))
+        for (leitura in leituras) {
+            coluna.addView(cartao("${leitura.optString("dataCadastro")} • ${RainRecords.label(leitura)}",
+                leitura.optString("observacaoChuva").ifBlank { "Sem observação" } +
+                    "\nRegistrado por: " + leitura.optString("registradoPorNome", "Usuário")) {
+                comRegistroAtual(RainRecords.GROUP, leitura.optString("id")) { index ->
+                    dados(RainRecords.GROUP).optJSONObject(index)?.let { registro -> detalhesChuva(registro) }
+                }
+            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
+        }
+    }
+
+    private fun podeEditarChuva(registro: JSONObject) =
+        (teamAccess?.manages == true || registro.optString("registradoPorUid") == teamAccess?.uid) &&
+            teamSync?.canEdit(RainRecords.GROUP, registro.optString("id")) != false
+
+    private fun detalhesChuva(registro: JSONObject) {
+        val dialogo = AlertDialog.Builder(this).setTitle("Chuva • ${registro.optString("dataCadastro")}")
+            .setMessage("${TeamPolicy.label(teamStore!!.team)}\nAcumulado do turno: ${RainRecords.label(registro)}\n" +
+                "Registrado por: ${registro.optString("registradoPorNome")}\n\n" +
+                registro.optString("observacaoChuva").ifBlank { "Sem observação" })
+            .setNegativeButton("Fechar", null)
+        val editavel = podeEditarChuva(registro)
+        if (editavel) dialogo.setPositiveButton("Corrigir registro", null)
+        val exibido = dialogo.show()
+        exibido.setOnDismissListener { teamSync?.available(hasWindowFocus() && mapa == null) }
+        if (editavel) exibido.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            exibido.setOnDismissListener(null)
+            exibido.dismiss()
+            formularioChuva(registro.optString("dataCadastro"))
+        }
+    }
+
+    private fun formularioChuva(data: String) {
+        val store = teamStore ?: return
+        val access = teamAccess ?: return
+        val dia = RainRecords.date(data) ?: return
+        pausarSincronizacao()
+        val atual = RainRecords.readings(dados(RainRecords.GROUP)).firstOrNull { it.optString("id") == RainRecords.id(dia) }
+        if (atual != null && !podeEditarChuva(atual)) {
+            detalhesChuva(atual)
+            return
+        }
+        val corpo = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(22), dp(8), dp(22), dp(12))
+        }
+        corpo.addView(texto("${TeamPolicy.label(store.team)}\nData: $data", 16f, 0xFF80DDAA.toInt()))
+        corpo.addView(texto("Chuva acumulada do turno (mm)", 16f).apply { setPadding(0, dp(18), 0, dp(4)) })
+        val volume = campo("Ex.: 12,5 ou 0", atual?.optString("chuvaMm")?.replace('.', ',') ?: "").apply {
+            setTextColor(Color.WHITE); setHintTextColor(0xFFB6C9BD.toInt())
+            backgroundTintList = ColorStateList.valueOf(verde)
+            setSingleLine(true)
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
+            filters = arrayOf(android.text.InputFilter.LengthFilter(7))
+        }
+        corpo.addView(volume)
+        corpo.addView(texto("Observação (opcional)", 16f).apply { setPadding(0, dp(14), 0, dp(4)) })
+        val observacao = campo("Ex.: chuva durante a madrugada", atual?.optString("observacaoChuva") ?: "").apply {
+            setTextColor(Color.WHITE); setHintTextColor(0xFFB6C9BD.toInt())
+            backgroundTintList = ColorStateList.valueOf(verde)
+            filters = arrayOf(android.text.InputFilter.LengthFilter(1000))
+        }
+        corpo.addView(observacao)
+        corpo.addView(texto("Registre o total deste turno. Não some novamente o que já foi informado.", 14f,
+            0xFFB6C9BD.toInt()).apply { setPadding(0, dp(14), 0, 0) })
+        val dialogo = AlertDialog.Builder(this)
+            .setCustomTitle(texto(if (atual == null) "Registrar chuva" else "Corrigir chuva", 22f).apply {
+                setPadding(dp(22), dp(22), dp(22), dp(12)); setTypeface(null, Typeface.BOLD)
+            })
+            .setView(ScrollView(this).apply { addView(corpo) })
+            .setNegativeButton("Cancelar", null).setPositiveButton("Salvar", null).create()
+        dialogo.setOnShowListener {
+            dialogo.window?.setBackgroundDrawable(GradientDrawable().apply {
+                setColor(0xFF223029.toInt()); cornerRadius = dp(22).toFloat()
+            })
+            dialogo.getButton(AlertDialog.BUTTON_NEGATIVE).setTextColor(0xFFB6C9BD.toInt())
+            dialogo.getButton(AlertDialog.BUTTON_POSITIVE).apply {
+                setTextColor(0xFF80DDAA.toInt())
+                setOnClickListener {
+                    if (RainRecords.amount(volume.text.toString()) == null) {
+                        volume.error = "Informe de 0 a 9999,99 mm, com até duas casas decimais."
+                        volume.requestFocus()
+                        return@setOnClickListener
+                    }
+                    val novo = RainRecords.create(data, volume.text.toString(), observacao.text.toString(), store.team,
+                        atual?.optString("registradoPorUid") ?: access.uid,
+                        atual?.optString("registradoPorNome") ?: access.profile["nome"]?.toString().orEmpty())
+                    val registro = atual?.let { JSONObject(it.toString()) } ?: JSONObject()
+                    novo.keys().forEach { key -> registro.put(key, novo.get(key)) }
+                    val registros = dados(RainRecords.GROUP)
+                    if (!colocarRegistro(registros, if (atual == null) -1 else 0, registro)) return@setOnClickListener
+                    guardar(RainRecords.GROUP, registros)
+                    dialogo.dismiss()
+                    chuvas()
+                    Toast.makeText(this@MainActivity, "Chuva salva. O envio à equipe ocorrerá quando houver conexão.", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+        dialogo.setOnDismissListener { teamSync?.available(hasWindowFocus() && mapa == null) }
+        dialogo.show()
+    }
+
     private fun ocorrenciasCampo(concluidas: Boolean = false) {
         val coluna = pagina(if (concluidas) "Histórico de ocorrências" else "Ocorrências de campo", parent = { if (concluidas) ocorrenciasCampo() else inicio() })
         refreshList = { ocorrenciasCampo(concluidas) }
@@ -1648,6 +1788,7 @@ class MainActivity : Activity() {
         var quantidade = 0
         for (i in arr.length() - 1 downTo 0) {
             val obj = arr.optJSONObject(i) ?: continue
+            if (RainRecords.isRain(obj)) continue
             if (obj.optBoolean("concluida", false) != concluidas) continue
             quantidade++
             val idx = i
