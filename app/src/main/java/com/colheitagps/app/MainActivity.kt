@@ -525,14 +525,13 @@ class MainActivity : Activity() {
         )
         topo.addView(texto(titulo, 22f, Color.WHITE).apply {
             setPadding(dp(12), 0, 0, 0)
-        })
+        }, LinearLayout.LayoutParams(0, -2, 1f))
         topo.addView(TextView(this).apply {
             text = "⋮"; textSize = 26f; setTextColor(Color.WHITE)
             setPadding(dp(12), 0, dp(8), 0)
             setOnClickListener { v -> PopupMenu(this@MainActivity, v).apply {
                 menu.add("Sair da conta").setOnMenuItemClickListener {
-                    mapa?.salvar()
-                    AccessRepository.logout(this@MainActivity)
+                    sairDaConta()
                     true
                 }
                 menu.add("Início").setOnMenuItemClickListener { inicio(); true }
@@ -564,6 +563,17 @@ class MainActivity : Activity() {
         mapa = null
         status = null
         val coluna = pagina("Colheita GPS 2.0")
+        coluna.addView(botao("Sair da conta") { sairDaConta() }.apply {
+            textSize = 16f
+            setTypeface(null, Typeface.BOLD)
+            minHeight = dp(54)
+            setPadding(dp(16), dp(12), dp(16), dp(12))
+            backgroundTintList = null
+            background = GradientDrawable().apply {
+                setColor(verde)
+                cornerRadius = dp(14).toFloat()
+            }
+        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(16) })
         val itens = listOf(
             Triple("MAPAS", "PDF georreferenciado, GPS e talhões", 0),
             Triple("ORDENS DE SERVIÇO", "Página exclusiva das O.S. por mapa", 1),
@@ -2506,13 +2516,22 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun sairDaConta() {
+        mapa?.salvar()
+        acessoConfirmado = false
+        podeAprovarUsuarios = false
+        papelAtual = ""
+        AccessRepository.logout(this)
+    }
+
     private fun voltarTela() {
         when {
-            chaveAtual.isNotEmpty() -> biblioteca()
             telaAtual == "inicio" -> AlertDialog.Builder(this)
-                .setTitle("Sair do Colheita GPS?")
+                .setTitle("Sair da conta?")
+                .setMessage("Sua sessão será encerrada. Para entrar novamente, informe sua matrícula ou e-mail e senha.")
                 .setNegativeButton("Cancelar", null)
-                .setPositiveButton("Sair") { _, _ -> finish() }.show()
+                .setPositiveButton("Sair") { _, _ -> sairDaConta() }.show()
+            chaveAtual.isNotEmpty() -> biblioteca()
             else -> inicio()
         }
     }

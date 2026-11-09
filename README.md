@@ -22,7 +22,7 @@ O workflow executa `gradle testDebugUnitTest assembleDebug --no-daemon`, com Jav
 - A aprovação é consultada no **servidor**, sem liberar acesso a partir de uma cópia antiga do cache. A tela de espera acompanha alterações quando conectada; também permite verificar manualmente.
 - O painel e as alterações de usuários exigem `papel: administrador` e `status: aprovado`. Supervisores mantêm as funções de gestão de campo existentes, mas não recebem acesso às aprovações. Nenhuma tela cria administradores, altera a conta atual ou modifica contas com papel de administrador.
 - A transação de aprovação relê as permissões de quem aprova e o cadastro de destino, e atualiza juntos `papel`, `perfil` e `status`.
-- Voltar ao login encerra a sessão; sair pela tela principal também limpa a pilha de atividades, sem apagar registros locais.
+- O botão verde **Sair da conta**, visível no topo da tela principal para todos os perfis, encerra a sessão e abre um formulário de login vazio. A opção do menu e a confirmação de saída pela tecla Voltar executam a mesma ação. A pilha de atividades é limpa; abrir novamente o aplicativo exige matrícula (ou e-mail do administrador) e senha, sem apagar registros locais.
 - Se a conta Authentication for criada, mas a gravação da solicitação falhar, a mesma matrícula e senha permitem entrar e concluir a solicitação. Uma transação cria somente documentos ausentes, sem sobrescrever aprovações existentes.
 
 ## Teste em dois celulares
