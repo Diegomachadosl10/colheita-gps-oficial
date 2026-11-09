@@ -3,6 +3,7 @@ package com.colheitagps.app
 import android.app.Activity
 import android.app.AlertDialog
 import android.os.Bundle
+import android.widget.LinearLayout
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Source
@@ -12,100 +13,95 @@ class AdminActivity : Activity() {
     private val db by lazy { FirebaseFirestore.getInstance() }
     private lateinit var ui: AccessUi
     private var busy = false
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        ui = AccessUi(this)
-    }
+    override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState); ui = AccessUi(this) }
     override fun onResume() { super.onResume(); if (!busy) load() }
     private fun notice(message: String) {
         if (!isDestroyed && !isFinishing) AlertDialog.Builder(this).setMessage(message).setPositiveButton("OK", null).show()
     }
-    private fun denied() {
-        val card = ui.page("Acesso exclusivo", "Somente o administrador principal aprovado pode autorizar ou bloquear usuários. Supervisores não possuem essa permissão.")
-        ui.button(card, "Voltar") { finish() }
-    }
     private fun load() {
-        if (auth.currentUser == null) { AccessRepository.logout(this); return }
         busy = true
-        ui.page("Aprovações", "Verificando a permissão do administrador…")
-        AccessRepository.load(this, { data ->
-            if (!AccessPolicy.canApprove(data)) { busy = false; denied(); return@load }
-            db.collection("usuarios").get(Source.SERVER).addOnCompleteListener {
+        ui.page("Aprovações da equipe", "Verificando seu acesso…")
+        AccessRepository.loadTeamAccess(this, { access ->
+            if (!access.manages) { busy = false; denied("Seu perfil não permite aprovar usuários."); return@loadTeamAccess }
+            val query = if (access.primary) db.collection("usuarios") else db.collection("usuarios")
+                .whereEqualTo("frenteId", access.profile["frenteId"])
+                .whereEqualTo("turno", access.profile["turno"])
+                .whereIn("papel", TeamPolicy.leafRoles.toList())
+                .whereIn("solicitacaoPerfil", listOf("operador", "tratorista"))
+            query.get(Source.SERVER).addOnCompleteListener {
                 if (isDestroyed) return@addOnCompleteListener
                 busy = false
-                val card = ui.page("Gerenciar acessos", "Aprovação exclusiva do administrador principal. Confira nome, matrícula e frente antes de liberar uma conta.")
+                val card = ui.page(if (access.primary) "Gerenciar todos os acessos" else "Aprovar minha equipe",
+                    if (access.primary) "Somente você aprova supervisores e ajusta as equipes."
+                    else "${TeamPolicy.label(access.team!!)}. Você pode aprovar somente operadores e tratoristas desta equipe.")
                 ui.button(card, "Atualizar lista") { if (!busy) load() }
-                ui.button(card, "Voltar ao aplicativo", true) { if (!busy) finish() }
+                ui.button(card, "Voltar", true) { finish() }
                 if (!it.isSuccessful) {
-                    ui.add(card, ui.text("Não foi possível carregar a lista. Verifique sua conexão e as permissões já configuradas no Firestore."))
+                    ui.add(card, ui.text("Lista indisponível. Confira a conexão e se as regras e o índice de equipes já foram publicados."))
                     return@addOnCompleteListener
                 }
-                val users = it.result.documents.filter { d ->
-                    d.id != auth.currentUser?.uid && AccessPolicy.role(d.data) != "administrador"
-                }.sortedWith(compareBy({ d -> if (AccessPolicy.normalized(d.get("status")) == "pendente") 0 else 1 },
-                    { d -> AccessPolicy.normalized(d.get("nome")) }))
-                val pending = users.count { d -> AccessPolicy.normalized(d.get("status")) == "pendente" }
-                ui.add(card, ui.text("${users.size} usuários  •  $pending aguardando aprovação", 14f, ui.green, true), 20)
-                if (users.isEmpty()) ui.add(card, ui.text("Nenhuma solicitação no momento."))
-                users.forEach { user ->
-                    val dataUser = user.data.orEmpty()
-                    val name = dataUser["nome"]?.toString() ?: "Sem nome"
-                    val role = requestedRole(dataUser)
-                    val state = AccessPolicy.normalized(dataUser["status"]).ifEmpty { "pendente" }
-                    val item = ui.card().apply {
-                        background = ui.background(0xFFF1F6F1.toInt(), 16)
-                        elevation = 0f
-                    }
+                val users = it.result.documents.filter { d -> TeamPolicy.canApprove(access.uid, access.profile, d.id, d.data) }
+                    .sortedWith(compareBy({ d -> if (d.getString("status") == "pendente") 0 else 1 }, { d -> d.get("nome")?.toString().orEmpty() }))
+                ui.add(card, ui.text("${users.size} usuários", 14f, ui.green, true))
+                for (user in users) {
+                    val data = user.data.orEmpty()
+                    val name = data["nome"]?.toString() ?: "Sem nome"
+                    val role = TeamPolicy.requested(data)
+                    val state = AccessPolicy.normalized(data["status"])
+                    val item = ui.card().apply { background = ui.background(0xFFF1F6F1.toInt()); elevation = 0f }
                     ui.add(card, item, 18)
                     ui.add(item, ui.text(name, 19f, ui.dark, true), 0)
-                    ui.add(item, ui.text("Matrícula: ${dataUser["matricula"] ?: "Não informada"}\nFrente: ${dataUser["frenteId"] ?: "Não informada"}\nTurno: ${dataUser["turno"] ?: "Não informado"}\nFunção: ${dataUser["funcao"] ?: "Não informada"}"), 8)
-                    ui.add(item, ui.text("Solicita: $role  •  Status: $state", 14f, ui.green, true))
-                    if (!AccessPolicy.approved(dataUser)) {
-                        ui.button(item, if (state == "bloqueado") "Reativar como $role" else "Aprovar $role") {
-                            if (!busy) confirm(user.id, name, role, "aprovado")
-                        }
+                    ui.add(item, ui.text("Matrícula: ${data["matricula"] ?: "Não informada"}\n${TeamPolicy.team(data)?.let(TeamPolicy::label) ?: "Equipe não definida"}\nSolicita: $role • Status: $state"))
+                    if (!AccessPolicy.approved(data)) ui.button(item, if (state == "bloqueado") "Reativar $role" else "Aprovar $role") {
+                        if (!busy) confirm(user.id, name, role, "aprovado")
                     }
                     if (state != "bloqueado") ui.button(item, "Bloquear acesso", true) {
-                        if (!busy) confirm(user.id, name, AccessPolicy.role(dataUser).ifEmpty { "operador" }, "bloqueado")
+                        if (!busy) confirm(user.id, name, AccessPolicy.role(data).ifEmpty { role }, "bloqueado")
+                    }
+                    if (access.primary) ui.button(item, "Ajustar frente e turno", true) {
+                        if (!busy) adjustTeam(user.id, name)
                     }
                 }
             }
-        }, {
-            busy = false
-            val card = ui.page("Verificação indisponível", "Não foi possível consultar as permissões no servidor. Verifique a conexão e tente novamente.")
-            ui.button(card, "Tentar novamente") { if (!busy) load() }
-            ui.button(card, "Voltar", true) { finish() }
-        })
+        }, { busy = false; denied("Não foi possível verificar o acesso. Confira a conexão e a configuração das equipes no Firebase.") })
     }
-    private fun requestedRole(data: Map<String, Any>): String =
-        if (AccessPolicy.normalized(data["solicitacaoPerfil"]).ifEmpty { AccessPolicy.role(data) } == "supervisor") "supervisor" else "operador"
-
+    private fun denied(message: String) {
+        val card = ui.page("Verificação de acesso", message)
+        ui.button(card, "Tentar novamente") { if (!busy) load() }
+        ui.button(card, "Voltar", true) { finish() }
+    }
     private fun confirm(uid: String, name: String, role: String, status: String) {
         AlertDialog.Builder(this).setTitle(if (status == "aprovado") "Aprovar $role?" else "Bloquear acesso?")
-            .setMessage("$name\nConfira a identidade e a matrícula com a relação oficial antes de confirmar.")
-            .setNegativeButton("Cancelar", null)
-            .setPositiveButton("Confirmar") { _, _ -> change(uid, role, status) }.show()
+            .setMessage("$name\nConfira a identidade, a frente e o turno antes de confirmar.")
+            .setNegativeButton("Cancelar", null).setPositiveButton("Confirmar") { _, _ -> change(uid, role, status) }.show()
     }
     private fun change(uid: String, role: String, status: String) {
         if (busy) return
         val actor = auth.currentUser?.uid ?: return
-        if (uid == actor || role !in setOf("operador", "funcionario", "supervisor")) return
         busy = true
         val actorRef = db.collection("usuarios").document(actor)
         val target = db.collection("usuarios").document(uid)
-        // Recheck both records at the time of the write; the list is not an authorization cache.
-        db.runTransaction { transaction ->
-            val admin = transaction.get(actorRef)
-            val user = transaction.get(target)
-            check(auth.currentUser?.uid == actor && AccessPolicy.canApprove(admin.data)) { "Acesso exclusivo do administrador principal." }
-            check(user.exists() && AccessPolicy.role(user.data) != "administrador") { "Conta protegida." }
-            if (status == "aprovado") check(role == requestedRole(user.data.orEmpty())) { "Solicitação alterada. Atualize a lista." }
-            transaction.update(target, mapOf("papel" to role, "perfil" to role, "status" to status))
+        db.runTransaction { tx ->
+            val admin = tx.get(actorRef)
+            val user = tx.get(target)
+            check(auth.currentUser?.uid == actor && TeamPolicy.canApprove(actor, admin.data, uid, user.data))
+            if (status == "aprovado") check(role == TeamPolicy.requested(user.data.orEmpty()))
+            check(role in TeamPolicy.leafRoles + "supervisor")
+            tx.update(target, mapOf("papel" to role, "perfil" to role, "status" to status))
             null
-        }.addOnCompleteListener {
-            if (isDestroyed) return@addOnCompleteListener
-            busy = false
-            if (it.isSuccessful) load() else notice("Não foi possível alterar o acesso. Verifique a conexão e suas permissões e atualize a lista.")
-        }
+        }.addOnCompleteListener { busy = false; if (!isDestroyed) { if (it.isSuccessful) load() else notice("Alteração recusada. Atualize a lista e confira suas permissões.") } }
+    }
+    private fun adjustTeam(uid: String, name: String) {
+        val body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val front = ui.spinner(body, "Frente", TeamPolicy.fronts.values.toTypedArray())
+        val shift = ui.spinner(body, "Turno", TeamPolicy.shifts.toTypedArray())
+        AlertDialog.Builder(this).setTitle("Equipe de $name").setView(body)
+            .setMessage("O acesso passa a valer para a nova equipe. Registros anteriores permanecem na equipe onde foram criados.")
+            .setNegativeButton("Cancelar", null).setPositiveButton("Salvar") { _, _ ->
+                if (auth.currentUser?.uid != TeamPolicy.PRIMARY_ADMIN_UID || uid == TeamPolicy.PRIMARY_ADMIN_UID) return@setPositiveButton
+                busy = true
+                db.collection("usuarios").document(uid).update(mapOf("frenteId" to TeamPolicy.fronts.keys.elementAt(front.selectedItemPosition), "turno" to shift.selectedItem.toString()))
+                    .addOnCompleteListener { busy = false; if (it.isSuccessful) load() else notice("Não foi possível ajustar a equipe.") }
+            }.show()
     }
 }

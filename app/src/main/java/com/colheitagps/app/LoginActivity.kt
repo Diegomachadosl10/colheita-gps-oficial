@@ -102,7 +102,7 @@ class LoginActivity : Activity() {
     }
     private fun register(existing: Boolean = false) {
         val card = page(if (existing) "Concluir solicitação" else "Solicitar acesso",
-            "Operadores e supervisores só entram após a aprovação do administrador principal. Não é necessário e-mail pessoal.")
+            "Escolha sua frente e turno. Seu supervisor aprova os operadores e tratoristas da equipe. Supervisores são aprovados pelo administrador principal.")
         val matricula = ui.field(card, "Número de matrícula").apply { inputType = InputType.TYPE_CLASS_NUMBER }
         if (existing) {
             matricula.setText(auth.currentUser?.email?.substringBefore("@")?.removePrefix("matricula."))
@@ -111,7 +111,7 @@ class LoginActivity : Activity() {
         val name = ui.field(card, "Nome completo")
         val front = ui.spinner(card, "Frente", frentes)
         val shift = ui.spinner(card, "Turno", arrayOf("A", "B", "C")).apply { setSelection(2) }
-        val role = ui.spinner(card, "Tipo de acesso solicitado", arrayOf("Operador", "Supervisor"))
+        val role = ui.spinner(card, "Tipo de acesso solicitado", arrayOf("Operador", "Tratorista", "Supervisor"))
         val job = ui.field(card, "Função (ex.: operador de colhedora)")
         val password = if (!existing) ui.field(card, "Criar senha (mínimo 8 caracteres)", true) else null
         val confirmation = if (!existing) ui.field(card, "Confirmar senha", true) else null
@@ -130,7 +130,7 @@ class LoginActivity : Activity() {
                 "nome" to n, "matricula" to m, "frenteId" to ids[front.selectedItemPosition],
                 "turno" to shift.selectedItem.toString(), "funcao" to job.text.toString().trim(),
                 "papel" to "operador", "perfil" to "operador",
-                "solicitacaoPerfil" to if (role.selectedItemPosition == 1) "supervisor" else "operador",
+                "solicitacaoPerfil" to when (role.selectedItemPosition) { 2 -> "supervisor"; 1 -> "tratorista"; else -> "operador" },
                 "status" to "pendente", "criadoEm" to FieldValue.serverTimestamp()
             )
             busy = true; submit.isEnabled = false; submit.text = "Enviando…"
@@ -159,7 +159,7 @@ class LoginActivity : Activity() {
                     }
                 }
         }
-        ui.button(card, "Voltar ao login", true) { if (!busy) logout() }
+        ui.button(card, if (existing) "Sair da conta" else "Voltar ao login", true) { if (!busy) logout() }
     }
     private fun verify() {
         if (auth.currentUser == null) { login(); return }
@@ -172,11 +172,11 @@ class LoginActivity : Activity() {
                     if (auth.currentUser?.email?.matches(Regex("matricula\\.[0-9]{1,20}@acesso\\.dm-agro\\.app")) == true) register(true)
                     else status("Cadastro não localizado", "O administrador precisa conferir o documento usuarios com o UID desta conta. A sessão sozinha não autoriza acesso.")
                 }
-                AccessPolicy.approved(data) -> if (AccessPolicy.canApprove(data)) adminPanel() else openApp()
+                TeamPolicy.allowed(auth.currentUser?.uid.orEmpty(), data) -> if (TeamPolicy.primary(auth.currentUser?.uid.orEmpty())) adminPanel() else openApp()
                 AccessPolicy.normalized(data["status"]) == "bloqueado" -> status("Acesso bloqueado", "Procure o administrador principal para revisar seu acesso.")
                 AccessPolicy.normalized(data["status"]) == "aprovado" -> status("Perfil precisa de revisão", "Sua conta foi aprovada, mas o perfil está ausente ou inválido. Peça ao administrador para conferir o cadastro.")
                 else -> {
-                    status("Aguardando aprovação", "Sua solicitação foi enviada. Somente o administrador principal pode aprovar operadores e supervisores. Esta tela acompanha a aprovação quando há conexão.")
+                    status("Aguardando aprovação", "Sua solicitação foi enviada. O supervisor da sua frente e turno pode aprovar operadores e tratoristas. Supervisores dependem do administrador principal. Esta tela acompanha a aprovação quando há conexão.")
                     waiting = true; watchApproval()
                 }
             }
@@ -204,11 +204,15 @@ class LoginActivity : Activity() {
     private fun status(title: String, message: String) {
         val card = page(title, message)
         ui.button(card, "Verificar novamente") { verify() }
-        ui.button(card, "Voltar ao login", true) { logout() }
+        ui.button(card, "Sair da conta", true) { logout() }
     }
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
         if (busy) return
-        if (onLoginPage) finish() else logout()
+        when {
+            onLoginPage -> finish()
+            auth.currentUser == null -> login()
+            else -> moveTaskToBack(true)
+        }
     }
 }

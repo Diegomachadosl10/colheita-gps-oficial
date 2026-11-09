@@ -21,9 +21,6 @@ internal object AccessPolicy {
 
     fun approved(data: Map<String, Any>?): Boolean =
         normalized(data?.get("status")) == "aprovado" &&
-            role(data) in setOf("administrador", "supervisor", "funcionario", "operador")
+            role(data) in setOf("administrador", "supervisor", "funcionario", "operador", "tratorista")
 
-    // A legacy display field alone must never grant user-administration privileges.
-    fun canApprove(data: Map<String, Any>?): Boolean = approved(data) &&
-        normalized(data?.get("papel")) == "administrador"
 }

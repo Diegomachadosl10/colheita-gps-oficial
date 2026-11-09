@@ -1,0 +1,20 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function principal() { return request.auth != null && request.auth.uid == 'Z8zjZP3iWjRSD6imwiDO4VLboOY2'; }
+    function membro(equipe) {
+      let user = firestore.get(/databases/(default)/documents/usuarios/$(request.auth.uid));
+      return request.auth != null && user.data.status == 'aprovado'
+        && user.data.papel in ['supervisor','operador','funcionario','tratorista']
+        && equipe == user.data.frenteId + '_' + user.data.turno;
+    }
+    match /equipes/{equipe}/arquivos/{autor}/{hash} {
+      allow read: if principal() || membro(equipe);
+      allow create: if resource == null && request.auth != null && autor == request.auth.uid && (principal() || membro(equipe))
+        && request.resource.size < 100 * 1024 * 1024
+        && request.resource.contentType in ['image/jpeg','image/png','application/pdf'];
+      allow update, delete: if false;
+    }
+    match /{allPaths=**} { allow read, write: if false; }
+  }
+}

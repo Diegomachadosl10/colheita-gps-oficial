@@ -1,0 +1,1 @@
+{"indexes":[{"collectionGroup":"usuarios","queryScope":"COLLECTION","fields":[{"fieldPath":"frenteId","order":"ASCENDING"},{"fieldPath":"turno","order":"ASCENDING"},{"fieldPath":"papel","order":"ASCENDING"},{"fieldPath":"solicitacaoPerfil","order":"ASCENDING"}]}],"fieldOverrides":[]}

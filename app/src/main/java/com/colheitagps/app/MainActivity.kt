@@ -32,7 +32,83 @@ class MainActivity : Activity() {
     private var papelAtual = ""
     private var acessoConfirmado = false
     private var podeAprovarUsuarios = false
-    private fun funcionarioRestrito() = papelAtual == "funcionario" || papelAtual == "operador"
+    private var teamAccess: TeamAccess? = null
+    private var teamStore: TeamStore? = null
+    private var teamSync: TeamSync? = null
+    private var profileWatch: com.google.firebase.firestore.ListenerRegistration? = null
+    private var syncLabel: TextView? = null
+    private var syncMessage = "Conectando à equipe…"
+    private var refreshList: (() -> Unit)? = null
+    private val syncUiHandler = Handler(Looper.getMainLooper())
+    private var refreshPending = false
+
+    override fun getSharedPreferences(name: String, mode: Int): SharedPreferences =
+        if (name in TeamPolicy.preferences && teamStore != null) teamStore!!.prefs(name)
+        else super.getSharedPreferences(name, mode)
+    override fun getFilesDir(): File = teamStore?.files ?: super.getFilesDir()
+    override fun getCacheDir(): File = teamStore?.cache ?: super.getCacheDir()
+
+    private fun chooseTeam(access: TeamAccess) {
+        if (!access.primary) { openTeam(access, access.team!!); return }
+        val ids = TeamPolicy.fronts.keys.flatMap { f -> TeamPolicy.shifts.map { "${f}_$it" } }
+        AlertDialog.Builder(this).setTitle("Qual equipe deseja acompanhar?")
+            .setItems(ids.map(TeamPolicy::label).toTypedArray()) { _, index -> openTeam(access, ids[index]) }
+            .setNegativeButton("Voltar") { _, _ -> moveTaskToBack(true) }.show()
+    }
+    private fun openTeam(access: TeamAccess, id: String) {
+        mapa?.salvar(); mapa = null; chaveAtual = ""
+        teamSync?.stop()
+        profileWatch?.remove()
+        teamStore = TeamStore(applicationContext, id)
+        teamAccess = access
+        papelAtual = access.role
+        podeAprovarUsuarios = access.manages
+        acessoConfirmado = true
+        syncMessage = "Conectando à equipe…"
+        teamSync = TeamSync(applicationContext, access, teamStore!!, {
+            if (!refreshPending) {
+                refreshPending = true
+                syncUiHandler.postDelayed({
+                    refreshPending = false
+                    if (!isFinishing && !isDestroyed && hasWindowFocus() && mapa == null) refreshList?.invoke()
+                }, 300)
+            }
+        }, { message -> syncMessage = message; syncLabel?.text = "${TeamPolicy.label(id)}\n$message" })
+        teamSync!!.start()
+        if (!access.primary) profileWatch = FirebaseFirestore.getInstance().collection("usuarios").document(access.uid)
+            .addSnapshotListener { document, _ ->
+                if (document != null && !document.metadata.isFromCache && !isFinishing && !isDestroyed &&
+                    (!TeamPolicy.allowed(access.uid, document.data) || TeamPolicy.team(document.data) != access.team || AccessPolicy.role(document.data) != access.role)) {
+                    profileWatch?.remove(); profileWatch = null
+                    mapa?.salvar(); mapa = null
+                    teamSync?.stop(); teamSync = null
+                    acessoConfirmado = false
+                    startActivity(Intent(this, MainActivity::class.java).apply {
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                    })
+                    finish()
+                }
+            }
+        inicio()
+    }
+    private fun syncDetails() {
+        val sync = teamSync ?: return
+        AlertDialog.Builder(this).setTitle("Sincronização da equipe").setMessage(sync.diagnostics())
+            .setPositiveButton("Tentar novamente") { _, _ -> sync.retry() }
+            .setNeutralButton("Usar versões compartilhadas") { _, _ ->
+                AlertDialog.Builder(this).setMessage("Suas cópias conflitantes ficam preservadas nos arquivos da equipe. Recarregar as versões compartilhadas?")
+                    .setNegativeButton("Cancelar", null).setPositiveButton("Recarregar") { _, _ -> sync.useSharedCopies() }.show()
+            }.setNegativeButton("Fechar", null).show()
+    }
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        teamSync?.available(hasFocus && mapa == null)
+    }
+    private fun pausarSincronizacao() {
+        teamSync?.available(false)
+        synchronized(teamStore?.lock ?: this) { /* Finish any incoming cache write before opening a form. */ }
+    }
+    private fun funcionarioRestrito() = papelAtual in TeamPolicy.leafRoles
     private fun podeGerenciar() = acessoConfirmado &&
         (papelAtual == "administrador" || papelAtual == "supervisor")
     private fun exigirGestor(): Boolean {
@@ -52,12 +128,9 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER
         }, FrameLayout.LayoutParams(-1, -1))
         setContentView(espera)
-        AccessRepository.load(this, { data ->
-            if (AccessPolicy.approved(data)) {
-                papelAtual = AccessPolicy.role(data)
-                podeAprovarUsuarios = AccessPolicy.canApprove(data)
-                acessoConfirmado = true
-                apresentacao()
+        AccessRepository.loadTeamAccess(this, { access ->
+            if (TeamPolicy.allowed(access.uid, access.profile)) {
+                chooseTeam(access)
             } else {
                 acessoConfirmado = false
                 AlertDialog.Builder(this).setTitle("Acesso não autorizado")
@@ -68,7 +141,7 @@ class MainActivity : Activity() {
             }
         }, {
             AlertDialog.Builder(this).setTitle("Sem verificação de acesso")
-                .setMessage("Conecte-se à internet para verificar suas permissões.")
+                .setMessage("Não foi possível confirmar seu acesso à equipe. Confira a conexão ou procure o administrador.")
                 .setCancelable(false).setPositiveButton("Tentar novamente") { _, _ ->
                     carregarPermissoes()
                 }.setNegativeButton("Voltar ao login") { _, _ ->
@@ -94,20 +167,69 @@ class MainActivity : Activity() {
     private var pdfPendente: File? = null
     private var imagemPendente: File? = null
     private var vozResultado: ((String) -> Unit)? = null
-    private fun dados(key: String): JSONArray = try {
-        JSONArray(getSharedPreferences("registros_v3", 0).getString(key, "[]"))
-    } catch (_: Exception) { JSONArray() }
+    private fun dados(key: String): JSONArray = synchronized(teamStore?.lock ?: this) {
+        val array = try { JSONArray(getSharedPreferences("registros_v3", 0).getString(key, "[]")) } catch (_: Exception) { JSONArray() }
+        var assigned = false
+        for (i in 0 until array.length()) {
+            val record = array.optJSONObject(i) ?: continue
+            if (record.optString("id").isBlank()) { record.put("id", java.util.UUID.randomUUID().toString()); assigned = true }
+        }
+        if (assigned) getSharedPreferences("registros_v3", 0).edit().putString(key, array.toString()).commit()
+        for (i in 0 until array.length()) array.optJSONObject(i)?.let { record ->
+            record.put("__syncBase", teamSync?.baseRevision(key, record.optString("id")) ?: 0L)
+        }
+        array
+    }
+    private fun colocarRegistro(array: JSONArray, index: Int, record: JSONObject): Boolean {
+        if (record.optString("id").isBlank()) record.put("id", java.util.UUID.randomUUID().toString())
+        if (index < 0) { array.put(record); return true }
+        for (i in 0 until array.length()) if (array.optJSONObject(i)?.optString("id") == record.optString("id")) {
+            array.put(i, record); return true
+        }
+        val copy = File(filesDir, "conflitos/rascunho_${System.currentTimeMillis()}.json")
+        copy.parentFile?.mkdirs(); copy.writeText(record.toString(2))
+        Toast.makeText(this, "Este registro foi removido em outro aparelho. Seu rascunho foi preservado.", Toast.LENGTH_LONG).show()
+        return false
+    }
     private fun guardar(key: String, arr: JSONArray) {
         getSharedPreferences("registros_v3", 0).edit().putString(key, arr.toString()).apply()
     }
+    private fun comRegistroAtual(group: String, id: String, action: (Int) -> Unit) {
+        pausarSincronizacao()
+        val current = dados(group)
+        val index = (0 until current.length()).firstOrNull { current.optJSONObject(it)?.optString("id") == id }
+        if (index != null) action(index) else {
+            teamSync?.available(hasWindowFocus() && mapa == null)
+            Toast.makeText(this, "Este registro foi removido em outro aparelho.", Toast.LENGTH_LONG).show()
+            refreshList?.invoke()
+        }
+    }
+    private fun exigirEdicao(group: String, record: JSONObject?): Boolean {
+        if (record == null || teamSync?.canEdit(group, record.optString("id")) != false) return true
+        teamSync?.available(hasWindowFocus() && mapa == null)
+        Toast.makeText(this, "Somente o autor ou o supervisor pode alterar este registro.", Toast.LENGTH_LONG).show()
+        return false
+    }
+    private fun mostrarFotos(record: JSONObject) {
+        val photos = fotosPendencia(record)
+        if (photos.isEmpty()) { Toast.makeText(this, "Fotos ainda não disponíveis neste aparelho.", Toast.LENGTH_LONG).show(); return }
+        AlertDialog.Builder(this).setTitle("Fotos").setItems(photos.indices.map { "Foto ${it + 1}" }.toTypedArray()) { _, index ->
+            AlertDialog.Builder(this).setView(ImageView(this).apply {
+                setImageBitmap(BitmapFactory.decodeFile(photos[index].absolutePath)); adjustViewBounds = true
+            }).setPositiveButton("Fechar", null).show()
+        }.show()
+    }
     private fun remover(key: String, index: Int, retorno: () -> Unit) {
+        pausarSincronizacao()
+        val selected = dados(key).optJSONObject(index) ?: return
+        if (!exigirEdicao(key, selected)) return
         AlertDialog.Builder(this).setTitle("Excluir registro?")
             .setMessage("Esta ação não poderá ser desfeita.")
             .setNegativeButton("Cancelar", null)
             .setPositiveButton("Excluir") { _, _ ->
                 val atual = dados(key)
                 val novo = JSONArray()
-                for (i in 0 until atual.length()) if (i != index) novo.put(atual.get(i))
+                for (i in 0 until atual.length()) if (atual.optJSONObject(i)?.optString("id") != selected.optString("id")) novo.put(atual.get(i))
                 guardar(key, novo)
                 retorno()
             }.show()
@@ -264,15 +386,20 @@ class MainActivity : Activity() {
     }
 
     private fun escreverBackup(destino: Uri) {
-        val preferencias = listOf("registros_v3", "controle_colheita", "mapas", "ordens_servico")
-        val indices = JSONObject()
+        val preferencias = TeamPolicy.preferences.toList()
+        val indices = JSONObject().put("_equipeId", teamStore!!.team)
+        val tipos = JSONObject()
         for (nome in preferencias) {
             val dados = JSONObject()
+            val tiposGrupo = JSONObject()
             for ((chave, valor) in getSharedPreferences(nome, 0).all) {
-                dados.put(chave, valor?.toString() ?: "")
+                dados.put(chave, teamStore!!.encode(valor?.toString() ?: ""))
+                tiposGrupo.put(chave, when (valor) { is Boolean -> "Boolean"; is Int -> "Int"; is Long -> "Long"; is Float -> "Float"; else -> "String" })
             }
             indices.put(nome, dados)
+            tipos.put(nome, tiposGrupo)
         }
+        indices.put("_tipos", tipos)
         val saida = contentResolver.openOutputStream(destino)
             ?: throw IOException("Destino indisponível")
         ZipOutputStream(saida).use { zip ->
@@ -300,12 +427,12 @@ class MainActivity : Activity() {
                 startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                     addCategory(Intent.CATEGORY_OPENABLE)
                     type = "application/zip"
-                }, 306)
+                }, 310)
             }.show()
     }
 
     private fun restaurarBackupZip(origem: Uri) {
-        val preferenciasPermitidas = setOf("registros_v3", "controle_colheita", "mapas", "ordens_servico")
+        val preferenciasPermitidas = TeamPolicy.preferences
         val pastaTemp = File(cacheDir, "restauracao_${System.currentTimeMillis()}")
         if (!pastaTemp.mkdirs()) throw IOException("Não foi possível preparar restauração")
         try {
@@ -345,6 +472,11 @@ class MainActivity : Activity() {
                 }
             } ?: throw IOException("Não foi possível abrir o backup")
             val json = indices ?: throw IOException("Preferências não encontradas no backup")
+            val originalTeam = json.optString("_equipeId")
+            if (originalTeam.isNotBlank() && originalTeam != teamStore!!.team) throw IOException("Este backup pertence a outra frente e turno.")
+            if (originalTeam.isBlank() && teamAccess?.primary != true) throw IOException("Somente o administrador pode atribuir dados antigos sem equipe.")
+            mapa?.salvar(); mapa = null
+            teamSync?.stop(); teamSync = null
             for (nome in preferenciasPermitidas) {
                 val objeto = json.optJSONObject(nome) ?: continue
                 val editor = getSharedPreferences(nome, 0).edit()
@@ -352,14 +484,17 @@ class MainActivity : Activity() {
                 val chaves = objeto.keys()
                 while (chaves.hasNext()) {
                     val chave = chaves.next()
-                    val valor = objeto.optString(chave)
+                    val valor = if (originalTeam.isBlank()) teamStore!!.decodeLegacy(objeto.optString(chave)) else teamStore!!.decode(objeto.optString(chave))
                     // Os backups anteriores guardam todos os valores como texto.
                     val atual = getSharedPreferences(nome, 0).all[chave]
-                    when (atual) {
-                        is Boolean -> editor.putBoolean(chave, valor.toBoolean())
-                        is Int -> editor.putInt(chave, valor.toIntOrNull() ?: 0)
-                        is Long -> editor.putLong(chave, valor.toLongOrNull() ?: 0L)
-                        is Float -> editor.putFloat(chave, valor.toFloatOrNull() ?: 0f)
+                    val type = json.optJSONObject("_tipos")?.optJSONObject(nome)?.optString(chave).orEmpty().ifBlank {
+                        when (atual) { is Boolean -> "Boolean"; is Int -> "Int"; is Long -> "Long"; is Float -> "Float"; else -> "String" }
+                    }
+                    when (type) {
+                        "Boolean" -> editor.putBoolean(chave, valor.toBoolean())
+                        "Int" -> editor.putInt(chave, valor.toIntOrNull() ?: 0)
+                        "Long" -> editor.putLong(chave, valor.toLongOrNull() ?: 0L)
+                        "Float" -> editor.putFloat(chave, valor.toFloatOrNull() ?: 0f)
                         else -> editor.putString(chave, valor)
                     }
                 }
@@ -374,6 +509,7 @@ class MainActivity : Activity() {
             }
         } finally {
             pastaTemp.deleteRecursively()
+            if (teamSync == null && teamAccess != null && teamStore != null) openTeam(teamAccess!!, teamStore!!.team)
         }
     }
 
@@ -510,6 +646,17 @@ class MainActivity : Activity() {
 
     private fun pagina(titulo: String): LinearLayout {
         telaAtual = if (titulo == "Colheita GPS 2.0") "inicio" else "pagina"
+        teamSync?.available(hasWindowFocus() && mapa == null)
+        refreshList = when (titulo) {
+            "Colheita GPS 2.0" -> ({ inicio() })
+            "Pendências de manutenção" -> ({ pendencias() })
+            "Pendências concluídas" -> ({ historicoPendencias() })
+            "Ocorrências de campo" -> ({ ocorrenciasCampo() })
+            "Histórico de ocorrências" -> ({ ocorrenciasCampo(true) })
+            "Estoque de cana" -> ({ estoque() })
+            "Relatório diário de turno" -> ({ relatorios() })
+            else -> null
+        }
         val base = tela()
         val coluna = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -534,6 +681,8 @@ class MainActivity : Activity() {
                     sairDaConta()
                     true
                 }
+                menu.add("Sincronização").setOnMenuItemClickListener { syncDetails(); true }
+                if (teamAccess?.primary == true) menu.add("Trocar equipe").setOnMenuItemClickListener { chooseTeam(teamAccess!!); true }
                 menu.add("Início").setOnMenuItemClickListener { inicio(); true }
                 menu.add("Mapas").setOnMenuItemClickListener { biblioteca(); true }
                 menu.add("Pendências").setOnMenuItemClickListener { pendencias(); true }
@@ -563,6 +712,21 @@ class MainActivity : Activity() {
         mapa = null
         status = null
         val coluna = pagina("Colheita GPS 2.0")
+        syncLabel = texto("${TeamPolicy.label(teamStore!!.team)}\n$syncMessage", 14f, 0xFFB6DCC6.toInt()).also {
+            it.setPadding(0, dp(12), 0, dp(6)); it.setOnClickListener { syncDetails() }
+            coluna.addView(it)
+        }
+        if (teamAccess?.primary == true) {
+            coluna.addView(botao("Trocar equipe") { chooseTeam(teamAccess!!) })
+            if (teamStore!!.hasLegacy()) coluna.addView(botao("Dados antigos deste aparelho") {
+                AlertDialog.Builder(this).setTitle("Preservar e importar dados anteriores")
+                    .setMessage("Os registros antigos não identificam equipe. Importe somente se pertencerem a ${TeamPolicy.label(teamStore!!.team)}. Os originais serão preservados e não serão sobrescritos registros já existentes.")
+                    .setNegativeButton("Cancelar", null).setPositiveButton("Importar para esta equipe") { _, _ ->
+                        try { teamStore!!.importLegacy(); teamSync?.retry(); inicio() }
+                        catch (e: Exception) { Toast.makeText(this, e.message ?: "Falha na importação", Toast.LENGTH_LONG).show() }
+                    }.show()
+            })
+        }
         coluna.addView(botao("Sair da conta") { sairDaConta() }.apply {
             textSize = 16f
             setTypeface(null, Typeface.BOLD)
@@ -585,7 +749,7 @@ class MainActivity : Activity() {
             Triple("OCORRÊNCIAS DE CAMPO", "Buracos, erosões, estradas e carreadores", 7),
         )
         if (acessoConfirmado && podeAprovarUsuarios) {
-            coluna.addView(cartao("APROVAR USUÁRIOS", "Gerenciar solicitações de acesso") {
+            coluna.addView(cartao(if (teamAccess?.primary == true) "GERENCIAR USUÁRIOS" else "APROVAR MINHA EQUIPE", "Gerenciar solicitações de acesso") {
                 startActivity(Intent(this, AdminActivity::class.java))
             }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(16) })
         }
@@ -644,6 +808,7 @@ class MainActivity : Activity() {
         getSharedPreferences("controle_colheita", 0).edit().putString("progresso", obj.toString()).commit()
     }
     private fun abrirEstoqueSalvo(obj: JSONObject) {
+        pausarSincronizacao()
         getSharedPreferences("controle_colheita", 0).edit()
             .putString("progresso", obj.toString()).commit()
         val lote = obj.optString("os")
@@ -752,6 +917,7 @@ class MainActivity : Activity() {
     } catch (_: Exception) { JSONObject() }
 
     private fun editarProgressoColheita(novo: Boolean = false) {
+        pausarSincronizacao()
         val anterior = progresso()
         val atual = if (novo) JSONObject() else anterior
         val corpo = LinearLayout(this).apply {
@@ -994,6 +1160,7 @@ class MainActivity : Activity() {
     }
 
     private fun novaMovimentacao() {
+        pausarSincronizacao()
         val corpo = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(8), dp(20), dp(8))
@@ -1006,6 +1173,8 @@ class MainActivity : Activity() {
             adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item,
                 arrayOf("A", "B", "C"))
         }
+        turno.setSelection(TeamPolicy.shifts.indexOf(teamStore!!.team.substringAfterLast('_')))
+        turno.isEnabled = false
         val quantidade = EditText(this).apply {
             hint = "Quantidade em toneladas"
             inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
@@ -1028,7 +1197,7 @@ class MainActivity : Activity() {
                 }
                 val objeto = JSONObject().apply {
                     put("tipo", tipo.selectedItem.toString())
-                    put("turno", turno.selectedItem.toString())
+                    put("turno", teamStore!!.team.substringAfterLast('_'))
                     put("quantidade", valor)
                     put("os", os.text.toString())
                     put("observacao", obs.text.toString())
@@ -1046,7 +1215,7 @@ class MainActivity : Activity() {
         if (!exigirGestor()) return
         val coluna = pagina("Relatório diário de turno")
         coluna.addView(texto("Registre o que aconteceu durante o turno, por escrita ou voz.", 14f))
-        for (turno in listOf("A", "B", "C")) {
+        for (turno in listOf(teamStore!!.team.substringAfterLast('_'))) {
             coluna.addView(cartao("Turno $turno", "Relato, serviços e pendências") { detalheTurno(turno) },
                 LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
         }
@@ -1068,6 +1237,7 @@ class MainActivity : Activity() {
 
     private fun detalheTurno(turno: String) {
         val coluna = pagina("Relatório do turno $turno")
+        refreshList = { detalheTurno(turno) }
         coluna.addView(texto(textoRelatorio(turno), 14f).apply { setPadding(0, dp(15), 0, dp(15)) })
         coluna.addView(botao("+ Registrar ocorrência") { editarRegistro("relatorios_turno", -1, false, turno) })
         coluna.addView(botao("Compartilhar relatório") {
@@ -1135,6 +1305,7 @@ class MainActivity : Activity() {
     private fun calendario(dataInicial: String = dataHoje()) {
         if (!exigirGestor()) return
         val coluna = pagina("Calendário")
+        refreshList = { calendario(dataInicial) }
         coluna.addView(botao("📅 Escolher data: $dataInicial") {
             val partes = dataInicial.split("/")
             val hoje = java.util.Calendar.getInstance()
@@ -1168,7 +1339,7 @@ class MainActivity : Activity() {
             coluna.addView(cartao(item.optString("equipamento", "Pendência"), item.optString("descricao")) {
                 AlertDialog.Builder(this).setTitle("Pendência")
                     .setMessage(item.optString("descricao"))
-                    .setPositiveButton("Editar") { _, _ -> editarRegistro("pendencias", idx, true) }
+                    .setPositiveButton("Editar") { _, _ -> comRegistroAtual("pendencias", item.optString("id")) { editarRegistro("pendencias", it, true) } }
                     .setNegativeButton("Fechar", null).show()
             }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
         }
@@ -1189,7 +1360,7 @@ class MainActivity : Activity() {
             if (dataRegistro(item) != dataInicial) continue
             encontrados++
             val idx = i
-            coluna.addView(cartao(item.optString("tipo"), item.optString("localizacao")) { opcoesOcorrencia(idx) },
+            coluna.addView(cartao(item.optString("tipo"), item.optString("localizacao")) { comRegistroAtual("ocorrencias_campo", item.optString("id")) { opcoesOcorrencia(it) } },
                 LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
         }
         if (encontrados == 0) coluna.addView(texto("Nenhum registro nesta data.", 14f))
@@ -1335,6 +1506,7 @@ class MainActivity : Activity() {
 
     private fun pendenciasEquipamento(equipamento: String) {
         val coluna = pagina("Equipamento $equipamento")
+        refreshList = { pendenciasEquipamento(equipamento) }
         coluna.addView(botao("+ Adicionar pendência") {
             editarRegistro("pendencias", -1, true, equipamentoInicial = equipamento)
         })
@@ -1346,7 +1518,7 @@ class MainActivity : Activity() {
             total++
             val idx = i
             coluna.addView(cartao("• " + obj.optString("descricao").ifBlank { "Sem descrição" },
-                "Toque para editar, adicionar fotos ou concluir") { opcoesPendencia(idx) },
+                "Toque para editar, adicionar fotos ou concluir") { comRegistroAtual("pendencias", obj.optString("id")) { opcoesPendencia(it) } },
                 LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
         }
         if (total == 0) coluna.addView(texto("Nenhuma pendência aberta neste equipamento.", 14f))
@@ -1364,15 +1536,17 @@ class MainActivity : Activity() {
             val idx = i
             coluna.addView(cartao(obj.optString("equipamento", "Equipamento"),
                 obj.optString("descricao") + " • Concluída em " + obj.optString("dataConclusao", "data não registrada")) {
-                opcoesPendencia(idx)
+                comRegistroAtual("pendencias", obj.optString("id")) { opcoesPendencia(it) }
             }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
         }
         if (total == 0) coluna.addView(texto("Nenhuma pendência concluída.", 14f))
     }
 
     private fun mudarSituacaoPendencia(idx: Int) {
+        pausarSincronizacao()
         val arr = dados("pendencias")
         val obj = arr.optJSONObject(idx) ?: return
+        if (!exigirEdicao("pendencias", obj)) return
         val concluida = obj.optBoolean("concluida", false)
         AlertDialog.Builder(this)
             .setTitle(if (concluida) "Reabrir pendência?" else "Concluir pendência?")
@@ -1389,9 +1563,17 @@ class MainActivity : Activity() {
     }
 
     private fun opcoesPendencia(idx: Int) {
+        pausarSincronizacao()
         val arr = dados("pendencias")
         val obj = arr.optJSONObject(idx) ?: return
         val concluida = obj.optBoolean("concluida", false)
+        if (teamSync?.canEdit("pendencias", obj.optString("id")) == false) {
+            AlertDialog.Builder(this).setTitle(obj.optString("equipamento", "Pendência"))
+                .setItems(arrayOf("Compartilhar", "Ver fotos")) { _, option ->
+                    if (option == 0) compartilharPendenciaMenu(obj) else mostrarFotos(obj)
+                }.show()
+            return
+        }
         val opcoes = arrayOf("Compartilhar (WhatsApp / PDF)", "Editar", "Adicionar foto", "Ver fotos",
             if (concluida) "↩ Reabrir pendência" else "✓ Concluir pendência", "Excluir")
         AlertDialog.Builder(this).setTitle(obj.optString("equipamento", "Pendência"))
@@ -1421,6 +1603,7 @@ class MainActivity : Activity() {
     }
     private fun ocorrenciasCampo(concluidas: Boolean = false) {
         val coluna = pagina(if (concluidas) "Histórico de ocorrências" else "Ocorrências de campo")
+        refreshList = { ocorrenciasCampo(concluidas) }
         if (!concluidas) coluna.addView(botao("+ Nova ocorrência") { editarOcorrencia(-1) })
         val arr = dados("ocorrencias_campo")
         var quantidade = 0
@@ -1430,7 +1613,7 @@ class MainActivity : Activity() {
             quantidade++
             val idx = i
             coluna.addView(cartao(obj.optString("tipo", "Ocorrência"),
-                obj.optString("localizacao") + " • " + obj.optString("descricao")) { opcoesOcorrencia(idx) },
+                obj.optString("localizacao") + " • " + obj.optString("descricao")) { comRegistroAtual("ocorrencias_campo", obj.optString("id")) { opcoesOcorrencia(it) } },
                 LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
         }
         if (quantidade == 0) coluna.addView(texto("Nenhum registro nesta lista.", 14f))
@@ -1440,7 +1623,9 @@ class MainActivity : Activity() {
     }
 
     private fun editarOcorrencia(idx: Int) {
+        pausarSincronizacao()
         val atual = if (idx >= 0) dados("ocorrencias_campo").optJSONObject(idx) else null
+        if (!exigirEdicao("ocorrencias_campo", atual)) return
         val corpo = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(18), dp(8), dp(18), dp(8)) }
         val tipos = arrayOf("Buraco", "Erosão", "Problema em curva", "Obstáculo", "Outro")
         val tipo = Spinner(this).apply {
@@ -1495,7 +1680,7 @@ class MainActivity : Activity() {
                 obj.put("gps", coordenadas.text.toString())
                 obj.put("fotos", JSONArray().apply { fotosFormulario.filter { File(it).isFile }.forEach { put(it) } })
                 if (obj.optString("dataCadastro").isBlank()) obj.put("dataCadastro", dataHoje())
-                if (idx < 0) arr.put(obj) else arr.put(idx, obj)
+                if (!colocarRegistro(arr, idx, obj)) return@setPositiveButton
                 guardar("ocorrencias_campo", arr)
                 atualizarFotosFormulario = null
                 ocorrenciasCampo()
@@ -1507,8 +1692,16 @@ class MainActivity : Activity() {
     }
 
     private fun opcoesOcorrencia(idx: Int) {
+        pausarSincronizacao()
         val obj = dados("ocorrencias_campo").optJSONObject(idx) ?: return
         val concluida = obj.optBoolean("concluida", false)
+        if (teamSync?.canEdit("ocorrencias_campo", obj.optString("id")) == false) {
+            AlertDialog.Builder(this).setTitle(obj.optString("tipo"))
+                .setItems(arrayOf("Compartilhar", "Ver fotos")) { _, option ->
+                    if (option == 0) compartilharOcorrencia(obj) else mostrarFotos(obj)
+                }.show()
+            return
+        }
         AlertDialog.Builder(this).setTitle(obj.optString("tipo"))
             .setItems(arrayOf("Visualizar / compartilhar", "Editar", "Adicionar foto", "Ver fotos",
                 if (concluida) "↩ Reabrir ocorrência" else "✓ Concluir ocorrência", "Excluir")) { _, opcao ->
@@ -1536,7 +1729,7 @@ class MainActivity : Activity() {
                         .setNegativeButton("Cancelar", null)
                         .setPositiveButton("Confirmar") { _, _ ->
                             val arr = dados("ocorrencias_campo")
-                            val item = arr.optJSONObject(idx) ?: return@setPositiveButton
+                            val item = (0 until arr.length()).mapNotNull { arr.optJSONObject(it) }.firstOrNull { it.optString("id") == obj.optString("id") } ?: return@setPositiveButton
                             item.put("concluida", !concluida)
                             if (concluida) item.remove("dataConclusao") else item.put("dataConclusao",
                                 java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", Locale("pt", "BR")).format(java.util.Date()))
@@ -1631,6 +1824,7 @@ class MainActivity : Activity() {
     private fun relatoriosTurno() = relatorios()
     private fun listarRegistros(key: String, titulo: String, foto: Boolean) {
         val coluna = pagina(titulo)
+        refreshList = { listarRegistros(key, titulo, foto) }
         coluna.addView(botao("+ Novo registro") { editarRegistro(key, -1, foto) })
         val arr = dados(key)
         for (i in arr.length() - 1 downTo 0) {
@@ -1674,9 +1868,12 @@ class MainActivity : Activity() {
         }
     }
     private fun editarRegistro(key: String, idx: Int, foto: Boolean, turnoInicial: String = "A", equipamentoInicial: String = "") {
+        pausarSincronizacao()
         val atual = if (idx >= 0) dados(key).optJSONObject(idx) else null
+        if (!exigirEdicao(key, atual)) return
         val corpo = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(18), dp(8), dp(18), dp(8)) }
         val equipamento = campo(if (foto) "Equipamento" else "Turno (A, B ou C)", (if (foto) atual?.optString("equipamento") ?: equipamentoInicial else atual?.optString("turno") ?: turnoInicial))
+        if (!foto) { equipamento.setText(teamStore!!.team.substringAfterLast('_')); equipamento.isEnabled = false }
         val descricao = campo(if (foto) "Defeito e localização" else "Ocorrências, serviços e pendências", atual?.optString("descricao") ?: "")
         corpo.addView(equipamento)
         val osPendencia = campo("O.S. da pendência (ex.: 12345)", if (foto) atual?.optString("osPendencia") ?: "" else "")
@@ -1718,7 +1915,7 @@ class MainActivity : Activity() {
             .setView(corpo).setNegativeButton("Cancelar", null).setPositiveButton("Salvar") { _, _ ->
                 val arr = dados(key)
                 val obj = atual ?: JSONObject().apply { put("id", System.currentTimeMillis().toString()) }
-                obj.put(if (foto) "equipamento" else "turno", equipamento.text.toString())
+                obj.put(if (foto) "equipamento" else "turno", if (foto) equipamento.text.toString() else teamStore!!.team.substringAfterLast('_'))
                 obj.put("descricao", descricao.text.toString())
                 if (!foto) {
                     obj.put("os", osRelatorio.text.toString())
@@ -1732,7 +1929,7 @@ class MainActivity : Activity() {
                     obj.put("foto", if (listaFotos.length() > 0) listaFotos.optString(0) else "")
                 }
                 if (obj.optString("dataCadastro").isBlank()) obj.put("dataCadastro", dataHoje())
-                if (idx < 0) arr.put(obj) else arr.put(idx, obj)
+                if (!colocarRegistro(arr, idx, obj)) return@setPositiveButton
                 guardar(key, arr)
                 if (foto) {
                     atualizarFotosFormulario = null
@@ -1754,12 +1951,13 @@ class MainActivity : Activity() {
             val o = arr.optJSONObject(i) ?: continue
             coluna.addView(cartao("Caminhão ${o.optString("numero")}", "Turno ${o.optString("turno")} • Chegada ${o.optString("chegada")} • Saída ${o.optString("saida", "Pendente")}") {
                 AlertDialog.Builder(this).setItems(arrayOf("Editar chegada/saída", "Excluir")) { _, pos ->
-                    if (pos == 0) editarCaminhao(idx) else remover("caminhoes", idx) { caminhoes() }
+                    comRegistroAtual("caminhoes", o.optString("id")) { current -> if (pos == 0) editarCaminhao(current) else remover("caminhoes", current) { caminhoes() } }
                 }.show()
             }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
         }
     }
     private fun editarCaminhao(idx: Int) {
+        pausarSincronizacao()
         val atual = if (idx >= 0) dados("caminhoes").optJSONObject(idx) else null
         val corpo = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(18), dp(8), dp(18), dp(8)) }
         val numero = campo("Número do caminhão", atual?.optString("numero") ?: "")
@@ -1767,6 +1965,8 @@ class MainActivity : Activity() {
         val saida = campo("Saída (HH:mm), opcional", atual?.optString("saida") ?: "")
         val turno = Spinner(this).apply { adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, arrayOf("A", "B", "C")) }
         if (atual != null) turno.setSelection(listOf("A", "B", "C").indexOf(atual.optString("turno")).coerceAtLeast(0))
+        turno.setSelection(TeamPolicy.shifts.indexOf(teamStore!!.team.substringAfterLast('_')))
+        turno.isEnabled = false
         corpo.addView(numero); corpo.addView(chegada); corpo.addView(saida); corpo.addView(turno)
         corpo.addView(botao("🎤 Ditar informações") { ouvir { fala ->
             val numeroFalado = Regex("(?:caminhão|caminhao)\\s*(?:número\\s*)?(\\d+)", RegexOption.IGNORE_CASE)
@@ -1789,18 +1989,20 @@ class MainActivity : Activity() {
                 val arr = dados("caminhoes")
                 val obj = atual ?: JSONObject()
                 obj.put("numero", numero.text.toString()); obj.put("chegada", chegada.text.toString())
-                obj.put("saida", saida.text.toString()); obj.put("turno", turno.selectedItem.toString())
-                if (idx < 0) arr.put(obj) else arr.put(idx, obj)
+                obj.put("saida", saida.text.toString()); obj.put("turno", teamStore!!.team.substringAfterLast('_'))
+                if (!colocarRegistro(arr, idx, obj)) return@setPositiveButton
                 guardar("caminhoes", arr); caminhoes()
             }.show()
     }
 
     private fun biblioteca() {
+        refreshList = { biblioteca() }
         telaAtual = "biblioteca"
         mapa?.salvar()
         mapa = null
         chaveAtual = ""
         status = null
+        teamSync?.available(hasWindowFocus())
 
         val base = tela()
         val coluna = LinearLayout(this).apply {
@@ -1912,6 +2114,8 @@ class MainActivity : Activity() {
     }
 
     private fun renomear(id: String) {
+        pausarSincronizacao()
+        if (teamSync?.canEditMap(id) == false) { teamSync?.available(hasWindowFocus() && mapa == null); Toast.makeText(this, "Somente o responsável pelo mapa ou o supervisor pode renomeá-lo.", Toast.LENGTH_LONG).show(); return }
         val entrada = EditText(this).apply {
             setText(nome(id))
             setSingleLine(true)
@@ -1932,6 +2136,8 @@ class MainActivity : Activity() {
     }
 
     private fun excluir(id: String) {
+        pausarSincronizacao()
+        if (teamSync?.canEditMap(id) == false) { teamSync?.available(hasWindowFocus() && mapa == null); Toast.makeText(this, "Somente o responsável pelo mapa ou o supervisor pode excluí-lo.", Toast.LENGTH_LONG).show(); return }
         AlertDialog.Builder(this)
             .setTitle("Excluir mapa?")
             .setMessage(
@@ -1955,6 +2161,8 @@ class MainActivity : Activity() {
     private fun validarTalhoes(entrada: String): String? = entrada.takeIf { it.isNotBlank() }
 
     private fun ordens(id: String) {
+        pausarSincronizacao()
+        if (!exigirGestor()) return
         val pref = getSharedPreferences("ordens_servico", 0)
 
         fun lista(): MutableList<String> {
@@ -2057,7 +2265,7 @@ class MainActivity : Activity() {
     ) {
         super.onActivityResult(requestCode, resultCode, data)
         tratarResultadoVozEFoto(requestCode, resultCode, data)
-        if (requestCode == 306) {
+        if (requestCode == 310) {
             if (resultCode == RESULT_OK) {
                 try {
                     val origem = data?.data ?: throw IOException("Backup não selecionado")
@@ -2206,6 +2414,7 @@ class MainActivity : Activity() {
             carregar(imagem, id, geo)
         }
         mapa = visual
+        pausarSincronizacao()
         visual.aoEditarArea = { ferramenta(7, manterPontos = true) }
 
         base.addView(
@@ -2517,7 +2726,10 @@ class MainActivity : Activity() {
     }
 
     private fun sairDaConta() {
+        profileWatch?.remove(); profileWatch = null
         mapa?.salvar()
+        teamSync?.stop()
+        teamSync = null
         acessoConfirmado = false
         podeAprovarUsuarios = false
         papelAtual = ""
@@ -2526,11 +2738,7 @@ class MainActivity : Activity() {
 
     private fun voltarTela() {
         when {
-            telaAtual == "inicio" -> AlertDialog.Builder(this)
-                .setTitle("Sair da conta?")
-                .setMessage("Sua sessão será encerrada. Para entrar novamente, informe sua matrícula ou e-mail e senha.")
-                .setNegativeButton("Cancelar", null)
-                .setPositiveButton("Sair") { _, _ -> sairDaConta() }.show()
+            telaAtual == "inicio" -> moveTaskToBack(true)
             chaveAtual.isNotEmpty() -> biblioteca()
             else -> inicio()
         }
@@ -2544,6 +2752,9 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        profileWatch?.remove()
+        teamSync?.stop()
+        syncUiHandler.removeCallbacksAndMessages(null)
         gpsListener?.let {
             gpsManager?.removeUpdates(it)
         }

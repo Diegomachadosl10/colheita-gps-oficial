@@ -17,6 +17,23 @@ internal object AccessRepository {
             }.addOnFailureListener { if (!activity.isDestroyed && !activity.isFinishing) failure(it) }
     }
 
+    fun loadTeamAccess(activity: Activity, success: (TeamAccess) -> Unit, failure: (Exception) -> Unit) {
+        val uid = FirebaseAuth.getInstance().currentUser?.uid
+            ?: return failure(IllegalStateException("Entre novamente."))
+        load(activity, { data ->
+            if (!TeamPolicy.allowed(uid, data)) {
+                failure(IllegalStateException("Cadastro não aprovado ou equipe inválida."))
+            } else {
+                // This read is denied by old rules, preventing accidental use before setup.
+                FirebaseFirestore.getInstance().document("configuracao/equipes").get(Source.SERVER)
+                    .addOnSuccessListener {
+                        if (!activity.isDestroyed && !activity.isFinishing && FirebaseAuth.getInstance().currentUser?.uid == uid)
+                            success(TeamAccess(uid, data.orEmpty()))
+                    }.addOnFailureListener { if (!activity.isDestroyed) failure(it) }
+            }
+        }, failure)
+    }
+
     fun logout(activity: Activity) {
         FirebaseAuth.getInstance().signOut()
         activity.startActivity(Intent(activity, LoginActivity::class.java).apply {

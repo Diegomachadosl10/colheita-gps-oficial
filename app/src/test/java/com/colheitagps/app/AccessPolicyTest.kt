@@ -19,26 +19,26 @@ class AccessPolicyTest {
         for (state in listOf("bloqueado", "pendente", "", "rejeitado")) {
             val user = mapOf("status" to state, "papel" to "administrador")
             assertFalse(AccessPolicy.approved(user))
-            assertFalse(AccessPolicy.canApprove(user))
+            assertFalse(TeamPolicy.primary("usuario-comum"))
         }
         assertFalse(AccessPolicy.approved(null))
         assertFalse(AccessPolicy.approved(mapOf("status" to "aprovado")))
         assertFalse(AccessPolicy.approved(mapOf("status" to "aprovado", "papel" to "desconhecido", "perfil" to "operador")))
     }
-    @Test fun onlyCanonicalApprovedAdministratorMayApproveUsers() {
+    @Test fun roleFieldsDoNotGrantGlobalAdministratorIdentity() {
         for (role in listOf("supervisor", "operador", "funcionario")) {
             val user = mapOf("status" to "aprovado", "papel" to role, "perfil" to "administrador")
             assertTrue(AccessPolicy.approved(user))
-            assertFalse(AccessPolicy.canApprove(user))
+            assertFalse(TeamPolicy.primary("usuario-comum"))
             assertEquals(role, AccessPolicy.role(user))
         }
-        assertFalse(AccessPolicy.canApprove(mapOf("status" to "aprovado", "perfil" to "administrador")))
-        assertTrue(AccessPolicy.canApprove(mapOf("status" to "aprovado", "papel" to "Administrador")))
+        assertFalse(TeamPolicy.allowed("usuario-comum", mapOf("status" to "aprovado", "perfil" to "administrador")))
+        assertTrue(TeamPolicy.primary(TeamPolicy.PRIMARY_ADMIN_UID))
     }
     @Test fun supervisorRequestIsNotAnApproval() {
         val request = mapOf("papel" to "operador", "perfil" to "operador", "solicitacaoPerfil" to "supervisor", "status" to "pendente")
         assertEquals("operador", AccessPolicy.role(request))
         assertFalse(AccessPolicy.approved(request))
-        assertFalse(AccessPolicy.canApprove(request + ("status" to "aprovado")))
+        assertFalse(TeamPolicy.manages("usuario-comum", request + ("status" to "aprovado")))
     }
 }

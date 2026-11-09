@@ -1,0 +1,84 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function logado() { return request.auth != null; }
+    function principal() { return logado() && request.auth.uid == 'Z8zjZP3iWjRSD6imwiDO4VLboOY2'; }
+    function cadastro() { return get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data; }
+    function aprovado() { return logado() && cadastro().status == 'aprovado'; }
+    function supervisor() { return aprovado() && cadastro().papel == 'supervisor'; }
+    function frenteValida(f) { return f in ['santo_inacio','santa_ines','itororo','cafeara','lupionopolis','colorado','sandovalina','jardim_olinda','itaguaje']; }
+    function turnoValido(t) { return t in ['A','B','C']; }
+    function membro(equipe) { return aprovado() && cadastro().papel in ['supervisor','operador','funcionario','tratorista'] && equipe == cadastro().frenteId + '_' + cadastro().turno; }
+    function gestor(equipe) { return principal() || (supervisor() && membro(equipe)); }
+    function folha(papel) { return papel in ['operador','funcionario','tratorista']; }
+    function supervisorDoUsuario(d) {
+      return supervisor() && d.frenteId == cadastro().frenteId && d.turno == cadastro().turno
+        && folha(d.papel) && d.solicitacaoPerfil in ['operador','tratorista'];
+    }
+    match /usuarios/{uid} {
+      allow create: if logado() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['nome','matricula','frenteId','turno','funcao','papel','perfil','solicitacaoPerfil','status','criadoEm'])
+        && request.resource.data.keys().hasAll(['nome','matricula','frenteId','turno','funcao','papel','perfil','solicitacaoPerfil','status'])
+        && request.resource.data.nome is string && request.resource.data.nome.size() >= 3
+        && request.resource.data.matricula is string && request.resource.data.matricula.matches('^[0-9]{1,20}$')
+        && request.auth.token.email == 'matricula.' + request.resource.data.matricula + '@acesso.dm-agro.app'
+        && frenteValida(request.resource.data.frenteId) && turnoValido(request.resource.data.turno)
+        && request.resource.data.papel == 'operador' && request.resource.data.perfil == 'operador'
+        && request.resource.data.solicitacaoPerfil in ['operador','tratorista','supervisor'] && request.resource.data.status == 'pendente';
+      allow get: if logado() && (uid == request.auth.uid || principal() || supervisorDoUsuario(resource.data));
+      allow list: if principal() || supervisorDoUsuario(resource.data);
+      allow update: if uid != 'Z8zjZP3iWjRSD6imwiDO4VLboOY2' && uid != request.auth.uid && (
+        (principal() && request.resource.data.papel in ['operador','funcionario','tratorista','supervisor']
+          && request.resource.data.perfil == request.resource.data.papel
+          && frenteValida(request.resource.data.frenteId) && turnoValido(request.resource.data.turno))
+        || (supervisorDoUsuario(resource.data)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['papel','perfil','status'])
+          && request.resource.data.papel == resource.data.solicitacaoPerfil
+          && request.resource.data.perfil == request.resource.data.papel
+          && request.resource.data.status in ['aprovado','bloqueado'])
+      );
+      allow delete: if false;
+    }
+    // Readiness probe. No document needs to be created and clients cannot change it.
+    match /configuracao/equipes { allow get: if logado(); allow list, write: if false; }
+    function grupoOperador(g) { return g in ['pendencias','ocorrencias_campo','mapas','pinturas','arquivos']; }
+    function leRegistro(equipe, d) { return gestor(equipe) || (membro(equipe) && grupoOperador(d.grupo)); }
+    function escreveRegistro(equipe, d) {
+      return gestor(equipe) || (membro(equipe) && grupoOperador(d.grupo)
+        && (d.autorUid == request.auth.uid || d.grupo == 'pinturas'
+          || (d.grupo == 'arquivos' && d.chave.matches('^mapa_relatorio_[0-9a-f]{64}[.]png$'))));
+    }
+    match /equipes/{equipe}/registros/{id} {
+      allow get: if (principal() || membro(equipe)) && (!exists(/databases/$(database)/documents/equipes/$(equipe)/registros/$(id)) || leRegistro(equipe, resource.data));
+      allow list: if leRegistro(equipe, resource.data);
+      allow create: if escreveRegistro(equipe, request.resource.data)
+        && request.resource.data.autorUid == request.auth.uid && valido(equipe, request.resource.data)
+        && request.resource.data.versao == 1;
+      allow update: if escreveRegistro(equipe, resource.data) && valido(equipe, request.resource.data)
+        && request.resource.data.autorUid == resource.data.autorUid
+        && request.resource.data.grupo == resource.data.grupo && request.resource.data.chave == resource.data.chave
+        && request.resource.data.tipo == resource.data.tipo
+        && request.resource.data.versao == resource.data.versao + 1;
+      allow delete: if false; // Tombstones synchronize deletions without reviving stale offline copies.
+    }
+    function valido(equipe, d) {
+      return d.keys().hasOnly(['equipeId','frenteId','turno','tipo','grupo','chave','conteudo','autorUid','editadoPor','versao','atualizadoEm','excluido'])
+        && d.keys().hasAll(['equipeId','frenteId','turno','tipo','grupo','chave','conteudo','autorUid','editadoPor','versao','atualizadoEm','excluido'])
+        && d.equipeId == equipe && frenteValida(d.frenteId) && turnoValido(d.turno)
+        && equipe == d.frenteId + '_' + d.turno && d.editadoPor == request.auth.uid
+        && d.autorUid is string && d.versao is int && d.excluido is bool
+        && d.atualizadoEm == request.time && d.conteudo is string && d.conteudo.size() < 750000
+        && d.chave is string && d.chave.size() < 250
+        && ((d.tipo == 'item' && d.grupo in ['pendencias','ocorrencias_campo','estoques_salvos','historico_estoque','relatorios_turno','caminhoes','movimentos'])
+          || (d.tipo == 'preferencia' && d.grupo in ['mapas','pinturas','ordens_servico','talhoes_por_os'])
+          || (d.tipo == 'arquivo' && d.grupo == 'arquivos'))
+        && d.grupo in ['pendencias','ocorrencias_campo','estoques_salvos','historico_estoque','relatorios_turno','caminhoes','movimentos','mapas','pinturas','ordens_servico','talhoes_por_os','arquivos'];
+    }
+    // Legacy collection is kept; documents without trustworthy team metadata are owner-only.
+    match /pendencias/{id} {
+      allow read: if principal() || (aprovado() && resource.data.autorId == request.auth.uid);
+      allow create, update, delete: if principal();
+    }
+    match /{document=**} { allow read, write: if false; }
+  }
+}

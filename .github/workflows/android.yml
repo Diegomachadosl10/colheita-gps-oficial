@@ -14,7 +14,25 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  firebase-rules:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: tests/firebase/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: npm ci --prefix tests/firebase
+      - name: Verificar isolamento das equipes e anexos
+        run: tests/firebase/node_modules/.bin/firebase emulators:exec --project demo-dm-agro --only firestore,storage 'cd tests/firebase && npm test'
+
   build:
+    needs: firebase-rules
     runs-on: ubuntu-latest
 
     steps:

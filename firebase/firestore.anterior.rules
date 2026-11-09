@@ -1,0 +1,39 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function logado() { return request.auth != null; }
+    function meuCadastro() { return get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data; }
+    function aprovado() { return logado() && meuCadastro().status == "aprovado"; }
+    function administrador() { return aprovado() && meuCadastro().papel == "administrador"; }
+    function supervisor() { return aprovado() && meuCadastro().papel == "supervisor"; }
+    function supervisorDoOperador() {
+      return supervisor() && resource.data.frenteId == meuCadastro().frenteId
+        && resource.data.papel == "operador" && resource.data.solicitacaoPerfil == "operador";
+    }
+    match /usuarios/{uid} {
+      allow create: if logado() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(["nome","matricula","frenteId","turno","funcao","papel","perfil","solicitacaoPerfil","status","criadoEm"])
+        && request.resource.data.keys().hasAll(["nome","matricula","frenteId","turno","funcao","papel","perfil","solicitacaoPerfil","status"])
+        && request.resource.data.nome is string && request.resource.data.matricula is string
+        && request.resource.data.frenteId in ["santo_inacio","santa_ines","itororo","cafeara","lupionopolis","colorado","sandovalina","jardim_olinda","itaguaje"]
+        && request.resource.data.turno in ["A","B","C"] && request.resource.data.papel == "operador"
+        && request.resource.data.perfil == "operador" && request.resource.data.solicitacaoPerfil in ["operador","supervisor"]
+        && request.resource.data.status == "pendente";
+      allow get: if logado() && (request.auth.uid == uid || administrador() || supervisorDoOperador());
+      allow list: if administrador() || supervisorDoOperador();
+      allow update: if administrador() || (supervisorDoOperador()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["papel","perfil","status"])
+        && request.resource.data.papel == "operador" && request.resource.data.perfil == "operador"
+        && request.resource.data.status in ["aprovado","bloqueado"]);
+      allow delete: if false;
+    }
+    match /pendencias/{id} {
+      allow create: if aprovado() && request.resource.data.autorId == request.auth.uid;
+      allow read: if aprovado() && (resource.data.autorId == request.auth.uid || supervisor() || administrador());
+      allow update: if aprovado() && (resource.data.autorId == request.auth.uid || supervisor() || administrador())
+        && request.resource.data.autorId == resource.data.autorId;
+      allow delete: if administrador();
+    }
+    match /{document=**} { allow read, write: if false; }
+  }
+}
