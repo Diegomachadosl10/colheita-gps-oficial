@@ -12,8 +12,8 @@ import android.widget.*
 internal enum class FieldIcon { BRAND, MAP, PENDING, EQUIPMENT, PART, RAIN, STOCK, ORDER, REPORT, OCCURRENCE, TRUCK, CALENDAR, PEOPLE, WEATHER, BELL }
 
 /** Native vector icons stay sharp at every Android font/display size. */
-internal class FieldIconView(context: android.content.Context, private val icon: FieldIcon) : View(context) {
-    private val ink = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFB7E9AF.toInt(); strokeWidth = 2.2f; style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND }
+internal class FieldIconView(context: android.content.Context, private val icon: FieldIcon, private val iconColor:Int=0xFFB7E9AF.toInt()) : View(context) {
+    private val ink = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = iconColor; strokeWidth = 2.2f; style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND }
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         canvas.save(); val scale = minOf(width, height) / 48f

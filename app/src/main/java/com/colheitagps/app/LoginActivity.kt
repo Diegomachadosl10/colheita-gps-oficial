@@ -113,7 +113,7 @@ class LoginActivity : Activity() {
         val name = ui.field(card, "Nome completo")
         val front = ui.spinner(card, "Frente", frentes)
         val shift = ui.spinner(card, "Turno", arrayOf("A", "B", "C")).apply { setSelection(2) }
-        val role = ui.spinner(card, "Tipo de acesso solicitado", arrayOf("Operador", "Supervisor"))
+        val role = ui.profileChoice(card)
         val password = if (!existing) ui.field(card, "Criar senha (mínimo 8 caracteres)", true) else null
         val confirmation = if (!existing) ui.field(card, "Confirmar senha", true) else null
         val submit = ui.button(card, "Enviar solicitação") {}
@@ -129,12 +129,12 @@ class LoginActivity : Activity() {
             }
             val data = hashMapOf<String, Any>(
                 "nome" to n, "matricula" to m, "frenteId" to ids[front.selectedItemPosition],
-                "turno" to shift.selectedItem.toString(), "funcao" to role.selectedItem.toString(),
+                "turno" to shift.selectedItem.toString(), "funcao" to role.selectedProfile.label,
                 "papel" to "operador", "perfil" to "operador",
-                "solicitacaoPerfil" to if (role.selectedItemPosition == 1) "supervisor" else "operador",
+                "solicitacaoPerfil" to role.selectedProfile.requested,
                 "status" to "pendente", "criadoEm" to FieldValue.serverTimestamp()
             )
-            busy = true; submit.isEnabled = false; submit.text = "Enviando…"
+            busy = true; submit.isEnabled = false; submit.text = "Enviando…"; role.setSelectable(false)
             fun saveRequest() {
                 val user = auth.currentUser ?: run { busy = false; login(); return }
                 val doc = db.collection("usuarios").document(user.uid)
@@ -155,7 +155,7 @@ class LoginActivity : Activity() {
                 .addOnCompleteListener {
                     if (isDestroyed) return@addOnCompleteListener
                     if (it.isSuccessful) saveRequest() else {
-                        busy = false; submit.isEnabled = true; submit.text = "Enviar solicitação"
+                        busy = false; submit.isEnabled = true; submit.text = "Enviar solicitação"; role.setSelectable(true)
                         notice(errorMessage(it.exception ?: Exception(), true))
                     }
                 }

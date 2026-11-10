@@ -114,6 +114,14 @@ internal class AccessUi(private val activity: Activity) {
         add(container, row, 5)
         return field
     }
+    fun profileChoice(container:LinearLayout):ProfileChoice {
+        add(container,text("Tipo de acesso solicitado",13f,dark,true),16)
+        add(container,text("Selecione uma opção",13f),3)
+        return ProfileChoice(activity).also { choice ->
+            add(container,choice,10)
+            add(container,text("O perfil depende de aprovação. Supervisores são aprovados pelo administrador principal.",13f,green),10)
+        }
+    }
     fun spinner(container: LinearLayout, label: String, values: Array<String>): Spinner {
         add(container, text(label, 13f, dark, true), 16)
         val adapter = object : ArrayAdapter<String>(activity, android.R.layout.simple_spinner_item, values) {
