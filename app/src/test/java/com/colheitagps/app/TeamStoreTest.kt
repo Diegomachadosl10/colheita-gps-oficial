@@ -12,6 +12,15 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [28], manifest = Config.NONE, application = Application::class)
 class TeamStoreTest {
+    @Test fun backupRoundTripRetainsArchivedHistoryAndLocalPhotos() {
+        val store = TeamStore(RuntimeEnvironment.getApplication(), "santo_inacio_A")
+        val original = MaintenanceRecords.archive(JSONObject().put("id", "p1").put("equipamento", "21569")
+            .put("foto", store.file("foto.jpg").absolutePath), "supA", "Supervisor", "10/11/2026 10:00")
+        val restored = JSONObject(store.decode(store.encode(original.toString())))
+        assertTrue(MaintenanceRecords.isArchived(restored))
+        assertEquals("supA", restored.getString("arquivadoPorUid"))
+        assertEquals(store.file("foto.jpg").absolutePath, restored.getString("foto"))
+    }
     @Test fun frontAndShiftIsolatePreferencesAndFilesOnTheSamePhone() {
         val context = RuntimeEnvironment.getApplication()
         val a = TeamStore(context, "santo_inacio_A")

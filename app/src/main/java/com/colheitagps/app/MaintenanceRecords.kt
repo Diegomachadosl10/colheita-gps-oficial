@@ -10,6 +10,22 @@ import java.util.Locale
 internal object MaintenanceRecords {
     private const val CATEGORY = "equipamento"
     fun isEquipment(record: JSONObject) = record.optString("categoriaRegistro") == CATEGORY
+    fun isArchived(record: JSONObject) = record.optBoolean("__arquivado")
+    fun withArchiveState(record: JSONObject, archived: Boolean): JSONObject = JSONObject(record.toString()).apply {
+        if (archived) put("__arquivado", true) else remove("__arquivado")
+    }
+    fun archive(record: JSONObject, uid: String, name: String, date: String): JSONObject =
+        withArchiveState(record, true).apply {
+            put("arquivadoPorUid", uid); put("arquivadoPorNome", name); put("arquivadoEm", date)
+        }
+    fun archiveEquipment(all: JSONArray, equipment: String, uid: String, name: String, date: String): JSONArray = JSONArray().apply {
+        for (i in 0 until all.length()) all.optJSONObject(i)?.let { item ->
+            put(if (number(item.optString("equipamento")) == number(equipment) && !isArchived(item))
+                archive(item, uid, name, date) else JSONObject(item.toString()))
+        }
+    }
+    fun archivedEquipment(all: JSONArray): List<String> = (0 until all.length()).mapNotNull { all.optJSONObject(it) }
+        .filter { isEquipment(it) && isArchived(it) }.map { number(it.optString("equipamento")) }.filter { it.isNotBlank() }.distinct().sorted()
     fun number(value: String): String = Normalizer.normalize(value, Normalizer.Form.NFKC)
         .trim().replace(Regex("\\s+"), " ").uppercase(Locale.ROOT)
     fun equipmentId(value: String): String {
@@ -33,7 +49,7 @@ internal object MaintenanceRecords {
         for (i in 0 until previous.length()) previous.optJSONObject(i)?.takeIf(::isEquipment)?.let { put(JSONObject(it.toString())) }
         for (i in 0 until issues.length()) issues.optJSONObject(i)?.takeUnless(::isEquipment)?.let { put(JSONObject(it.toString())) }
         val equipment = (0 until length()).mapNotNull { optJSONObject(it) }
-            .filterNot(::isEquipment).map { it.optString("equipamento") }.filter { it.isNotBlank() }
+            .filterNot { isEquipment(it) || isArchived(it) }.map { it.optString("equipamento") }.filter { it.isNotBlank() }
         equipment.forEach { ensureEquipment(this, it) }
     }
     data class Summary(val number: String, val open: Int, val completed: Int)
@@ -41,6 +57,7 @@ internal object MaintenanceRecords {
         val counts = linkedMapOf<String, Pair<Int, Int>>()
         for (i in 0 until all.length()) {
             val record = all.optJSONObject(i) ?: continue
+            if (isArchived(record)) continue
             val number = number(record.optString("equipamento"))
             if (number.isBlank()) continue
             val current = counts[number] ?: (0 to 0)

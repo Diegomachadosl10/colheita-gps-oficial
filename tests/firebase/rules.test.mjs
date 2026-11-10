@@ -154,3 +154,25 @@ test('catálogo de equipamento usa os mesmos limites de equipe das pendências',
   await assertSucceeds(getDoc(doc(db('supA'),'equipes',team,'registros','equipamento')));
   await assertFails(getDoc(doc(db('supB'),'equipes',team,'registros','equipamento')));
 });
+test('somente o gestor exclui equipamentos e pendências, preservando os documentos para o histórico', async () => {
+  const entries=[['equipamento-historico',{id:'equipamento-historico',categoriaRegistro:'equipamento',equipamento:'21569'}],
+    ['pendencia-historico',{id:'pendencia-historico',equipamento:'21569',descricao:'Pneu furado'}]];
+  for(const [key,content] of entries) {
+    const path=['equipes',team,'registros',key];
+    const item=record('opA','pendencias',1,{chave:key,conteudo:JSON.stringify(content)});
+    await assertSucceeds(setDoc(doc(db('opA'),...path),item));
+    await assertFails(updateDoc(doc(db('opA'),...path),{excluido:true,versao:2,editadoPor:'opA',atualizadoEm:serverTimestamp()}));
+    await assertFails(updateDoc(doc(db('supB'),...path),{excluido:true,versao:2,editadoPor:'supB',atualizadoEm:serverTimestamp()}));
+    await assertSucceeds(updateDoc(doc(db('supA'),...path),{excluido:true,versao:2,editadoPor:'supA',atualizadoEm:serverTimestamp()}));
+    const history=await assertSucceeds(getDoc(doc(db('opA'),...path)));
+    assert.equal(history.data().excluido,true);
+    assert.deepEqual(JSON.parse(history.data().conteudo),content);
+    await assertSucceeds(getDoc(doc(db(owner),...path)));
+    await assertFails(updateDoc(doc(db('opA'),...path),{excluido:false,versao:3,editadoPor:'opA',atualizadoEm:serverTimestamp()}));
+    await assertFails(updateDoc(doc(db('opA'),...path),{conteudo:'{}',versao:3,editadoPor:'opA',atualizadoEm:serverTimestamp()}));
+    await assertFails(deleteDoc(doc(db('supA'),...path)));
+    await assertFails(deleteDoc(doc(db(owner),...path)));
+  }
+  await assertFails(setDoc(doc(db('opA'),'equipes',team,'registros','forjado'),record('opA','pendencias',1,{excluido:true})));
+  await assertSucceeds(setDoc(doc(db(owner),'equipes',team,'registros','arquivo-administrador'),record(owner,'pendencias',1,{excluido:true})));
+});

@@ -55,8 +55,11 @@ service cloud.firestore {
       allow list: if leRegistro(equipe, resource.data);
       allow create: if escreveRegistro(equipe, request.resource.data)
         && request.resource.data.autorUid == request.auth.uid && valido(equipe, request.resource.data)
+        && (request.resource.data.grupo != 'pendencias' || !request.resource.data.excluido || gestor(equipe))
         && request.resource.data.versao == 1;
       allow update: if escreveRegistro(equipe, resource.data) && valido(equipe, request.resource.data)
+        && (resource.data.grupo != 'pendencias' || gestor(equipe)
+          || (!resource.data.excluido && !request.resource.data.excluido))
         && request.resource.data.autorUid == resource.data.autorUid
         && request.resource.data.grupo == resource.data.grupo && request.resource.data.chave == resource.data.chave
         && request.resource.data.tipo == resource.data.tipo
