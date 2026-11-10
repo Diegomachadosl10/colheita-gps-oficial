@@ -2693,6 +2693,25 @@ class MainActivity : Activity() {
             addView(lista)
         }
         coluna.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
+        val driveFooter = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            // Reserve the right side for the existing floating + button.
+            setPadding(dp(15), dp(6), dp(92), dp(18))
+            addView(texto("Não tem o PDF neste celular?", 13f, 0xFFB6DCC6.toInt()))
+            addView(botao("Buscar mapas no Google Drive") {
+                try {
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://drive.google.com/drive/folders/1goZtocxdT1tgmjcNzpy3CoQHkeN4WLX4"))
+                        .addCategory(Intent.CATEGORY_BROWSABLE))
+                } catch (_: android.content.ActivityNotFoundException) {
+                    Toast.makeText(this@MainActivity, "Não foi possível abrir o link. Confira se há um navegador instalado.", Toast.LENGTH_LONG).show()
+                }
+            }.apply {
+                textSize = 14f
+                minimumHeight = dp(54)
+                contentDescription = "Abrir a pasta pública de mapas no Google Drive"
+            }, LinearLayout.LayoutParams(-1, -2))
+        }
+        coluna.addView(driveFooter, LinearLayout.LayoutParams(-1, -2))
         base.addView(coluna, FrameLayout.LayoutParams(-1, -1))
 
         base.addView(
