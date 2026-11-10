@@ -83,7 +83,9 @@ internal class DashboardUi(private val activity: Activity) {
                 }
                 row.addView(card, LinearLayout.LayoutParams(0, -1, 1f).apply { if (index > 0) marginStart = dp(12) })
             }
-            if (rowItems.size < columns) row.addView(View(activity), LinearLayout.LayoutParams(0, 1, 1f).apply { marginStart = dp(12) })
+            // Both cells must fill the measured row. A fixed 1px spacer makes LinearLayout
+            // collapse an odd final row while its real card requests MATCH_PARENT height.
+            if (rowItems.size < columns) row.addView(View(activity), LinearLayout.LayoutParams(0, -1, 1f).apply { marginStart = dp(12) })
             container.addView(row, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
         }
     }

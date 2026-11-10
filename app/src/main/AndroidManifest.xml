@@ -24,6 +24,7 @@
 
         <activity android:name="com.colheitagps.app.UpdateActivity" android:exported="false" android:launchMode="singleTop" />
         <activity android:name="com.colheitagps.app.WeatherActivity" android:exported="false" />
+        <activity android:name="com.colheitagps.app.StockShareActivity" android:exported="false" />
         <activity android:name="com.colheitagps.app.NotificationSettingsActivity" android:exported="false" />
         <service android:name="com.colheitagps.app.AgroMessagingService" android:exported="false">
             <intent-filter><action android:name="com.google.firebase.MESSAGING_EVENT" /></intent-filter>

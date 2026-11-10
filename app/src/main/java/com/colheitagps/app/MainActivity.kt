@@ -977,55 +977,9 @@ class MainActivity : Activity() {
     }
     private fun compartilharLotes(records:List<JSONObject>) {
         if(!exigirGestor()) return
-        AlertDialog.Builder(this).setTitle("Compartilhar ${records.size} lote(s)")
-            .setItems(arrayOf("Mensagem com fotos disponíveis","PDF dos lotes selecionados")) { _,option->
-                val report=StockBatch.text(records,TeamPolicy.label(teamStore!!.team),java.text.SimpleDateFormat("dd/MM/yyyy HH:mm",Locale("pt","BR")).format(java.util.Date()))
-                try {
-                    val photos=records.mapNotNull { record->record.optString("fotoEstoque").takeIf { it.isNotBlank() }?.let { path->
-                        File(path).takeIf { it.isFile&&it.canonicalPath.startsWith(filesDir.canonicalPath+File.separator) }
-                    } }.distinctBy { it.canonicalPath }
-                    if(option==0) {
-                        val uris=ArrayList<Uri>()
-                        for(photo in photos) {
-                            val copy=File(cacheDir,"estoque_${java.util.UUID.randomUUID()}.${photo.extension.ifBlank { "jpg" }}")
-                            photo.copyTo(copy,true);uris.add(androidx.core.content.FileProvider.getUriForFile(this,"$packageName.files",copy))
-                        }
-                        val send=Intent(if(uris.isEmpty()) Intent.ACTION_SEND else Intent.ACTION_SEND_MULTIPLE).apply {
-                            type=if(uris.isEmpty()) "text/plain" else "image/*";putExtra(Intent.EXTRA_TEXT,report)
-                            if(uris.isNotEmpty()) { putParcelableArrayListExtra(Intent.EXTRA_STREAM,uris);addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                clipData=ClipData.newUri(contentResolver,"Estoques selecionados",uris.first()).apply { uris.drop(1).forEach { addItem(ClipData.Item(it)) } } }
-                        }
-                        startActivity(Intent.createChooser(send,"Compartilhar estoques"))
-                    } else {
-                        val doc=android.graphics.pdf.PdfDocument()
-                        try {
-                            val paint=Paint(Paint.ANTI_ALIAS_FLAG).apply { color=Color.BLACK;textSize=11f }
-                            var pageNumber=0
-                            val lines=report.lines().flatMap { raw->
-                                val wrapped=mutableListOf<String>();var remaining=raw
-                                while(remaining.isNotEmpty()) { val count=paint.breakText(remaining,true,535f,null).coerceAtLeast(1);wrapped.add(remaining.take(count));remaining=remaining.drop(count) }
-                                wrapped.ifEmpty { listOf("") }
-                            }
-                            for(block in lines.chunked(46)) {
-                                val page=doc.startPage(android.graphics.pdf.PdfDocument.PageInfo.Builder(595,842,++pageNumber).create())
-                                block.forEachIndexed { index,line->page.canvas.drawText(line,30f,35f+index*16,paint) };doc.finishPage(page)
-                            }
-                            for(record in records) {
-                                val path=record.optString("fotoEstoque");val file=photos.firstOrNull { it.absolutePath==path }?:continue
-                                val bounds=BitmapFactory.Options().apply { inJustDecodeBounds=true };BitmapFactory.decodeFile(file.absolutePath,bounds)
-                                val options=BitmapFactory.Options().apply { inSampleSize=(maxOf(bounds.outWidth,bounds.outHeight)/1600).coerceAtLeast(1) }
-                                val bitmap=BitmapFactory.decodeFile(file.absolutePath,options)?:continue
-                                val page=doc.startPage(android.graphics.pdf.PdfDocument.PageInfo.Builder(595,842,++pageNumber).create())
-                                page.canvas.drawText("Lote: ${record.optString("os")}".take(90),30f,35f,paint)
-                                val scale=minOf(535f/bitmap.width,750f/bitmap.height)
-                                page.canvas.drawBitmap(bitmap,null,RectF(30f,55f,30f+bitmap.width*scale,55f+bitmap.height*scale),Paint(3));doc.finishPage(page);bitmap.recycle()
-                            }
-                            val file=File(cacheDir,"estoques_${System.currentTimeMillis()}.pdf");file.outputStream().use { doc.writeTo(it) };pdfPendente=file
-                        } finally { doc.close() }
-                        startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).apply { addCategory(Intent.CATEGORY_OPENABLE);type="application/pdf";putExtra(Intent.EXTRA_TITLE,"Estoques_Selecionados.pdf") },303)
-                    }
-                } catch(_:Exception) { Toast.makeText(this,"Não foi possível preparar os estoques. Tente novamente.",Toast.LENGTH_LONG).show() }
-            }.setNegativeButton("Cancelar",null).show()
+        startActivity(Intent(this,StockShareActivity::class.java)
+            .putExtra("team",teamStore!!.team)
+            .putStringArrayListExtra("ids",ArrayList(records.map { it.optString("id") })))
     }
     private fun fotoEstoque(): File? {
         val caminho = progresso().optString("fotoEstoque")

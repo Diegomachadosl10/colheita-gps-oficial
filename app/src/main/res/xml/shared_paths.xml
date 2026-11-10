@@ -1,4 +1,5 @@
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
     <files-path name="arquivos_equipes" path="equipes/" />
     <cache-path name="atualizacoes" path="atualizacoes/" />
+    <cache-path name="compartilhamento_equipes" path="equipes/" />
 </paths>

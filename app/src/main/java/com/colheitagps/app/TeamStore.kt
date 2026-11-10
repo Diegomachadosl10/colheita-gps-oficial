@@ -9,7 +9,9 @@ import java.io.File
 /** All operational preferences and files are isolated by a verified team. Legacy data is untouched. */
 internal class TeamStore(context: Context, val team: String) {
     private val app = context.applicationContext
-    val lock = Any()
+    // Activities editing the same local team must share the same read/modify/write lock.
+    val lock = locks.computeIfAbsent(team) { Any() }
+    companion object { private val locks=java.util.concurrent.ConcurrentHashMap<String,Any>() }
     init { require(team in TeamPolicy.fronts.keys.flatMap { f -> TeamPolicy.shifts.map { "${f}_$it" } }) }
     val files = File(app.filesDir, "equipes/$team").apply { mkdirs() }
     val cache = File(app.cacheDir, "equipes/$team").apply { mkdirs() }
