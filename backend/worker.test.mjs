@@ -1,7 +1,7 @@
 import {test,before,beforeEach} from 'node:test';
 import assert from 'node:assert/strict';
 import worker,{PROJECT,OWNER,alias,recipients,wantsNotice,safeTarget} from './worker.js';
-let privateKey,jwk,env,docs,accounts,sent,failCorrection,operations;
+let privateKey,jwk,env,docs,accounts,sent,failCorrection,operations,fcmError;
 const base=`projects/${PROJECT}/databases/(default)/documents/`;
 const pack=v=>typeof v==='string'?{stringValue:v}:typeof v==='boolean'?{booleanValue:v}:typeof v==='number'?{integerValue:String(v)}:Array.isArray(v)?{arrayValue:{values:v.map(pack)}}:{mapValue:{fields:fields(v)}};
 const fields=v=>Object.fromEntries(Object.entries(v).map(([k,v])=>[k,pack(v)]));
@@ -18,7 +18,7 @@ before(async()=>{
     const url=new URL(input); const body=init.body?JSON.parse(typeof init.body==='string'?init.body:'{}'):{};
     if(url.pathname.includes('/service_accounts/v1/jwk/')) return json({keys:[jwk]});
     if(url.hostname==='oauth2.googleapis.com') return json({access_token:'fixture-oauth',expires_in:3600});
-    if(url.hostname==='fcm.googleapis.com') { sent.push(body.message); return json({name:'fixture-message'}); }
+    if(url.hostname==='fcm.googleapis.com') { if(fcmError) return json(fcmError.body,fcmError.status); sent.push(body.message); return json({name:'fixture-message'}); }
     if(url.hostname==='identitytoolkit.googleapis.com') {
       if(url.pathname.endsWith(':lookup')) return json({users:body.localId.map(uid=>accounts.get(uid)).filter(Boolean)});
       if(url.pathname.endsWith(':update')) {
@@ -54,7 +54,7 @@ before(async()=>{
   };
 });
 beforeEach(()=>{
-  docs=new Map(); accounts=new Map(); sent=[]; failCorrection=false; operations=[];
+  docs=new Map(); accounts=new Map(); sent=[]; failCorrection=false; operations=[]; fcmError=null;
   for(const uid of [OWNER,'opA','supA','supB','target']) accounts.set(uid,{localId:uid,email:uid==='target'?alias('080911'):uid+'@example.invalid',validSince:'0',passwordHash:'unchanged'});
   put('usuarios/'+OWNER,{nome:'Diego'}); put('usuarios/opA',profile()); put('usuarios/supA',profile('supervisor')); put('usuarios/supB',profile('supervisor','colorado'));
   put('usuarios/target',profile());
@@ -146,4 +146,51 @@ test('a supervisor cannot subscribe a device to another front',async()=>{
 test('health exposes setup status without disclosing any private credential',async()=>{
   const response=await worker.fetch(new Request('https://fixture.workers.dev/health'),env);
   const body=await response.text(); assert.ok(body.includes(PROJECT)); assert.equal(body.includes('PRIVATE KEY'),false); assert.equal(body.includes('client_email'),false);
+});
+
+test('each committed revision alerts once and an authorized editor can notify their change',async()=>{
+  const key='c'.repeat(64); const path=`equipes/santo_inacio_C/registros/${key}`;
+  put(`dispositivos/${OWNER}/tokens/a`,{token:'owner-token',front:'santo_inacio',seen:1});
+  const record={tipo:'item',grupo:'pendencias',autorUid:'opA',editadoPor:'opA',versao:1,excluido:false,conteudo:JSON.stringify({descricao:'Filtro'})};
+  put(path,record);
+  assert.equal((await request('opA','/events/notify',{kind:'record',team:'santo_inacio_C',key,revision:1})).status,200);
+  put(path,{...record,editadoPor:'supA',versao:2});
+  const body={kind:'record',team:'santo_inacio_C',key,revision:2};
+  assert.equal((await request('opA','/events/notify',body)).status,403);
+  assert.equal((await request('supA','/events/notify',body)).status,200);
+  assert.equal((await request('supA','/events/notify',body)).status,200);
+  assert.equal(sent.length,2); assert.notEqual(sent[0].data.eventId,sent[1].data.eventId);
+  assert.equal(sent[1].data.title,'Registro atualizado');
+});
+test('a superseded revision does not notify with the wrong contents',async()=>{
+  const key='d'.repeat(64);
+  put(`equipes/santo_inacio_C/registros/${key}`,{tipo:'item',grupo:'pendencias',autorUid:'opA',versao:3,excluido:false,conteudo:'{}'});
+  const response=await request('opA','/events/notify',{kind:'record',team:'santo_inacio_C',key,revision:2});
+  assert.equal(response.status,200); assert.equal((await response.json()).superseded,true);assert.equal(sent.length,0);
+});
+test('delivery test only reaches the authenticated managers registered device and is rate limited',async()=>{
+  const token='test-fixture-device-token-123456';
+  assert.equal((await request(OWNER,'/devices/register',{token,front:'santo_inacio'})).status,200);
+  assert.equal((await request('supA','/devices/test',{token})).status,400);
+  assert.equal((await request('opA','/devices/test',{token})).status,403);
+  assert.equal((await request(OWNER,'/devices/test',{token})).status,200);
+  assert.equal(sent.length,1);assert.equal(sent[0].data.targetUid,OWNER);assert.equal(sent[0].data.team,'santo_inacio_C');
+  assert.equal((await request(OWNER,'/devices/test',{token})).status,429);
+});
+test('a failed Firebase delivery is diagnosed instead of reporting success',async()=>{
+  const token='test-fixture-device-token-123456';
+  await request(OWNER,'/devices/register',{token,front:'santo_inacio'});
+  fcmError={status:403,body:{error:{message:'permission denied'}}};
+  const response=await request(OWNER,'/devices/test',{token});
+  assert.equal(response.status,503);assert.match((await response.json()).message,/Cloud Messaging HTTP v1/);assert.equal(sent.length,0);
+});
+test('an unregistered device is removed without deleting devices on unrelated FCM failures',async()=>{
+  const token='test-fixture-device-token-123456';
+  await request(OWNER,'/devices/register',{token,front:'santo_inacio'});
+  const path=[...docs.keys()].find(k=>k.startsWith(`dispositivos/${OWNER}/tokens/`));
+  fcmError={status:404,body:{error:{message:'API not found'}}};
+  assert.equal((await request(OWNER,'/devices/test',{token})).status,503);assert.ok(docs.has(path));
+  docs.get(path).fields.testAt={integerValue:'0'};
+  fcmError={status:404,body:{error:{details:[{errorCode:'UNREGISTERED'}]}}};
+  assert.equal((await request(OWNER,'/devices/test',{token})).status,409);assert.equal(docs.has(path),false);
 });

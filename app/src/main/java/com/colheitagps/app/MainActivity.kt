@@ -112,6 +112,7 @@ class MainActivity : Activity() {
     }
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
+        if(hasFocus) StartupUpdates.focused(this)
         teamSync?.available(hasFocus && mapa == null)
     }
     private fun pausarSincronizacao() {
@@ -628,6 +629,7 @@ class MainActivity : Activity() {
     }
     override fun onResume() {
         super.onResume()
+        StartupUpdates.resume(this)
         if(acessoConfirmado&&telaAtual=="inicio"&&teamStore!=null) inicio()
     }
 
@@ -782,6 +784,12 @@ class MainActivity : Activity() {
         coluna.addView(teamPanel, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(22) })
         if (access.primary && access.profile["nome"]?.toString().isNullOrBlank()) coluna.addView(botao("Definir meu nome") { definirNome() })
         coluna.addView(WeatherActivity.homeCard(this, store.team), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(14) })
+        val verse=DailyVerse.forDate()
+        coluna.addView(ui.panel().apply {
+            orientation=LinearLayout.VERTICAL
+            addView(ui.text("Versículo do dia • ${verse.reference}",12f,ui.mint,true))
+            addView(ui.text(verse.text,15f).apply { setPadding(0,dp(6),0,0) })
+        },LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(12) })
         coluna.addView(ui.text("Ferramentas", 23f, bold = true).apply { setPadding(0, dp(24), 0, dp(3)) })
         val open = MaintenanceRecords.summaries(maintenanceCatalog()).sumOf { it.open }
         val tiles = mutableListOf(
@@ -897,6 +905,8 @@ class MainActivity : Activity() {
         val coluna = pagina("Estoque de cana")
         coluna.addView(botao("📅 Abrir calendário") { calendario(parent = { estoque() }) })
         coluna.addView(botao("+ Novo estoque") { editarProgressoColheita(true) })
+        coluna.addView(botao("+ Cadastrar vários lotes") { cadastrarLotes() })
+        coluna.addView(botao("Compartilhar vários estoques") { selecionarEstoques() })
         coluna.addView(texto("ESTOQUES SALVOS", 15f))
         val arr = listaEstoques()
         if (arr.length() == 0) coluna.addView(texto("Nenhum estoque cadastrado ainda.", 14f))
@@ -910,6 +920,113 @@ class MainActivity : Activity() {
     }
 
     private var mapaEstoqueSelecionado: File? = null
+    private fun cadastrarLotes() {
+        if(!exigirGestor()) return
+        pausarSincronizacao()
+        val ui=AccessUi(this,attach=false)
+        val content=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(16),dp(8),dp(16),dp(16)) }
+        val rows=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
+        content.addView(texto("Preencha um cartão por lote. Até 20 lotes por cadastro.",14f,Color.DKGRAY));content.addView(rows)
+        val inputs=mutableListOf<Pair<LinearLayout,List<EditText>>>()
+        fun addLot() {
+            if(inputs.size>=20) { Toast.makeText(this,"Salve estes lotes antes de adicionar outros.",Toast.LENGTH_LONG).show();return }
+            val card=ui.card().apply { elevation=0f;background=ui.background(0xFFF1F6F1.toInt()) }
+            rows.addView(card,LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(12) })
+            val fields=listOf("Lote","Talhões","Área (ha)","Produtividade (t/ha)").map { ui.field(card,it) }
+            ui.button(card,"Remover este lote",true) { rows.removeView(card);inputs.removeAll { it.first===card } }
+            inputs.add(card to fields)
+        }
+        addLot()
+        ui.button(content,"+ Adicionar outro lote",true) { addLot() }
+        val dialog=AlertDialog.Builder(this).setTitle("Cadastrar vários lotes").setView(ScrollView(this).apply { addView(content) })
+            .setNegativeButton("Cancelar",null).setPositiveButton("Salvar todos",null).create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val drafts=inputs.map { (_,fields)->StockBatch.Draft(fields[0].text.toString(),fields[1].text.toString(),fields[2].text.toString(),fields[3].text.toString()) }
+                val records=try { StockBatch.records(drafts,dataHoje()) } catch(error:IllegalArgumentException) {
+                    Toast.makeText(this,error.message,Toast.LENGTH_LONG).show();return@setOnClickListener
+                }
+                synchronized(teamStore!!.lock) { val all=listaEstoques();records.forEach { all.put(it) };guardar("estoques_salvos",all) }
+                dialog.dismiss();estoque()
+                AlertDialog.Builder(this).setTitle("${records.size} lote(s) salvo(s)").setMessage("Deseja compartilhar esses lotes juntos?")
+                    .setNegativeButton("Agora não",null).setPositiveButton("Compartilhar") { _,_->compartilharLotes(records) }.show()
+            }
+        }
+        dialog.show()
+    }
+    private fun selecionarEstoques() {
+        if(!exigirGestor()) return
+        val all=listaEstoques()
+        if(all.length()==0) { Toast.makeText(this,"Cadastre um estoque antes de compartilhar.",Toast.LENGTH_LONG).show();return }
+        val records=(all.length()-1 downTo 0).mapNotNull { all.optJSONObject(it) }
+        val selected=BooleanArray(records.size)
+        val labels=records.map { "Lote ${it.optString("os").ifBlank { "não informado" }} • ${it.optString("areaRestante")} ha\nTalhões: ${it.optString("talhoes")}" }.toTypedArray()
+        val dialog=AlertDialog.Builder(this).setTitle("Selecione os estoques")
+            .setMultiChoiceItems(labels,selected) { _,index,value->selected[index]=value }
+            .setNegativeButton("Cancelar",null).setNeutralButton("Selecionar todos",null).setPositiveButton("Continuar",null).create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener { for(i in selected.indices) {selected[i]=true;dialog.listView.setItemChecked(i,true)} }
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val ids=records.filterIndexed { index,_->selected[index] }.map { it.optString("id") }.toSet()
+                val chosen=StockBatch.selected(all,ids)
+                if(chosen.isEmpty()) { Toast.makeText(this,"Selecione pelo menos um lote.",Toast.LENGTH_LONG).show();return@setOnClickListener }
+                if(chosen.any { !StockBatch.complete(it) }) { Toast.makeText(this,"Complete lote, talhões, área e produtividade dos estoques selecionados antes de compartilhar.",Toast.LENGTH_LONG).show();return@setOnClickListener }
+                dialog.dismiss();compartilharLotes(chosen)
+            }
+        };dialog.show()
+    }
+    private fun compartilharLotes(records:List<JSONObject>) {
+        if(!exigirGestor()) return
+        AlertDialog.Builder(this).setTitle("Compartilhar ${records.size} lote(s)")
+            .setItems(arrayOf("Mensagem com fotos disponíveis","PDF dos lotes selecionados")) { _,option->
+                val report=StockBatch.text(records,TeamPolicy.label(teamStore!!.team),java.text.SimpleDateFormat("dd/MM/yyyy HH:mm",Locale("pt","BR")).format(java.util.Date()))
+                try {
+                    val photos=records.mapNotNull { record->record.optString("fotoEstoque").takeIf { it.isNotBlank() }?.let { path->
+                        File(path).takeIf { it.isFile&&it.canonicalPath.startsWith(filesDir.canonicalPath+File.separator) }
+                    } }.distinctBy { it.canonicalPath }
+                    if(option==0) {
+                        val uris=ArrayList<Uri>()
+                        for(photo in photos) {
+                            val copy=File(cacheDir,"estoque_${java.util.UUID.randomUUID()}.${photo.extension.ifBlank { "jpg" }}")
+                            photo.copyTo(copy,true);uris.add(androidx.core.content.FileProvider.getUriForFile(this,"$packageName.files",copy))
+                        }
+                        val send=Intent(if(uris.isEmpty()) Intent.ACTION_SEND else Intent.ACTION_SEND_MULTIPLE).apply {
+                            type=if(uris.isEmpty()) "text/plain" else "image/*";putExtra(Intent.EXTRA_TEXT,report)
+                            if(uris.isNotEmpty()) { putParcelableArrayListExtra(Intent.EXTRA_STREAM,uris);addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                clipData=ClipData.newUri(contentResolver,"Estoques selecionados",uris.first()).apply { uris.drop(1).forEach { addItem(ClipData.Item(it)) } } }
+                        }
+                        startActivity(Intent.createChooser(send,"Compartilhar estoques"))
+                    } else {
+                        val doc=android.graphics.pdf.PdfDocument()
+                        try {
+                            val paint=Paint(Paint.ANTI_ALIAS_FLAG).apply { color=Color.BLACK;textSize=11f }
+                            var pageNumber=0
+                            val lines=report.lines().flatMap { raw->
+                                val wrapped=mutableListOf<String>();var remaining=raw
+                                while(remaining.isNotEmpty()) { val count=paint.breakText(remaining,true,535f,null).coerceAtLeast(1);wrapped.add(remaining.take(count));remaining=remaining.drop(count) }
+                                wrapped.ifEmpty { listOf("") }
+                            }
+                            for(block in lines.chunked(46)) {
+                                val page=doc.startPage(android.graphics.pdf.PdfDocument.PageInfo.Builder(595,842,++pageNumber).create())
+                                block.forEachIndexed { index,line->page.canvas.drawText(line,30f,35f+index*16,paint) };doc.finishPage(page)
+                            }
+                            for(record in records) {
+                                val path=record.optString("fotoEstoque");val file=photos.firstOrNull { it.absolutePath==path }?:continue
+                                val bounds=BitmapFactory.Options().apply { inJustDecodeBounds=true };BitmapFactory.decodeFile(file.absolutePath,bounds)
+                                val options=BitmapFactory.Options().apply { inSampleSize=(maxOf(bounds.outWidth,bounds.outHeight)/1600).coerceAtLeast(1) }
+                                val bitmap=BitmapFactory.decodeFile(file.absolutePath,options)?:continue
+                                val page=doc.startPage(android.graphics.pdf.PdfDocument.PageInfo.Builder(595,842,++pageNumber).create())
+                                page.canvas.drawText("Lote: ${record.optString("os")}".take(90),30f,35f,paint)
+                                val scale=minOf(535f/bitmap.width,750f/bitmap.height)
+                                page.canvas.drawBitmap(bitmap,null,RectF(30f,55f,30f+bitmap.width*scale,55f+bitmap.height*scale),Paint(3));doc.finishPage(page);bitmap.recycle()
+                            }
+                            val file=File(cacheDir,"estoques_${System.currentTimeMillis()}.pdf");file.outputStream().use { doc.writeTo(it) };pdfPendente=file
+                        } finally { doc.close() }
+                        startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).apply { addCategory(Intent.CATEGORY_OPENABLE);type="application/pdf";putExtra(Intent.EXTRA_TITLE,"Estoques_Selecionados.pdf") },303)
+                    }
+                } catch(_:Exception) { Toast.makeText(this,"Não foi possível preparar os estoques. Tente novamente.",Toast.LENGTH_LONG).show() }
+            }.setNegativeButton("Cancelar",null).show()
+    }
     private fun fotoEstoque(): File? {
         val caminho = progresso().optString("fotoEstoque")
         return if (caminho.isNotBlank()) File(caminho).takeIf { it.exists() } else null

@@ -13,8 +13,8 @@ android {
         applicationId = "com.colheitagps.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 11
-        versionName = "1.3.2"
+        versionCode = 12
+        versionName = "1.4.0"
     }
 
     buildTypes {
@@ -48,4 +48,6 @@ dependencies {
     implementation("com.google.firebase:firebase-storage")
     implementation("com.google.firebase:firebase-messaging")
     implementation("androidx.work:work-runtime-ktx:2.9.1")
+    // WorkManager's durable enqueue acknowledgement exposes ListenableFuture.
+    implementation("com.google.guava:guava:33.3.1-android")
 }

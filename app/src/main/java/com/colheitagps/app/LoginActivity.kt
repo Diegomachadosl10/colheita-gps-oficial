@@ -21,6 +21,7 @@ class LoginActivity : Activity() {
     private lateinit var ui: AccessUi
     private var busy = false
     private var onLoginPage = false
+    private var onWelcomePage = false
     private var waiting = false
     private var listener: ListenerRegistration? = null
     private var attempt = 0
@@ -32,15 +33,23 @@ class LoginActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         ui = AccessUi(this)
-        if (auth.currentUser == null) login() else verify()
+        if (auth.currentUser == null) welcome() else verify()
+    }
+    override fun onResume() { super.onResume(); if(onWelcomePage) welcome(); StartupUpdates.resume(this) }
+    override fun onWindowFocusChanged(hasFocus:Boolean) { super.onWindowFocusChanged(hasFocus);if(hasFocus) StartupUpdates.focused(this) }
+    private fun welcome() {
+        waiting=false;onLoginPage=false;onWelcomePage=true;listener?.remove();listener=null
+        WelcomeUi.render(this,{login()},{register()})
     }
     override fun onStart() { super.onStart(); if (waiting) watchApproval() }
     override fun onStop() { listener?.remove(); listener = null; super.onStop() }
     override fun onDestroy() { attempt++; listener?.remove(); super.onDestroy() }
 
     private fun page(title: String, description: String): LinearLayout {
+        if(onWelcomePage) ui=AccessUi(this)
         waiting = false
         onLoginPage = false
+        onWelcomePage = false
         listener?.remove(); listener = null
         return ui.page(title, description)
     }
@@ -221,7 +230,8 @@ class LoginActivity : Activity() {
     override fun onBackPressed() {
         if (busy) return
         when {
-            onLoginPage -> finish()
+            onWelcomePage -> moveTaskToBack(true)
+            onLoginPage -> welcome()
             auth.currentUser == null -> login()
             else -> moveTaskToBack(true)
         }

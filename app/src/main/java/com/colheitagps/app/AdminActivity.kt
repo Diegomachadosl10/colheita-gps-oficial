@@ -14,6 +14,10 @@ class AdminActivity : Activity() {
     private lateinit var ui: AccessUi
     private var busy = false
     private var removed = false
+    private var search = ""
+    private var statusFilter = ""
+    private var frontFilter = ""
+    private var pageIndex = 0
     override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState); ui = AccessUi(this) }
     override fun onResume() { super.onResume(); if (!busy) load() }
     private fun notice(message: String) {
@@ -35,11 +39,17 @@ class AdminActivity : Activity() {
                 val card = ui.page(if (access.primary) "Gerenciar todos os acessos" else "Aprovar minha equipe",
                     if (access.primary) "Somente você aprova supervisores e ajusta as equipes."
                     else "${TeamPolicy.label(access.team!!)}. Você pode aprovar somente operadores e tratoristas desta equipe.")
-                ui.button(card, "Atualizar lista") { if (!busy) load() }
-                ui.button(card, "Voltar", true) { finish() }
+                val toolbar=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL };ui.add(card,toolbar,0)
+                for((label,action) in listOf("Atualizar" to { if(!busy) load() },"Voltar" to { finish() })) {
+                    val holder=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
+                    toolbar.addView(holder,LinearLayout.LayoutParams(0,-2,1f).apply { marginEnd=ui.dp(5) });ui.button(holder,label,true,action)
+                }
                 if(access.primary) {
-                    ui.button(card, if(removed) "Ver usuários ativos" else "Cadastros excluídos", true) { removed=!removed; load() }
-                    ui.button(card,"Notificações e serviço gratuito",true) { startActivity(android.content.Intent(this,NotificationSettingsActivity::class.java)) }
+                    val more=ui.button(card,"Mais opções",true) {}
+                    more.setOnClickListener { android.widget.PopupMenu(this,more).apply {
+                        menu.add(if(removed) "Ver usuários ativos" else "Cadastros excluídos").setOnMenuItemClickListener { removed=!removed;statusFilter="";pageIndex=0;load();true }
+                        menu.add("Notificações e serviço gratuito").setOnMenuItemClickListener { startActivity(android.content.Intent(this@AdminActivity,NotificationSettingsActivity::class.java));true }
+                    }.show() }
                 }
                 if (!it.isSuccessful) {
                     ui.add(card, ui.text("Lista indisponível. Confira a conexão e se as regras e o índice de equipes já foram publicados."))
@@ -49,36 +59,76 @@ class AdminActivity : Activity() {
                     if(access.primary && removed) d.id!=access.uid && !TeamPolicy.primary(d.id) && AccessPolicy.normalized(d.get("status"))=="excluido"
                     else TeamPolicy.canApprove(access.uid, access.profile, d.id, d.data)
                 }
-                    .sortedWith(compareBy({ d -> if (d.getString("status") == "pendente") 0 else 1 }, { d -> d.get("nome")?.toString().orEmpty() }))
-                ui.add(card, ui.text("${users.size} usuários", 14f, ui.green, true))
-                for (user in users) {
-                    val data = user.data.orEmpty()
+                    .map { d -> AdminUser(d.id,d.data.orEmpty()) }
+                val field=ui.field(card,"Buscar por nome, matrícula ou equipe").apply { setText(search) }
+                val statusValues=arrayOf("Todos","pendente","aprovado","bloqueado")
+                val status=ui.spinner(card,"Situação",arrayOf("Todas as situações","Aguardando aprovação","Aprovados","Bloqueados"))
+                status.setSelection(statusValues.indexOf(statusFilter).coerceAtLeast(0))
+                val front=if(access.primary) ui.spinner(card,"Frente",arrayOf("Todas as frentes")+TeamPolicy.fronts.values.toTypedArray()).apply {
+                    setSelection((TeamPolicy.fronts.keys.indexOf(frontFilter)+1).coerceAtLeast(0))
+                } else null
+                val rows=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }; ui.add(card,rows)
+                fun refresh() {
+                    val filtered=AdminUserList.filter(users,search,statusFilter,frontFilter)
+                    pageIndex=pageIndex.coerceIn(0,AdminUserList.lastPage(filtered)); rows.removeAllViews()
+                    ui.add(rows,ui.text("${filtered.size} de ${users.size} usuários • página ${pageIndex+1}/${AdminUserList.lastPage(filtered)+1}",14f,ui.green,true),0)
+                    if(filtered.isEmpty()) ui.add(rows,ui.text("Nenhum usuário encontrado com esses filtros."))
+                    for(user in AdminUserList.page(filtered,pageIndex)) {
+                        val d=user.data
+                        val item=ui.card().apply { background=ui.background(0xFFF1F6F1.toInt()); elevation=0f }
+                        ui.add(rows,item,12)
+                        ui.add(item,ui.text(d["nome"]?.toString()?:"Sem nome",17f,ui.dark,true),0)
+                        ui.add(item,ui.text("Matrícula: ${d["matricula"]?:"Não informada"}\n${TeamPolicy.team(d)?.let(TeamPolicy::label)?:"Equipe não definida"}\n${TeamPolicy.requested(d).replaceFirstChar { c->c.uppercase() }} • ${AccessPolicy.normalized(d["status"])}",13f),4)
+                        ui.button(item,"Gerenciar") { if(!busy) manageUser(access,user) }
+                    }
+                    val navigation=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
+                    ui.add(rows,navigation)
+                    for((label,delta) in listOf("Anterior" to -1,"Próxima" to 1)) {
+                        val holder=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
+                        navigation.addView(holder,LinearLayout.LayoutParams(0,-2,1f).apply { marginEnd=ui.dp(5) })
+                        ui.button(holder,label,true) { pageIndex+=delta; refresh() }.isEnabled=if(delta<0) pageIndex>0 else pageIndex<AdminUserList.lastPage(filtered)
+                    }
+                }
+                field.addTextChangedListener(object:android.text.TextWatcher {
+                    override fun beforeTextChanged(s:CharSequence?,start:Int,count:Int,after:Int) {}
+                    override fun onTextChanged(s:CharSequence?,start:Int,before:Int,count:Int) { search=s.toString(); pageIndex=0; refresh() }
+                    override fun afterTextChanged(s:android.text.Editable?) {}
+                })
+                fun selection(action:()->Unit)=object:android.widget.AdapterView.OnItemSelectedListener {
+                    override fun onNothingSelected(parent:android.widget.AdapterView<*>?) {}
+                    override fun onItemSelected(parent:android.widget.AdapterView<*>?,view:android.view.View?,position:Int,id:Long) { action() }
+                }
+                status.onItemSelectedListener=selection { val value=statusValues[status.selectedItemPosition].takeUnless { p->p=="Todos" }.orEmpty(); if(value!=statusFilter) { statusFilter=value;pageIndex=0;refresh() } }
+                front?.onItemSelectedListener=selection { val value=TeamPolicy.fronts.keys.elementAtOrNull(front.selectedItemPosition-1).orEmpty();if(value!=frontFilter) { frontFilter=value;pageIndex=0;refresh() } }
+                refresh()
+            }
+        }, { busy = false; denied("Não foi possível verificar o acesso. Confira a conexão e a configuração das equipes no Firebase.") })
+    }
+    private fun manageUser(access:TeamAccess,user:AdminUser) {
+                    val data = user.data
                     val name = data["nome"]?.toString() ?: "Sem nome"
                     val role = TeamPolicy.requested(data)
                     val state = AccessPolicy.normalized(data["status"])
-                    val item = ui.card().apply { background = ui.background(0xFFF1F6F1.toInt()); elevation = 0f }
-                    ui.add(card, item, 18)
-                    ui.add(item, ui.text(name, 19f, ui.dark, true), 0)
-                    ui.add(item, ui.text("Matrícula: ${data["matricula"] ?: "Não informada"}\n${TeamPolicy.team(data)?.let(TeamPolicy::label) ?: "Equipe não definida"}\nSolicita: $role • Status: $state"))
+                    val item=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(ui.dp(18),0,ui.dp(18),ui.dp(12)) }
+                    val dialog=AlertDialog.Builder(this).setTitle(name).setMessage("Matrícula: ${data["matricula"]}\n${TeamPolicy.team(data)?.let(TeamPolicy::label).orEmpty()}\nPerfil: $role • $state")
+                        .setView(android.widget.ScrollView(this).apply { addView(item) }).setNegativeButton("Fechar",null).create()
                     if (state!="excluido" && !AccessPolicy.approved(data)) ui.button(item, if (state == "bloqueado") "Reativar $role" else "Aprovar $role") {
-                        if (!busy) confirm(user.id, name, role, "aprovado")
+                        if (!busy) { dialog.dismiss();confirm(user.uid, name, role, "aprovado") }
                     }
                     if (state !in setOf("bloqueado","excluido")) ui.button(item, "Bloquear acesso", true) {
-                        if (!busy) confirm(user.id, name, AccessPolicy.role(data).ifEmpty { role }, "bloqueado")
+                        if (!busy) { dialog.dismiss();confirm(user.uid, name, AccessPolicy.role(data).ifEmpty { role }, "bloqueado") }
                     }
                     if (access.primary && state!="excluido") ui.button(item, "Desativar acesso", true) {
-                        if (!busy) requestRemoval(user.id, name)
+                        if (!busy) { dialog.dismiss();requestRemoval(user.uid, name) }
                     }
                     if (access.primary) ui.button(item, "Ajustar frente e turno", true) {
-                        if (!busy) adjustTeam(user.id, name)
+                        if (!busy) { dialog.dismiss();adjustTeam(user.uid, name) }
                     }
                     if(access.primary) {
-                        ui.button(item,"Corrigir matrícula",true) { if(!busy) accountAction(user.id,name,data["matricula"]?.toString().orEmpty(),false) }
-                        ui.button(item,"Excluir definitivamente e liberar matrícula",true) { if(!busy) accountAction(user.id,name,data["matricula"]?.toString().orEmpty(),true) }
+                        ui.button(item,"Corrigir matrícula",true) { if(!busy) { dialog.dismiss();accountAction(user.uid,name,data["matricula"]?.toString().orEmpty(),false) } }
+                        ui.button(item,"Excluir definitivamente e liberar matrícula",true) { if(!busy) { dialog.dismiss();accountAction(user.uid,name,data["matricula"]?.toString().orEmpty(),true) } }
                     }
-                }
-            }
-        }, { busy = false; denied("Não foi possível verificar o acesso. Confira a conexão e a configuração das equipes no Firebase.") })
+                    dialog.show()
     }
     private fun accountAction(uid:String,name:String,matricula:String,delete:Boolean) {
         val user=auth.currentUser ?: return

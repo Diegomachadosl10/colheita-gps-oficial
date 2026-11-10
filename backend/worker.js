@@ -144,11 +144,19 @@ async function notify(env,actor,body) {
     check(typeof body.team==='string'&&FRONTS.some(f=>['A','B','C'].some(s=>body.team===f+'_'+s))&&/^[a-f0-9]{64}$/.test(body.key),'Evento inválido',400);
     check(actor.uid===OWNER||team(actor.profile)===body.team);
     const record=await get(env,`equipes/${body.team}/registros/${body.key}`); check(record,'Registro ainda não disponível',409);
-    const d=record.data; check(d.tipo==='item'&&GROUPS[d.grupo]&&!d.excluido&&d.autorUid===actor.uid&&Date.parse(record.updateTime)>Date.now()-3600000);
+    const d=record.data;
+    check(d.tipo==='item'&&GROUPS[d.grupo]&&!d.excluido&&(d.editadoPor||d.autorUid)===actor.uid&&Date.parse(record.updateTime)>Date.now()-86400000);
+    const revision=Number(d.versao||1);
+    if(body.revision!==undefined) {
+      check(Number.isSafeInteger(body.revision)&&body.revision>0,'Versão de aviso inválida',400);
+      if(body.revision<revision) return {ok:true,superseded:true};
+      check(body.revision===revision,'Versão ainda não disponível',409);
+    }
     let content; try {content=JSON.parse(d.conteudo);} catch {throw new Failure(400,'Conteúdo inválido');}
     title=content.categoriaRegistro==='equipamento'?'Novo equipamento':content.categoriaRegistro==='chuva'?'Chuva registrada':GROUPS[d.grupo];
-    description=[actor.profile.nome||'Administrador',content.equipamento,content.descricao].filter(Boolean).join(' · ').slice(0,170);
-    sourceTeam=body.team; eventId=await digest('record/'+body.team+'/'+body.key);
+    if(revision>1) title='Registro atualizado';
+    description=[actor.profile.nome||'Administrador',content.os,content.equipamento,content.descricao].filter(Boolean).join(' · ').slice(0,170);
+    sourceTeam=body.team; eventId=await digest('record/'+body.team+'/'+body.key+(revision>1?'/'+revision:''));
   }
   const path=`eventosNotificacao/${eventId}`;
   let event=await get(env,path);
@@ -164,9 +172,7 @@ async function notify(env,actor,body) {
       if (!manages(uid,p)||uid!==OWNER&&team(p)!==sourceTeam) {done.push(uid);continue;}
       const devices=await query(env,`dispositivos/${uid}`,'tokens',null,'seen',3);
       for (const device of devices.filter(device=>wantsNotice(uid,device.data,sourceTeam,p))) {
-        const response=await fetch(`https://fcm.googleapis.com/v1/projects/${PROJECT}/messages:send`,{method:'POST',headers:{Authorization:'Bearer '+await token(env),'Content-Type':'application/json'},body:JSON.stringify({message:{token:device.data.token,data:{targetUid:uid,eventId,team:sourceTeam,title,body:description},android:{priority:'HIGH',ttl:'3600s'}}})});
-        if (response.status===404) { await google(env,device.name.replace('projects/', 'https://firestore.googleapis.com/v1/projects/'),'DELETE'); continue; }
-        if (!response.ok) throw new Failure(503,'Envio de avisos pendente');
+        await sendNotice(env,device,{targetUid:uid,eventId,team:sourceTeam,title,body:description});
       }
       done.push(uid);
     }
@@ -176,9 +182,21 @@ async function notify(env,actor,body) {
   }
   return {ok:!pending,pending};
 }
+async function sendNotice(env,device,data) {
+  const response=await fetch(`https://fcm.googleapis.com/v1/projects/${PROJECT}/messages:send`,{method:'POST',headers:{Authorization:'Bearer '+await token(env),'Content-Type':'application/json'},body:JSON.stringify({message:{token:device.data.token,data,android:{priority:'HIGH',ttl:'3600s'}}})});
+  if(response.ok) return true;
+  const error=await response.json().catch(()=>({}));
+  const unregistered=error.error?.details?.some(d=>d.errorCode==='UNREGISTERED');
+  if(unregistered) {
+    await google(env,'https://firestore.googleapis.com/v1/'+device.name,'DELETE');
+    return false;
+  }
+  if(response.status===403) throw new Failure(503,'O Firebase recusou o envio. Confira a API Cloud Messaging HTTP v1 e a permissão de envio FCM da conta de serviço.');
+  throw new Failure(503,'O Firebase não aceitou o aviso. Confira Cloud Messaging e tente novamente.');
+}
 export async function route(request,env) {
   const url=new URL(request.url);
-  if (url.pathname==='/health'&&request.method==='GET') return {ok:true,project:PROJECT,configured:!!env.FIREBASE_SERVICE_ACCOUNT};
+  if (url.pathname==='/health'&&request.method==='GET') return {ok:true,project:PROJECT,configured:!!env.FIREBASE_SERVICE_ACCOUNT,serviceVersion:'1.4.0'};
   check(request.method==='POST','Método indisponível',405);
   check(Number(request.headers.get('Content-Length')||0)<=12000,'Pedido acima do limite',413);
   const reader=request.body?.getReader(); const chunks=[]; let size=0;
@@ -192,6 +210,19 @@ export async function route(request,env) {
     const front=actor.uid===OWNER?body.front:actor.profile.frenteId;
     check(FRONTS.includes(front),'Escolha a frente das notificações',400);
     await put(env,`dispositivos/${actor.uid}/tokens/${await digest(body.token)}`,{token:body.token,front,seen:Date.now()}); return {ok:true};
+  }
+  if(url.pathname==='/devices/test') {
+    check(manages(actor.uid,actor.profile));
+    check(typeof body.token==='string'&&body.token.length>=20&&body.token.length<=4096&&!/\s/.test(body.token),'Token de aparelho inválido',400);
+    const path=`dispositivos/${actor.uid}/tokens/${await digest(body.token)}`;
+    const device=await get(env,path);check(device&&device.data.token===body.token,'Ative os avisos neste aparelho antes de testar',400);
+    check(!device.data.testAt||device.data.testAt<Date.now()-30000,'Aguarde 30 segundos antes de testar novamente',429);
+    const sourceTeam=actor.uid===OWNER?device.data.front+'_C':team(actor.profile);
+    check(FRONTS.includes(sourceTeam?.slice(0,sourceTeam.lastIndexOf('_'))),'Frente inválida',400);
+    await put(env,path,{testAt:Date.now()},device.updateTime,true);
+    const accepted=await sendNotice(env,device,{targetUid:actor.uid,eventId:'test_'+crypto.randomUUID(),team:sourceTeam,title:'Teste de notificação DM AGRO',body:'Seu aparelho recebeu o teste de avisos da equipe.'});
+    check(accepted,'O registro deste aparelho expirou. Ative os avisos novamente.',409);
+    return {ok:true,message:'O Firebase aceitou o envio. Confira a notificação no celular; a entrega depende da internet e das configurações do Android.'};
   }
   if (url.pathname==='/events/notify') return notify(env,actor,body);
   if (['/accounts/correct','/accounts/delete'].includes(url.pathname)) {

@@ -23,6 +23,7 @@ class NotificationSettingsActivity : Activity() {
         activateButton?.apply { isEnabled=!value; text=if(value) label else "Ativar avisos" }
     }
     override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState); ui=AccessUi(this); load() }
+    override fun onResume() { super.onResume(); if(access!=null&&!activating) render() }
     private fun load() {
         AccessRepository.loadTeamAccess(this,{ a ->
             if(!a.manages) { finish(); return@loadTeamAccess }; access=a; render()
@@ -41,10 +42,35 @@ class NotificationSettingsActivity : Activity() {
                 AgroNotifications.register(this); Toast.makeText(this,"Frente de notificações salva. Ative os avisos para confirmar o registro do aparelho.",Toast.LENGTH_LONG).show()
             }
         }
-        ui.add(body,ui.text(if(AgroNotifications.enabled(this,a.uid)&&AgroNotifications.allowed(this)) "Avisos autorizados neste aparelho" else "Avisos não ativados neste aparelho",17f,ui.green,true))
+        val prefs=applicationContext.getSharedPreferences("avisos_${a.uid}",0)
+        ui.add(body,ui.text(if(AgroNotifications.enabled(this,a.uid)&&AgroNotifications.allowed(this)) "Aparelho registrado • teste o recebimento" else "Avisos não ativados ou bloqueados no Android",17f,ui.green,true))
+        fun date(value:Long)=java.text.SimpleDateFormat("dd/MM HH:mm",java.util.Locale("pt","BR")).format(java.util.Date(value))
+        val received=prefs.getLong("recebidoEm",0)
+        ui.add(body,ui.text(if(received>0) "Último aviso exibido: ${date(received)}" else "Nenhum aviso recebido e exibido neste aparelho ainda.",14f))
+        prefs.getString("ultimoResultado",null)?.let { message->ui.add(body,ui.text(message,13f)) }
         ui.add(body,ui.text("O envio usa Firebase Cloud Messaging e o serviço gratuito configurado pelo administrador. A entrega depende da internet, da permissão de notificação e do Android. Mapas pessoais não geram avisos para a equipe."))
         activateButton=ui.button(body,"Ativar avisos") {
             prepareActivation()
+        }
+        ui.button(body,"Testar notificação neste celular",true) {
+            if(activating) return@button
+            if(!AgroNotifications.enabled(this,a.uid)||!AgroNotifications.allowed(this)) {
+                android.app.AlertDialog.Builder(this).setMessage("Ative os avisos e confira a permissão no Android antes de testar.").setPositiveButton("OK",null).show()
+                return@button
+            }
+            busy(true,"Enviando teste…")
+            com.google.firebase.messaging.FirebaseMessaging.getInstance().token.addOnSuccessListener { token->
+                AgroService.async(this,"/devices/test",JSONObject().put("token",token),{ response->
+                    busy(false)
+                    AgroNotifications.status(this,a.uid,"Teste aceito pelo Firebase; confira se a notificação chegou.")
+                    android.app.AlertDialog.Builder(this).setMessage(response.optString("message")).setPositiveButton("Entendi") { _,_->render() }.show()
+                },{error->busy(false);AgroNotifications.status(this,a.uid,error);android.app.AlertDialog.Builder(this).setMessage(error).setPositiveButton("OK",null).show()})
+            }.addOnFailureListener { busy(false);Toast.makeText(this,"Não foi possível obter o registro do aparelho. Confira a internet e o Google Play Services.",Toast.LENGTH_LONG).show() }
+        }
+        ui.button(body,"Atualizar diagnóstico",true) { render() }
+        ui.button(body,"Abrir notificações do Android",true) {
+            try { startActivity(Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE,packageName)) }
+            catch(_:Exception) { startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,android.net.Uri.parse("package:$packageName"))) }
         }
         ui.button(body,"Desativar avisos neste aparelho",true) {
             applicationContext.getSharedPreferences("avisos_${a.uid}",0).edit().putBoolean("ativo",false).apply()
@@ -71,7 +97,9 @@ class NotificationSettingsActivity : Activity() {
         val a=access ?: return
         if(activating) return
         fun permission() {
-            if(Build.VERSION.SDK_INT>=33&&!AgroNotifications.allowed(this)) requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS),71) else enable()
+            if(Build.VERSION.SDK_INT>=33&&!AgroNotifications.runtimePermission(this)) requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS),71)
+            else if(!AgroNotifications.allowed(this)) android.app.AlertDialog.Builder(this).setMessage("Os avisos estão bloqueados nas configurações do Android. Toque em Abrir notificações do Android e permita os avisos do DM AGRO.").setPositiveButton("Entendi",null).show()
+            else enable()
         }
         if(!a.primary) { permission(); return }
         val value=serviceField?.text?.toString()?.trim()?.trimEnd('/').orEmpty()

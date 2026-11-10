@@ -17,6 +17,18 @@ Se a configuração Firebase não permitir a geração de chave ou a permissão 
 
 ## Segurança e operações
 
+### Atualização do serviço 1.4.0
+
+O Worker 1.4.0 adiciona `/devices/test`, restrito ao próprio aparelho previamente registrado de um gestor autenticado, com intervalo de 30 segundos. Esse teste verifica a aceitação real pelo FCM e informa recusas de permissão/API. A resposta de sucesso confirma o envio aceito pelo Firebase, não garante que o Android exibiu o aviso. O aplicativo mostra separadamente a data do último aviso efetivamente exibido.
+
+No painel Cloudflare, abrir o Worker existente, **Editar código**, substituir todo `worker.js` pelo arquivo desta versão e **Implantar**. Manter o segredo `FIREBASE_SERVICE_ACCOUNT` já cadastrado. A rota pública `/health` passa a informar `serviceVersion: "1.4.0"`; ela continua sem expor credenciais e não equivale a um teste de entrega. Não é necessário mudar as regras Firebase nem o plano.
+
+O aplicativo mantém uma caixa de saída durável para avisos de registros sincronizados e prioriza seu agendamento nas versões do Android compatíveis. Cada revisão é deduplicada no servidor. Alterações de um registro também geram aviso; a identidade deve coincidir com o editor que consta no registro confirmado. Revisões superadas são descartadas. Um erro FCM 404 genérico não remove mais o registro do aparelho; só o erro específico `UNREGISTERED` permite essa remoção.
+
+Teste pelo celular: ativar os avisos, tocar em **Testar notificação neste celular**, conferir a notificação e tocar em **Atualizar diagnóstico**. Depois testar um registro feito por outra conta da mesma equipe, com o aplicativo destinatário em segundo plano. Não é enviada uma notificação normal ao próprio autor da alteração. Mapas pessoais continuam privados e não disparam avisos. O administrador recebe somente a frente escolhida no aparelho; cada supervisor recebe somente sua frente e turno.
+
+### Controles preservados
+
 - `PROJECT` e `OWNER` fixam o projeto e o UID principal, evitando que parâmetros do cliente selecionem outra conta/projeto.
 - O token de acesso Firebase é validado por assinatura RS256, emissor, audiência, validade e situação atual da credencial. A identidade vem do token, nunca de um UID enviado pelo aplicativo.
 - Correção e exclusão de contas só aceitam o UID principal, com autenticação recente, bloqueio contra operações concorrentes e proteção da própria conta administradora.

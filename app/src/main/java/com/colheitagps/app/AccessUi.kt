@@ -13,7 +13,7 @@ import android.view.View
 import android.widget.*
 
 /** Shared native controls, sized in dp and with explicit colors on every Android theme. */
-internal class AccessUi(private val activity: Activity) {
+internal class AccessUi(private val activity: Activity,attach:Boolean=true) {
     val green = 0xFF187447.toInt()
     val dark = 0xFF102D23.toInt()
     val muted = 0xFF52665B.toInt()
@@ -24,6 +24,7 @@ internal class AccessUi(private val activity: Activity) {
         background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(dark, 0xFF205B3D.toInt()))
     }
     init {
+      if(attach) {
         activity.window.statusBarColor = dark
         activity.window.navigationBarColor = dark
         activity.setContentView(ScrollView(activity).apply {
@@ -32,6 +33,7 @@ internal class AccessUi(private val activity: Activity) {
             setBackgroundColor(dark)
             addView(root)
         })
+      }
     }
     fun dp(n: Int) = (n * activity.resources.displayMetrics.density).toInt()
     fun background(color: Int, radius: Int = 16) = GradientDrawable().apply {

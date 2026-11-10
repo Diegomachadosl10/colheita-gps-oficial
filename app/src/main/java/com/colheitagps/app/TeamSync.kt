@@ -173,6 +173,7 @@ internal class TeamSync(context: Context, private val access: TeamAccess, val st
     }
     private fun flush() {
         if (!ready || !active()) return
+        flushNotificationOutbox()
         for ((prefKey, raw) in local.all) {
             if (!prefKey.startsWith("q_") || raw !is String || !active()) continue
             val key = prefKey.removePrefix("q_"); val change = JSONObject(raw)
@@ -200,9 +201,13 @@ internal class TeamSync(context: Context, private val access: TeamAccess, val st
                     data.remove("atualizadoEm")
                     JSONObject(data)
                 }, 25, TimeUnit.SECONDS)
-                synchronized(store.lock) { local.edit().putString("b_$key", written.toString()).remove(prefKey).commit() }
-                if(written.optLong("versao")==1L&&!written.optBoolean("excluido")&&written.optString("tipo")=="item")
-                    AgroNotifications.event(storeContext,"record",store.team,key)
+                synchronized(store.lock) {
+                    val edit=local.edit().putString("b_$key",written.toString()).remove(prefKey)
+                    if(!written.optBoolean("excluido")&&written.optString("tipo")=="item")
+                        edit.putLong("n_$key",written.optLong("versao"))
+                    check(edit.commit())
+                }
+                flushNotificationOutbox()
                 remote.remove(key)
             } catch (e: Exception) {
                 var cause: Throwable? = e
@@ -221,6 +226,15 @@ internal class TeamSync(context: Context, private val access: TeamAccess, val st
         val errors = local.all.keys.count { it.startsWith("e_") }
         if (errors > 0) announce("$errors registros ou anexos permanecem somente neste aparelho. Toque em Sincronização.")
         else if (conflicts == 0) announce(if (pending == 0) "Registros sincronizados • fotos e PDFs por compartilhamento" else "$pending alterações aguardando envio")
+    }
+    private fun flushNotificationOutbox() {
+        for((prefKey,revision) in local.all) {
+            if(!prefKey.startsWith("n_")||revision !is Long||!active()) continue
+            try {
+                AgroNotifications.event(storeContext,"record",store.team,prefKey.removePrefix("n_"),revision,true)
+                local.edit().remove(prefKey).commit()
+            } catch(_:Exception) { /* The next sync pass retries the durable outbox. */ }
+        }
     }
     private fun applyRemote() {
         if (!available || !active()) return

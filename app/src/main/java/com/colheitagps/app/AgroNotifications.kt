@@ -6,6 +6,7 @@ import android.content.*
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import androidx.work.*
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.auth.FirebaseAuth
@@ -22,7 +23,12 @@ internal object AgroNotifications {
     fun enabled(context: Context, uid: String) = context.applicationContext.getSharedPreferences("avisos_$uid",0).getBoolean("ativo",false)
     fun registration(context: Context, uid: String, token: String) = JSONObject().put("token",token)
         .put("front",context.applicationContext.getSharedPreferences("avisos_$uid",0).getString("frente","santo_inacio"))
-    fun allowed(context: Context) = Build.VERSION.SDK_INT<33 || context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)==PackageManager.PERMISSION_GRANTED
+    fun runtimePermission(context:Context)=Build.VERSION.SDK_INT<33 || context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)==PackageManager.PERMISSION_GRANTED
+    fun allowed(context: Context) = runtimePermission(context) && NotificationManagerCompat.from(context).areNotificationsEnabled() &&
+        context.getSystemService(NotificationManager::class.java).getNotificationChannel(CHANNEL)?.importance!=NotificationManager.IMPORTANCE_NONE
+    fun status(context:Context,uid:String,message:String) {
+        context.applicationContext.getSharedPreferences("avisos_$uid",0).edit().putString("ultimoResultado",message).putLong("resultadoEm",System.currentTimeMillis()).apply()
+    }
     fun mayDisplay(uid: String, profile: Map<String,Any>?, sourceTeam: String, selectedFront: String): Boolean =
         sourceTeam.substringBeforeLast('_') in TeamPolicy.fronts && sourceTeam.substringAfterLast('_') in TeamPolicy.shifts &&
             TeamPolicy.manages(uid,profile) && (if(TeamPolicy.primary(uid)) sourceTeam.substringBeforeLast('_')==selectedFront else TeamPolicy.team(profile)==sourceTeam)
@@ -31,18 +37,23 @@ internal object AgroNotifications {
         if(!enabled(context,uid)||!allowed(context)) return
         FirebaseMessaging.getInstance().token.addOnSuccessListener { token -> enqueue(context,"register",registration(context,uid,token),uid) }
     }
-    fun event(context: Context, kind: String, team: String = "", key: String = "") {
+    fun event(context: Context, kind: String, team: String = "", key: String = "", revision:Long=0, persist:Boolean=false) {
         val uid=FirebaseAuth.getInstance().currentUser?.uid ?: return
-        val body=if(kind=="user") JSONObject().put("kind","user").put("uid",uid) else JSONObject().put("kind","record").put("team",team).put("key",key)
-        enqueue(context,"event",body,uid)
+        val body=if(kind=="user") JSONObject().put("kind","user").put("uid",uid) else JSONObject().put("kind","record").put("team",team).put("key",key).apply { if(revision>0) put("revision",revision) }
+        enqueue(context,"event",body,uid,persist)
     }
-    fun enqueue(context: Context, action: String, body: JSONObject, uid: String) {
+    fun enqueue(context: Context, action: String, body: JSONObject, uid: String, persist:Boolean=false) {
         val builder=OneTimeWorkRequestBuilder<AgroNotificationWorker>()
             .setInputData(workDataOf("action" to action,"body" to body.toString(),"uid" to uid,"created" to System.currentTimeMillis()))
             .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
             .addTag("avisos-$uid")
-        if(action=="display"&&Build.VERSION.SDK_INT>=31) builder.setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
-        WorkManager.getInstance(context.applicationContext).enqueue(builder.build())
+        if(action in setOf("display","event","register")&&Build.VERSION.SDK_INT>=31) builder.setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+        val manager=WorkManager.getInstance(context.applicationContext)
+        if(action=="event") {
+            val eventKey=java.security.MessageDigest.getInstance("SHA-256").digest(body.toString().toByteArray()).joinToString("") { "%02x".format(it) }
+            val operation=manager.enqueueUniqueWork("aviso-evento-$uid-$eventKey",ExistingWorkPolicy.KEEP,builder.build())
+            if(persist) operation.result.get(5,TimeUnit.SECONDS)
+        } else manager.enqueue(builder.build())
     }
     fun offer(activity: Activity, access: TeamAccess) {
         if(!access.manages) return
@@ -76,6 +87,7 @@ internal object AgroNotifications {
             .setContentIntent(pending).setAutoCancel(true).setCategory(NotificationCompat.CATEGORY_EVENT).build()
         if(FirebaseAuth.getInstance().currentUser?.uid!=uid) return
         manager.notify((uid+event).hashCode(),notification)
+        context.getSharedPreferences("avisos_$uid",0).edit().putLong("recebidoEm",System.currentTimeMillis()).apply()
         val edit=prefs.edit().putLong(event,System.currentTimeMillis())
         for((key,value) in prefs.all) if(value is Long && value<System.currentTimeMillis()-7*86400000L) edit.remove(key)
         edit.apply()
@@ -100,9 +112,14 @@ class AgroNotificationWorker(context: Context,params: WorkerParameters) : Worker
         val body=try { JSONObject(inputData.getString("body")?:"{}") } catch(_:Exception){return Result.failure()}
         return try {
             when(inputData.getString("action")) {
-                "register" -> { AgroService.call(applicationContext,"/devices/register",body); Result.success() }
+                "register" -> {
+                    if(!AgroNotifications.enabled(applicationContext,uid)) return Result.success()
+                    AgroService.call(applicationContext,"/devices/register",AgroNotifications.registration(applicationContext,uid,body.getString("token")))
+                    Result.success()
+                }
                 "event" -> {
                     val data=AgroService.call(applicationContext,"/events/notify",body)
+                    AgroNotifications.status(applicationContext,uid,if(data.optBoolean("pending")) "Envio de aviso na fila do serviço" else "Evento aceito pelo serviço de avisos")
                     if(data.optBoolean("pending")) Result.retry() else Result.success()
                 }
                 "display" -> {
@@ -116,7 +133,11 @@ class AgroNotificationWorker(context: Context,params: WorkerParameters) : Worker
                 else -> Result.failure()
             }
         } catch(error: AgroService.ServiceError) {
+            AgroNotifications.status(applicationContext,uid,"Avisos: ${error.message}")
             if(error.code in setOf(400,401,403,404)) Result.success() else if(runAttemptCount<8) Result.retry() else Result.failure()
-        } catch(_:Exception) { if(runAttemptCount<8) Result.retry() else Result.failure() }
+        } catch(_:Exception) {
+            AgroNotifications.status(applicationContext,uid,"Não foi possível concluir o aviso; confira a conexão e tente o teste de notificação.")
+            if(runAttemptCount<8) Result.retry() else Result.failure()
+        }
     }
 }

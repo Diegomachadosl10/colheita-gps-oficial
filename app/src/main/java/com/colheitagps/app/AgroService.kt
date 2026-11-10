@@ -44,7 +44,9 @@ internal object AgroService {
                 result.toString()
             }.orEmpty()
             val result=try { JSONObject(text) } catch (_: Exception) { JSONObject() }
-            if (status !in 200..299) throw ServiceError(status,result.optString("message","Serviço indisponível. Confira a conexão e a configuração."))
+            if (status !in 200..299) throw ServiceError(status,if(status==404&&path=="/devices/test")
+                "O serviço Cloudflare ainda está na versão anterior. O administrador precisa publicar o Worker 1.4.0 para liberar o teste de entrega."
+                else result.optString("message","Serviço indisponível. Confira a conexão e a configuração."))
             return result
         } finally { connection.disconnect() }
     }
