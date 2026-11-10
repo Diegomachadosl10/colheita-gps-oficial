@@ -1,10 +1,12 @@
 package com.colheitagps.app
 
 import android.app.Application
+import android.app.AlertDialog
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.os.Bundle
+import android.os.Looper
 import android.view.View
 import android.view.ViewGroup
 import android.widget.CheckBox
@@ -20,6 +22,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import org.robolectric.util.ReflectionHelpers
 import org.robolectric.util.ReflectionHelpers.ClassParameter
+import org.robolectric.shadows.ShadowAlertDialog
 import java.io.File
 
 @RunWith(RobolectricTestRunner::class)
@@ -30,6 +33,7 @@ class StockShareScreenTest {
     private fun intent()=Intent().putExtra("team","santo_inacio_C").putStringArrayListExtra("ids",arrayListOf("A","B"))
     private fun prepare():StockShareActivity {
         val a=Robolectric.buildActivity(StockShareActivity::class.java,intent()).create().get()
+        a.setTheme(android.R.style.Theme_Material_Light_NoActionBar)
         val store=TeamStore(a.applicationContext,"santo_inacio_C")
         ReflectionHelpers.setField(a,"store",store)
         ReflectionHelpers.setField(a,"access",TeamAccess("supervisor",mapOf("papel" to "supervisor","status" to "aprovado","frenteId" to "santo_inacio","turno" to "C")))
@@ -76,5 +80,35 @@ class StockShareScreenTest {
         assertEquals("B",ReflectionHelpers.getField<String>(a,"pendingLot"))
         val result=shadowOf(a).nextStartedActivityForResult
         assertEquals(Intent.ACTION_OPEN_DOCUMENT,result.intent.action);assertEquals("image/*",result.intent.type);assertEquals(8810,result.requestCode)
+    }
+    @Test fun theMapIsChosenByItsCatalogNameAndAttachedOnlyAfterConfirmingThePreview() {
+        val a=prepare();val s=store(a);val id="a".repeat(64)
+        val map=photo(a).copyTo(File(s.files,"mapa_relatorio_$id.png"))
+        s.prefs("mapas").edit().putString(id,"Fazenda Santo Inácio - K05.pdf").commit()
+        ReflectionHelpers.callInstanceMethod<Unit>(a,"choosePhoto",ClassParameter.from(String::class.java,"B"))
+        val source=ShadowAlertDialog.getLatestAlertDialog()
+        source.listView.performItemClick(source.listView.getChildAt(1),1,1);shadowOf(Looper.getMainLooper()).idle()
+        val picker=ShadowAlertDialog.getLatestAlertDialog()
+        val label=picker.listView.adapter.getItem(0).toString()
+        assertTrue(label.contains("Fazenda Santo Inácio - K05"));assertFalse(label.contains(id));assertFalse(label.contains("mapa_relatorio_"))
+        picker.listView.performItemClick(picker.listView.getChildAt(0),0,0);shadowOf(Looper.getMainLooper()).idle()
+        val preview=ShadowAlertDialog.getLatestAlertDialog()
+        assertTrue(preview.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled)
+        assertFalse(JSONArray(s.prefs("registros_v3").getString("estoques_salvos","[]")).getJSONObject(1).has("fotoEstoque"))
+        System.getenv("DM_AGRO_MAP_PICKER_SCREENSHOT")?.let { path->
+            val root=preview.window!!.decorView;root.measure(View.MeasureSpec.makeMeasureSpec(720,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(1080,View.MeasureSpec.EXACTLY));root.layout(0,0,720,1080)
+            val image=Bitmap.createBitmap(720,1080,Bitmap.Config.ARGB_8888);root.draw(Canvas(image));File(path).outputStream().use {image.compress(Bitmap.CompressFormat.PNG,100,it)};image.recycle()
+        }
+        preview.getButton(AlertDialog.BUTTON_POSITIVE).performClick();shadowOf(Looper.getMainLooper()).idle()
+        val rows=JSONArray(s.prefs("registros_v3").getString("estoques_salvos","[]"))
+        assertEquals(map.path,rows.getJSONObject(1).getString("fotoEstoque"));assertFalse(rows.getJSONObject(0).has("fotoEstoque"))
+    }
+    @Test fun unnamedOlderMapsRemainDistinctWithoutDisplayingStorageIdsOrOtherTeamsNames() {
+        val a=prepare();val s=store(a)
+        for(letter in listOf("a","b")) photo(a).copyTo(File(s.files,"mapa_relatorio_${letter.repeat(64)}.png"))
+        TeamStore(a.applicationContext,"colorado_C").prefs("mapas").edit().putString("a".repeat(64),"Nome de outra frente.pdf").commit()
+        val maps=PaintedMapPicker.items(s)
+        assertEquals(2,maps.map {it.title}.toSet().size)
+        assertTrue(maps.all {it.title.startsWith("Mapa pintado ")&&!it.label.contains("outra frente")&&!it.label.contains("mapa_relatorio_")})
     }
 }

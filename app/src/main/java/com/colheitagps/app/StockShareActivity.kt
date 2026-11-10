@@ -92,7 +92,7 @@ class StockShareActivity:Activity() {
     }
     private fun choosePhoto(id:String) {
         val s=store?:return;if(access?.manages!=true) return
-        val maps=s.files.listFiles().orEmpty().filter {it.isFile&&it.name.startsWith("mapa_relatorio_")&&it.extension.equals("png",true)}
+        val maps=PaintedMapPicker.items(s)
         fun gallery() {
             pendingLot=id
             try {startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {type="image/*";addCategory(Intent.CATEGORY_OPENABLE);addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)},PHOTO)}
@@ -100,10 +100,9 @@ class StockShareActivity:Activity() {
         }
         if(maps.isEmpty()) {gallery();return}
         AlertDialog.Builder(this).setTitle("Foto para este lote").setItems(arrayOf("Escolher foto da galeria","Usar mapa pintado salvo")) { _,option->
-            if(option==0) gallery() else AlertDialog.Builder(this).setTitle("Escolha o mapa pintado")
-                .setItems(maps.map {it.nameWithoutExtension}.toTypedArray()) { _,index->
-                    try {attachPhoto(id,maps[index]);omitted.remove(id);render()} catch(error:Exception) {notice(error.message?:"Não foi possível anexar o mapa.")}
-                }.setNegativeButton("Cancelar",null).show()
+            if(option==0) gallery() else PaintedMapPicker.show(this,maps) { file->
+                try {attachPhoto(id,file);omitted.remove(id);render()} catch(error:Exception) {notice(error.message?:"Não foi possível anexar o mapa.")}
+            }
         }.setNegativeButton("Cancelar",null).show()
     }
     /** Modify only this lot's local attachment using the current stored record, never a stale snapshot. */
