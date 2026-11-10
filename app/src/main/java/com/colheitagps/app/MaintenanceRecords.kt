@@ -50,7 +50,7 @@ internal object MaintenanceRecords {
         return "equipamento_" + digest.joinToString("") { "%02x".format(it) }
     }
     fun issues(all: JSONArray): JSONArray = JSONArray().apply {
-        for (i in 0 until all.length()) all.optJSONObject(i)?.takeUnless(::isEquipment)?.let { put(it) }
+        for (i in 0 until all.length()) all.optJSONObject(i)?.takeUnless { isEquipment(it)||PartsRecords.isPart(it) }?.let { put(it) }
     }
     fun ensureEquipment(all: JSONArray, equipment: String): Boolean {
         val normalized = number(equipment)
@@ -63,10 +63,10 @@ internal object MaintenanceRecords {
         return true
     }
     fun merge(issues: JSONArray, previous: JSONArray): JSONArray = JSONArray().apply {
-        for (i in 0 until previous.length()) previous.optJSONObject(i)?.takeIf(::isEquipment)?.let { put(JSONObject(it.toString())) }
-        for (i in 0 until issues.length()) issues.optJSONObject(i)?.takeUnless(::isEquipment)?.let { put(JSONObject(it.toString())) }
+        for (i in 0 until previous.length()) previous.optJSONObject(i)?.takeIf { isEquipment(it)||PartsRecords.isPart(it) }?.let { put(JSONObject(it.toString())) }
+        for (i in 0 until issues.length()) issues.optJSONObject(i)?.takeUnless { isEquipment(it)||PartsRecords.isPart(it) }?.let { put(JSONObject(it.toString())) }
         val equipment = (0 until length()).mapNotNull { optJSONObject(it) }
-            .filterNot { isEquipment(it) || isArchived(it) }.map { it.optString("equipamento") }.filter { it.isNotBlank() }
+            .filterNot { isEquipment(it) || isArchived(it)||PartsRecords.isPart(it) }.map { it.optString("equipamento") }.filter { it.isNotBlank() }
         equipment.forEach { ensureEquipment(this, it) }
     }
     data class Summary(val number: String, val open: Int, val completed: Int)
@@ -74,7 +74,7 @@ internal object MaintenanceRecords {
         val counts = linkedMapOf<String, Pair<Int, Int>>()
         for (i in 0 until all.length()) {
             val record = all.optJSONObject(i) ?: continue
-            if (isArchived(record)) continue
+            if (isArchived(record)||PartsRecords.isPart(record)) continue
             val number = number(record.optString("equipamento"))
             if (number.isBlank()) continue
             val current = counts[number] ?: (0 to 0)

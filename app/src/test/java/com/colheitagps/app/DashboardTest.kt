@@ -29,7 +29,8 @@ class DashboardTest {
     }
     @Test fun operatorDashboardKeepsMapsWeatherAndFieldToolsWithoutManagerTools() {
         val a=home("operador"); val labels=texts(a.window.decorView)
-        for(title in listOf("DM AGRO","Olá, Pessoa","Mapas","Pendências","Equipamentos","Chuva por turno","Ocorrências","Previsão do tempo")) assertTrue(title,labels.contains(title))
+        for(title in listOf("DM AGRO","Olá, Pessoa","Mapas","Pendências","Peças a pedir","Chuva por turno","Ocorrências","Previsão do tempo")) assertTrue(title,labels.contains(title))
+        assertFalse(labels.contains("Equipamentos"))
         for(title in listOf("Estoque","Ordens de serviço","Relatórios","Caminhões","Calendário","Gerenciar usuários","Sair da conta")) assertFalse(title,labels.contains(title))
     }
     @Test fun supervisorDashboardPreservesEveryManagerToolWithoutTheOwnerTeamSwitcher() {

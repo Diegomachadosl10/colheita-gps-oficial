@@ -9,7 +9,7 @@ import android.view.Gravity
 import android.view.View
 import android.widget.*
 
-internal enum class FieldIcon { BRAND, MAP, PENDING, EQUIPMENT, RAIN, STOCK, ORDER, REPORT, OCCURRENCE, TRUCK, CALENDAR, PEOPLE, WEATHER, BELL }
+internal enum class FieldIcon { BRAND, MAP, PENDING, EQUIPMENT, PART, RAIN, STOCK, ORDER, REPORT, OCCURRENCE, TRUCK, CALENDAR, PEOPLE, WEATHER, BELL }
 
 /** Native vector icons stay sharp at every Android font/display size. */
 internal class FieldIconView(context: android.content.Context, private val icon: FieldIcon) : View(context) {
@@ -31,6 +31,7 @@ internal class FieldIconView(context: android.content.Context, private val icon:
             FieldIcon.MAP -> { line(5f, 11f, 18f, 6f, 31f, 11f, 42f, 6f, 42f, 36f, 31f, 41f, 18f, 36f, 5f, 41f, 5f, 11f); line(18f, 7f, 18f, 36f); line(31f, 12f, 31f, 40f) }
             FieldIcon.PENDING -> { rect(11f, 8f, 38f, 43f); rect(19f, 4f, 30f, 11f); line(16f, 20f, 19f, 23f, 24f, 17f); line(28f, 20f, 33f, 20f); line(16f, 32f, 19f, 35f, 24f, 29f); line(28f, 32f, 33f, 32f) }
             FieldIcon.EQUIPMENT -> { circle(14f, 33f, 10f); circle(14f, 33f, 5f); circle(38f, 37f, 6f); line(21f, 36f, 31f, 36f, 32f, 20f, 22f, 20f, 18f, 8f, 7f, 8f); line(20f, 10f, 31f, 10f, 34f, 28f, 41f, 30f); line(36f, 20f, 36f, 10f) }
+            FieldIcon.PART -> { circle(24f,24f,14f); circle(24f,24f,6f); for(i in 0..7) { val angle=i* Math.PI/4; line((24+14*kotlin.math.cos(angle)).toFloat(),(24+14*kotlin.math.sin(angle)).toFloat(),(24+21*kotlin.math.cos(angle)).toFloat(),(24+21*kotlin.math.sin(angle)).toFloat()) } }
             FieldIcon.RAIN, FieldIcon.WEATHER -> { val p=Path().apply { moveTo(12f, 29f); cubicTo(0f, 27f, 4f, 12f, 16f, 15f); cubicTo(18f, 0f, 36f, 5f, 36f, 18f); cubicTo(48f, 18f, 46f, 31f, 36f, 31f); lineTo(12f, 31f) }; canvas.drawPath(p, ink); if (icon == FieldIcon.RAIN) { line(16f, 36f, 12f, 43f); line(26f, 36f, 22f, 43f); line(36f, 36f, 32f, 43f) } else { circle(11f, 8f, 5f); line(2f, 7f, 0f, 7f); line(12f, 0f, 12f, 2f) } }
             FieldIcon.STOCK -> { rect(4f, 25f, 23f, 43f); rect(25f, 25f, 44f, 43f); rect(14f, 5f, 34f, 23f); line(21f, 6f, 21f, 13f, 26f, 13f, 26f, 6f); line(11f, 26f, 11f, 33f, 16f, 33f, 16f, 26f); line(32f, 26f, 32f, 33f, 37f, 33f, 37f, 26f) }
             FieldIcon.ORDER -> { line(12f, 43f, 12f, 5f, 29f, 5f, 39f, 15f, 39f, 43f, 12f, 43f); line(29f, 6f, 29f, 15f, 38f, 15f); line(18f, 24f, 32f, 24f); line(18f, 31f, 32f, 31f); line(18f, 37f, 27f, 37f) }

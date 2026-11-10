@@ -13,6 +13,7 @@ import java.util.concurrent.TimeUnit
 import javax.net.ssl.HttpsURLConnection
 
 internal object AgroService {
+    const val DEFAULT_ENDPOINT="https://dm-agro-servico.dieguiin-msl.workers.dev"
     class ServiceError(val code: Int, message: String) : Exception(message)
     fun validEndpoint(value: String): Boolean = try {
         val uri=URI(value)

@@ -177,6 +177,9 @@ class MainActivity : Activity() {
     private var atualizarFotosFormulario: (() -> Unit)? = null
     private var pdfPendente: File? = null
     private var imagemPendente: File? = null
+    private var pecaRascunho: JSONObject? = null
+    private var atualizarFotosPeca: (() -> Unit)? = null
+    private var fotoCameraPeca: File? = null
     private var vozResultado: ((String) -> Unit)? = null
     private fun dados(key: String): JSONArray = synchronized(teamStore?.lock ?: this) {
         val raw = try { JSONArray(getSharedPreferences("registros_v3", 0).getString(key, "[]")) } catch (_: Exception) { JSONArray() }
@@ -730,6 +733,7 @@ class MainActivity : Activity() {
                 menu.add("Início").setOnMenuItemClickListener { inicio(); true }
                 menu.add("Mapas").setOnMenuItemClickListener { biblioteca(); true }
                 menu.add("Pendências").setOnMenuItemClickListener { pendencias(); true }
+                menu.add("Peças a pedir").setOnMenuItemClickListener { pecas(); true }
                 menu.add("Ocorrências de campo").setOnMenuItemClickListener { ocorrenciasCampo(); true }
                 menu.add("Registro de chuva").setOnMenuItemClickListener { chuvas(); true }
                 if (podeGerenciar()) menu.add("Calendário").setOnMenuItemClickListener { calendario(); true }
@@ -783,7 +787,7 @@ class MainActivity : Activity() {
         val tiles = mutableListOf(
             DashboardUi.Tile("Mapas", FieldIcon.MAP, { biblioteca() }),
             DashboardUi.Tile("Pendências", FieldIcon.PENDING, { pendencias() }, open),
-            DashboardUi.Tile("Equipamentos", FieldIcon.EQUIPMENT, { pendencias() }),
+            DashboardUi.Tile("Peças a pedir", FieldIcon.PART, { pecas() }),
             DashboardUi.Tile("Chuva por turno", FieldIcon.RAIN, { chuvas() })
         )
         if (access.manages) tiles.addAll(listOf(
@@ -1782,6 +1786,208 @@ class MainActivity : Activity() {
                 }
             }.show()
     }
+    private fun dadosPecas():JSONArray = synchronized(teamStore?.lock ?: this) {
+        PartsRecords.rows(maintenanceCatalog()).apply {
+            for(i in 0 until length()) optJSONObject(i)?.let { it.put("__syncBase",teamSync?.baseRevision("pendencias",it.optString("id")) ?: 0L) }
+        }
+    }
+    private fun guardarPecas(parts:JSONArray) = synchronized(teamStore?.lock ?: this) {
+        getSharedPreferences("registros_v3",0).edit().putString("pendencias",PartsRecords.merge(parts,maintenanceCatalog()).toString()).apply()
+    }
+    private fun rascunhoPecaPrefs()=getSharedPreferences("rascunho_peca_${teamStore!!.team}_${teamAccess!!.uid}",0)
+    private fun lerRascunhoPeca():JSONObject?=try { rascunhoPecaPrefs().getString("json",null)?.let(::JSONObject)?.also { draft ->
+        val pending=draft.optString("cameraPeca")
+        val file=File(pending)
+        if(pending.isNotBlank()&&file.isFile&&file.length()>0&&file.canonicalPath.startsWith(filesDir.canonicalPath+File.separator)) {
+            val photos=draft.optJSONArray("fotos") ?: JSONArray()
+            if((0 until photos.length()).none { photos.optString(it)==pending }) photos.put(pending)
+            draft.put("fotos",photos); draft.remove("cameraPeca")
+        }
+    } } catch(_:Exception) { null }
+    private fun pecas(historico:Boolean=false) {
+        val coluna=pagina(if(historico) "Histórico de peças" else "Peças a pedir",parent={if(historico) pecas() else inicio()})
+        refreshList={pecas(historico)}
+        coluna.addView(texto(TeamPolicy.label(teamStore!!.team),16f,0xFFB7E9AF.toInt()))
+        if(!historico) {
+            coluna.addView(botao("+ Cadastrar peça a pedir") { editarPeca() })
+            if(lerRascunhoPeca()!=null) coluna.addView(botao("Continuar rascunho de peça") { editarPeca(retomar=true) })
+        }
+        coluna.addView(texto("Códigos e pedidos são compartilhados com a equipe. As fotos ficam no celular e podem ser enviadas pelo botão Compartilhar.",14f,0xFFB6C9BD.toInt()))
+        val all=dadosPecas(); var count=0
+        for(i in all.length()-1 downTo 0) {
+            val item=all.optJSONObject(i) ?: continue
+            if(PartsRecords.historical(item)!=historico) continue
+            count++
+            val title=item.optString("codigoPeca").ifBlank { "Peça sem código" }+" • ${item.optInt("quantidadePeca",1)} un."
+            val state=if(MaintenanceRecords.isArchived(item)) "Excluída, mantida no histórico" else PartsRecords.states[item.optString("situacaoPeca")] ?: "A pedir"
+            val reference=item.optString("equipamentoReferencia").takeIf { it.isNotBlank() }?.let { "\nEquipamento: $it" }.orEmpty()
+            coluna.addView(cartao(title,item.optString("nomePeca",item.optString("descricao"))+reference+"\n$state") {
+                pausarSincronizacao()
+                val current=dadosPecas(); val selected=(0 until current.length()).mapNotNull { current.optJSONObject(it) }.firstOrNull { it.optString("id")==item.optString("id") }
+                if(selected!=null) opcoesPeca(selected,historico) else pecas(historico)
+            },LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(12) })
+        }
+        if(count==0) coluna.addView(texto(if(historico) "Nenhuma peça recebida ou excluída." else "Nenhuma peça a pedir nesta equipe.",15f))
+        if(!historico) coluna.addView(botao("Histórico de peças recebidas e excluídas") { pecas(true) })
+    }
+    private fun podeEditarPeca(item:JSONObject)= !MaintenanceRecords.isArchived(item) &&
+        (podeGerenciar()||item.optString("autorPecaUid")==teamAccess?.uid) && teamSync?.canEdit("pendencias",item.optString("id"))!=false
+    private fun opcoesPeca(item:JSONObject,historico:Boolean) {
+        val actions=mutableListOf<Pair<String,()->Unit>>()
+        if(podeEditarPeca(item)) actions.add("Editar peça / situação" to { editarPeca(item.optString("id")) })
+        actions.add("Ver fotos" to { verFotosPeca(item) })
+        actions.add("Compartilhar pedido e fotos" to { compartilharPeca(item) })
+        if(podeGerenciar()&&!MaintenanceRecords.isArchived(item)) actions.add("Excluir e manter no histórico" to {
+            AlertDialog.Builder(this).setTitle("Excluir pedido de peça?").setMessage("A peça sairá da lista ativa e permanecerá no histórico com suas informações e fotos locais.")
+                .setNegativeButton("Cancelar",null).setPositiveButton("Excluir") { _,_->
+                    if(!exigirGestor()) return@setPositiveButton
+                    val parts=dadosPecas()
+                    for(i in 0 until parts.length()) parts.optJSONObject(i)?.let { if(it.optString("id")==item.optString("id")) parts.put(i,arquivarManutencao(it)) }
+                    guardarPecas(parts); pecas(historico)
+                }.show()
+        })
+        AlertDialog.Builder(this).setTitle(item.optString("codigoPeca").ifBlank { "Pedido de peça" })
+            .setItems(actions.map { it.first }.toTypedArray()) { _,index->actions[index].second() }.show()
+    }
+    private fun editarPeca(id:String?=null,retomar:Boolean=false) {
+        pausarSincronizacao()
+        val all=dadosPecas()
+        val existing=id?.let { key->(0 until all.length()).mapNotNull { all.optJSONObject(it) }.firstOrNull { it.optString("id")==key } }
+        if(id!=null&&(existing==null||!podeEditarPeca(existing))) { Toast.makeText(this,"Somente o autor ou o gestor pode editar esta peça ativa.",Toast.LENGTH_LONG).show(); return }
+        if(!retomar&&id==null&&lerRascunhoPeca()!=null) {
+            AlertDialog.Builder(this).setTitle("Existe um rascunho de peça")
+                .setPositiveButton("Continuar rascunho") { _,_->editarPeca(retomar=true) }
+                .setNegativeButton("Descartar e criar outro") { _,_->rascunhoPecaPrefs().edit().clear().apply(); editarPeca() }.show(); return
+        }
+        val draft=if(retomar) lerRascunhoPeca() ?: return else existing?.let { JSONObject(it.toString()).put("_novo",false) }
+            ?: JSONObject().put("id",java.util.UUID.randomUUID().toString()).put("categoriaRegistro","peca").put("_novo",true)
+                .put("autorPecaUid",teamAccess!!.uid).put("autorPecaNome",teamAccess!!.profile["nome"]?.toString().orEmpty()).put("dataCadastro",dataHoje())
+        if(MaintenanceRecords.isArchived(draft)) return
+        pecaRascunho=draft
+        val body=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(dp(20),dp(8),dp(20),dp(10)) }
+        fun input(label:String,value:String,multi:Boolean=false):EditText {
+            body.addView(texto(label,14f,0xFF153F28.toInt()).apply { setPadding(0,dp(10),0,dp(4)) })
+            return campo(label,value).apply {
+                setSingleLine(!multi); setTextColor(0xFF153F28.toInt()); setHintTextColor(0xFF64756B.toInt()); textSize=16f
+                backgroundTintList=ColorStateList.valueOf(verde)
+                body.addView(this)
+            }
+        }
+        val code=input("Código / número da peça",draft.optString("codigoPeca"))
+        val description=input("Nome ou descrição da peça",draft.optString("nomePeca",draft.optString("descricao")),true)
+        val quantity=input("Quantidade",draft.optString("quantidadePeca","1")).apply { inputType=android.text.InputType.TYPE_CLASS_NUMBER }
+        val reference=input("Equipamento de referência (opcional)",draft.optString("equipamentoReferencia"))
+        val state=if(podeGerenciar()) Spinner(this).apply {
+            adapter=ArrayAdapter(this@MainActivity,android.R.layout.simple_spinner_dropdown_item,PartsRecords.states.values.toList())
+            setSelection(PartsRecords.states.keys.indexOf(draft.optString("situacaoPeca","a_pedir")).coerceAtLeast(0))
+            body.addView(texto("Situação do pedido",14f,0xFF153F28.toInt())); body.addView(this)
+        } else null
+        val photoCount=texto("",14f,0xFF153F28.toInt()); body.addView(photoCount)
+        fun capture() {
+            draft.put("codigoPeca",code.text.toString()).put("nomePeca",description.text.toString()).put("descricao",description.text.toString()).put("quantidadePeca",quantity.text.toString()).put("equipamentoReferencia",reference.text.toString())
+                .put("situacaoPeca",state?.let { PartsRecords.states.keys.elementAt(it.selectedItemPosition) } ?: draft.optString("situacaoPeca","a_pedir"))
+            pecaRascunho=draft; rascunhoPecaPrefs().edit().putString("json",draft.toString()).apply()
+        }
+        atualizarFotosPeca={photoCount.text="Fotos neste celular: ${draft.optJSONArray("fotos")?.length() ?: 0} (até 6)"}; atualizarFotosPeca?.invoke()
+        body.addView(botao("Escolher fotos no celular") {
+            capture()
+            if((draft.optJSONArray("fotos")?.length() ?: 0)>=6) { Toast.makeText(this,"Limite de 6 fotos por peça.",Toast.LENGTH_LONG).show(); return@botao }
+            startActivityForResult(Intent(Intent.ACTION_GET_CONTENT).apply { type="image/*"; putExtra(Intent.EXTRA_ALLOW_MULTIPLE,true) },8801)
+        })
+        body.addView(botao("Tirar foto da peça") {
+            capture()
+            if((draft.optJSONArray("fotos")?.length() ?: 0)>=6) { Toast.makeText(this,"Limite de 6 fotos por peça.",Toast.LENGTH_LONG).show(); return@botao }
+            val file=File(filesDir,"pecas/${java.util.UUID.randomUUID()}.jpg").apply { parentFile?.mkdirs(); createNewFile() }
+            try {
+                val uri=androidx.core.content.FileProvider.getUriForFile(applicationContext,"$packageName.files",file)
+                fotoCameraPeca=file; draft.put("cameraPeca",file.absolutePath); rascunhoPecaPrefs().edit().putString("json",draft.toString()).apply()
+                startActivityForResult(Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE).apply {
+                    putExtra(android.provider.MediaStore.EXTRA_OUTPUT,uri); addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    clipData=ClipData.newRawUri("Foto de peça",uri)
+                },8802)
+            } catch(_:Exception) { file.delete(); Toast.makeText(this,"Câmera indisponível. Você pode escolher uma foto do celular.",Toast.LENGTH_LONG).show() }
+        })
+        body.addView(botao("Ver / remover foto do rascunho") {
+            val photos=draft.optJSONArray("fotos") ?: JSONArray()
+            if(photos.length()==0) { Toast.makeText(this,"Nenhuma foto anexada.",Toast.LENGTH_SHORT).show(); return@botao }
+            AlertDialog.Builder(this).setTitle("Fotos anexadas").setItems((0 until photos.length()).map { "Foto ${it+1}" }.toTypedArray()) { _,index->
+                AlertDialog.Builder(this).setTitle("Foto ${index+1}").setPositiveButton("Ver") { _,_->mostrarFotoPeca(File(photos.optString(index))) }
+                    .setNeutralButton("Remover do pedido") { _,_->draft.put("fotos",JSONArray().apply { for(i in 0 until photos.length()) if(i!=index) put(photos.get(i)) }); capture(); atualizarFotosPeca?.invoke() }.setNegativeButton("Voltar",null).show()
+            }.show()
+        })
+        val dialog=AlertDialog.Builder(this).setTitle(if(draft.optBoolean("_novo",true)) "Cadastrar peça a pedir" else "Editar peça")
+            .setView(ScrollView(this).apply { addView(body) }).setNegativeButton("Cancelar") { _,_->rascunhoPecaPrefs().edit().clear().apply(); pecaRascunho=null; atualizarFotosPeca=null }
+            .setPositiveButton("Salvar",null).create()
+        dialog.setOnShowListener { dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            try {
+                capture()
+                val clean=JSONObject(draft.toString()).apply { remove("_novo"); remove("cameraPeca") }
+                val item=PartsRecords.build(clean,code.text.toString(),description.text.toString(),quantity.text.toString(),reference.text.toString(),draft.optString("situacaoPeca","a_pedir"),teamAccess!!.uid,teamAccess!!.profile["nome"]?.toString().orEmpty(),dataHoje())
+                val parts=dadosPecas()
+                if(!draft.optBoolean("_novo",true)&&!podeEditarPeca(item)) return@setOnClickListener
+                if(!colocarRegistro(parts,if(draft.optBoolean("_novo",true)) -1 else 0,item)) return@setOnClickListener
+                guardarPecas(parts); rascunhoPecaPrefs().edit().clear().apply(); pecaRascunho=null; atualizarFotosPeca=null
+                dialog.dismiss(); pecas()
+            } catch(error:IllegalArgumentException) { Toast.makeText(this,error.message,Toast.LENGTH_LONG).show() }
+        } }; dialog.show()
+    }
+    private fun fotosPeca(item:JSONObject):List<File> {
+        val all=item.optJSONArray("fotos") ?: JSONArray()
+        return (0 until all.length()).map { File(all.optString(it)) }.filter { it.isFile&&it.length()>0&&it.canonicalPath.startsWith(filesDir.canonicalPath+File.separator) }
+    }
+    private fun mostrarFotoPeca(file:File) {
+        val bounds=BitmapFactory.Options().apply { inJustDecodeBounds=true }; BitmapFactory.decodeFile(file.absolutePath,bounds)
+        var sample=1; while(maxOf(bounds.outWidth,bounds.outHeight)/sample>1600) sample*=2
+        val bitmap=BitmapFactory.decodeFile(file.absolutePath,BitmapFactory.Options().apply { inSampleSize=sample }) ?: return
+        AlertDialog.Builder(this).setView(ImageView(this).apply { setImageBitmap(bitmap); adjustViewBounds=true }).setPositiveButton("Fechar",null).show()
+    }
+    private fun verFotosPeca(item:JSONObject) {
+        val photos=fotosPeca(item)
+        if(photos.isEmpty()) { Toast.makeText(this,"Fotos ficam no celular de quem anexou. Peça o compartilhamento ao autor.",Toast.LENGTH_LONG).show(); return }
+        AlertDialog.Builder(this).setTitle("Fotos da peça").setItems(photos.indices.map { "Foto ${it+1}" }.toTypedArray()) { _,index->mostrarFotoPeca(photos[index]) }.show()
+    }
+    private fun compartilharPeca(item:JSONObject) {
+        val text=PartsRecords.sharingText(item,TeamPolicy.label(teamStore!!.team))
+        val photos=fotosPeca(item)
+        val intent=Intent(if(photos.isEmpty()) Intent.ACTION_SEND else Intent.ACTION_SEND_MULTIPLE).apply {
+            type=if(photos.isEmpty()) "text/plain" else "image/*"; putExtra(Intent.EXTRA_TEXT,text)
+            if(photos.isNotEmpty()) {
+                val uris=ArrayList(photos.map { androidx.core.content.FileProvider.getUriForFile(applicationContext,"$packageName.files",it) })
+                putParcelableArrayListExtra(Intent.EXTRA_STREAM,uris); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                clipData=ClipData.newUri(contentResolver,"Peças a pedir",uris.first()).apply { uris.drop(1).forEach { addItem(ClipData.Item(it)) } }
+            }
+        }
+        startActivity(Intent.createChooser(intent,"Compartilhar pedido de peça"))
+    }
+    private fun resultadoFotoPeca(code:Int,result:Int,data:Intent?) {
+        if(teamStore==null||teamAccess==null) return
+        val draft=pecaRascunho ?: lerRascunhoPeca() ?: return
+        val photos=draft.optJSONArray("fotos") ?: JSONArray()
+        if(result==RESULT_OK) try {
+            if(code==8802) {
+                val file=fotoCameraPeca ?: draft.optString("cameraPeca").takeIf { it.isNotBlank() }?.let(::File)
+                if(file!=null&&file.isFile&&file.length()>0&&(0 until photos.length()).none { photos.optString(it)==file.absolutePath }) photos.put(file.absolutePath)
+            } else {
+                val uris=mutableListOf<Uri>()
+                data?.clipData?.let { clip->for(i in 0 until clip.itemCount) uris.add(clip.getItemAt(i).uri) } ?: data?.data?.let { uris.add(it) }
+                for(uri in uris.take((6-photos.length()).coerceAtLeast(0))) {
+                    val extension=contentResolver.getType(uri)?.let { android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(it) }
+                        ?.takeIf { it in setOf("jpg","jpeg","png","webp","gif","heic","heif") } ?: "jpg"
+                    val file=File(filesDir,"pecas/${java.util.UUID.randomUUID()}.$extension").apply { parentFile?.mkdirs() }
+                    try {
+                        contentResolver.openInputStream(uri)?.use { input->file.outputStream().use { output->
+                            val buffer=ByteArray(8192); var total=0
+                            while(true) { val count=input.read(buffer); if(count<0) break; total+=count; require(total<=20*1024*1024) { "A foto excede 20 MB." }; output.write(buffer,0,count) }
+                        } }
+                        if(file.isFile&&file.length()>0) photos.put(file.absolutePath)
+                    } catch(error:Exception) { file.delete(); throw error }
+                }
+            }
+        } catch(error:Exception) { Toast.makeText(this,error.message ?: "Não foi possível anexar a foto.",Toast.LENGTH_LONG).show() }
+        draft.put("fotos",photos); draft.remove("cameraPeca"); pecaRascunho=draft
+        rascunhoPecaPrefs().edit().putString("json",draft.toString()).apply(); atualizarFotosPeca?.invoke()
+    }
+
     private fun chuvas() {
         val store = teamStore ?: return
         val coluna = pagina("Registro de chuva")
@@ -2613,6 +2819,7 @@ class MainActivity : Activity() {
         data: Intent?
     ) {
         super.onActivityResult(requestCode, resultCode, data)
+        if(requestCode==8801||requestCode==8802) { resultadoFotoPeca(requestCode,resultCode,data); return }
         tratarResultadoVozEFoto(requestCode, resultCode, data)
         if (requestCode == 310) {
             if (resultCode == RESULT_OK) {

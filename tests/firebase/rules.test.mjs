@@ -154,6 +154,17 @@ test('catálogo de equipamento usa os mesmos limites de equipe das pendências',
   await assertSucceeds(getDoc(doc(db('supA'),'equipes',team,'registros','equipamento')));
   await assertFails(getDoc(doc(db('supB'),'equipes',team,'registros','equipamento')));
 });
+test('pedido de peça usa o grupo de manutenção existente, sem ampliar equipes ou permitir exclusão pelo operador',async()=>{
+  const path=['equipes',team,'registros','peca'];
+  const content={id:'peca',categoriaRegistro:'peca',codigoPeca:'00081-AB',quantidadePeca:2,descricao:'Filtro',situacaoPeca:'a_pedir'};
+  await assertSucceeds(setDoc(doc(db('opA'),...path),record('opA','pendencias',1,{chave:'peca',conteudo:JSON.stringify(content)})));
+  const read=await assertSucceeds(getDoc(doc(db('supA'),...path)));
+  assert.equal(JSON.parse(read.data().conteudo).codigoPeca,'00081-AB');
+  await assertFails(getDoc(doc(db('supB'),...path)));
+  await assertFails(updateDoc(doc(db('opA'),...path),{excluido:true,versao:2,editadoPor:'opA',atualizadoEm:serverTimestamp()}));
+  await assertSucceeds(updateDoc(doc(db('supA'),...path),{excluido:true,versao:2,editadoPor:'supA',atualizadoEm:serverTimestamp()}));
+  assert.equal(JSON.parse((await getDoc(doc(db('supA'),...path))).data().conteudo).quantidadePeca,2);
+});
 test('somente o principal configura o serviço público e o próprio nome, sem ampliar permissões',async()=>{
   await assertSucceeds(setDoc(doc(db(owner),'configuracao','servico'),{url:'https://dm-agro.usuario.workers.dev'}));
   await assertSucceeds(getDoc(doc(db('opA'),'configuracao','servico')));
