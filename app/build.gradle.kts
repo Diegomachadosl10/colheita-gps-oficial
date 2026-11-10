@@ -13,8 +13,8 @@ android {
         applicationId = "com.colheitagps.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 8
-        versionName = "1.2.2"
+        versionCode = 9
+        versionName = "1.3.0"
     }
 
     buildTypes {
@@ -46,4 +46,6 @@ dependencies {
     implementation("com.google.firebase:firebase-auth")
     implementation("com.google.firebase:firebase-firestore")
     implementation("com.google.firebase:firebase-storage")
+    implementation("com.google.firebase:firebase-messaging")
+    implementation("androidx.work:work-runtime-ktx:2.9.1")
 }

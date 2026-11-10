@@ -12,6 +12,19 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [28], manifest = Config.NONE, application = Application::class)
 class MaintenanceRecordsTest {
+    @Test fun correctingEquipmentNumberPreservesPhotosAndBothActiveAndArchivedIssues() {
+        val issue=JSONObject().put("id","p1").put("equipamento","21568").put("fotos",JSONArray().put("/foto.jpg"))
+        val archived=MaintenanceRecords.archive(JSONObject().put("id","p2").put("equipamento","21568"),"sup","Supervisor","ontem")
+        val all=MaintenanceRecords.merge(JSONArray().put(issue).put(archived),JSONArray())
+        val corrected=MaintenanceRecords.correctNumber(all,"21568","21569","sup","Supervisor","hoje")
+        assertEquals("21569",MaintenanceRecords.summaries(corrected).single().number)
+        val issues=MaintenanceRecords.issues(corrected)
+        assertEquals(2,issues.length()); assertEquals("/foto.jpg",issues.getJSONObject(0).getJSONArray("fotos").getString(0))
+        assertEquals("21569",issues.getJSONObject(0).getString("equipamento"))
+        assertEquals("21568",issues.getJSONObject(0).getString("numeroEquipamentoAnterior"))
+        assertTrue(MaintenanceRecords.isArchived(issues.getJSONObject(1)))
+        assertTrue(MaintenanceRecords.archivedEquipment(corrected).contains("21568"))
+    }
     @Test fun deletingEquipmentArchivesItsOpenAndCompletedIssuesWithoutChangingOtherEquipmentOrPhotos() {
         val open = JSONObject().put("id", "aberta").put("equipamento", "21569").put("descricao", "Pneu")
             .put("fotos", JSONArray().put("/foto-local.jpg"))

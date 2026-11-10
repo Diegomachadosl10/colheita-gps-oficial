@@ -46,13 +46,14 @@ class LoginActivity : Activity() {
     }
     private fun logout() {
         attempt++; busy = false
+        AgroNotifications.logout(this)
         auth.signOut(); login()
     }
     private fun errorMessage(error: Exception, registering: Boolean = false): String = when {
         error is FirebaseNetworkException -> "Sem conexão com o serviço de acesso. Verifique a internet e tente novamente."
         error is FirebaseTooManyRequestsException -> "Muitas tentativas. Aguarde alguns minutos e tente novamente."
         error is FirebaseAuthException -> when (error.errorCode) {
-            "ERROR_EMAIL_ALREADY_IN_USE" -> "Esta matrícula já possui uma conta. Use Entrar com a senha cadastrada."
+            "ERROR_EMAIL_ALREADY_IN_USE" -> "Esta matrícula ainda possui uma credencial no Firebase Authentication. Se o número foi digitado errado ou o acesso foi desativado, peça ao administrador para corrigir a matrícula ou excluir definitivamente a conta. Não basta remover o cadastro do Firestore."
             "ERROR_USER_DISABLED" -> "Esta conta foi desativada. Procure o administrador principal."
             "ERROR_OPERATION_NOT_ALLOWED" -> "O acesso por senha está indisponível no Firebase. Informe o administrador."
             "ERROR_WEAK_PASSWORD" -> "Escolha uma senha com pelo menos 8 caracteres."
@@ -144,7 +145,7 @@ class LoginActivity : Activity() {
                 }.addOnCompleteListener {
                     if (isDestroyed) return@addOnCompleteListener
                     busy = false
-                    if (it.isSuccessful) verify() else {
+                    if (it.isSuccessful) { AgroNotifications.event(applicationContext,"user"); verify() } else {
                         register(true)
                         notice("Sua conta de acesso foi criada, mas a solicitação não foi salva. Confira a internet e toque em Enviar solicitação. Se sair, entre novamente com a mesma matrícula e senha para concluir.")
                     }
@@ -169,7 +170,15 @@ class LoginActivity : Activity() {
             if (token != attempt || isDestroyed) return@load
             when {
                 data == null -> {
-                    if (auth.currentUser?.email?.matches(Regex("matricula\\.[0-9]{1,20}@acesso\\.dm-agro\\.app")) == true) register(true)
+                    if (auth.currentUser?.email?.matches(Regex("matricula\\.[0-9]{1,20}@acesso\\.dm-agro\\.app")) == true) {
+                        auth.currentUser?.reload()?.addOnCompleteListener { result ->
+                            if(token!=attempt||isDestroyed) return@addOnCompleteListener
+                            if(result.isSuccessful) register(true)
+                            else if((result.exception as? FirebaseAuthException)?.errorCode in setOf("ERROR_USER_NOT_FOUND","ERROR_USER_DISABLED","ERROR_USER_TOKEN_EXPIRED")) {
+                                logout(); notice("A conta anterior foi encerrada. Solicite um novo acesso para cadastrar novamente.")
+                            } else status("Não foi possível conferir a conta","Confira a conexão e tente novamente.")
+                        }
+                    }
                     else status("Cadastro não localizado", "O administrador precisa conferir o documento usuarios com o UID desta conta. A sessão sozinha não autoriza acesso.")
                 }
                 TeamPolicy.allowed(auth.currentUser?.uid.orEmpty(), data) -> if (TeamPolicy.primary(auth.currentUser?.uid.orEmpty())) adminPanel(data) else openApp()

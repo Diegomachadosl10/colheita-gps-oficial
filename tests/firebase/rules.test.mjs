@@ -154,6 +154,24 @@ test('catálogo de equipamento usa os mesmos limites de equipe das pendências',
   await assertSucceeds(getDoc(doc(db('supA'),'equipes',team,'registros','equipamento')));
   await assertFails(getDoc(doc(db('supB'),'equipes',team,'registros','equipamento')));
 });
+test('somente o principal configura o serviço público e o próprio nome, sem ampliar permissões',async()=>{
+  await assertSucceeds(setDoc(doc(db(owner),'configuracao','servico'),{url:'https://dm-agro.usuario.workers.dev'}));
+  await assertSucceeds(getDoc(doc(db('opA'),'configuracao','servico')));
+  await assertFails(setDoc(doc(db('supA'),'configuracao','servico'),{url:'https://outro.usuario.workers.dev'}));
+  await assertFails(setDoc(doc(db(owner),'configuracao','servico'),{url:'https://evil.invalid'}));
+  await assertFails(setDoc(doc(db(owner),'configuracao','servico'),{url:'https://dm-agro.usuario.workers.dev',private_key:'proibida'}));
+  await assertSucceeds(updateDoc(doc(db(owner),'usuarios',owner),{nome:'Diego Machado'}));
+  await assertFails(updateDoc(doc(db(owner),'usuarios',owner),{papel:'operador'}));
+  await assertFails(updateDoc(doc(db('opA'),'usuarios','opA'),{nome:'Outro nome'}));
+  await assertFails(setDoc(doc(db('opA'),'dispositivos','opA','tokens','falso'),{token:'falso'}));
+  await assertFails(getDoc(doc(db('supA'),'dispositivos',owner,'tokens','outro')));
+});
+test('token antigo de conta apagada não recria o cadastro e um novo UID pode solicitar a matrícula liberada',async()=>{
+  await env.withSecurityRulesDisabled(c=>setDoc(doc(c.firestore(),'contasEncerradas','encerrado'),{por:owner}));
+  await assertFails(setDoc(doc(db('encerrado'),'usuarios','encerrado'),pending()));
+  await assertSucceeds(setDoc(doc(db('novo-uid'),'usuarios','novo-uid'),pending()));
+  await assertFails(getDoc(doc(db('novo-uid'),'contasEncerradas','encerrado')));
+});
 test('somente o gestor exclui equipamentos e pendências, preservando os documentos para o histórico', async () => {
   const entries=[['equipamento-historico',{id:'equipamento-historico',categoriaRegistro:'equipamento',equipamento:'21569'}],
     ['pendencia-historico',{id:'pendencia-historico',equipamento:'21569',descricao:'Pneu furado'}]];

@@ -11,6 +11,12 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [28], manifest = Config.NONE, application = Application::class)
 class RecordDeletionTest {
+    @Test fun correctingEquipmentWithinArchivedMaintenanceMustWriteTheNewHistoryInsteadOfAcknowledgingTheOldCopy() {
+        val pending=change().put("grupo","pendencias").put("conteudo","equipamento corrigido")
+        val previous=JSONObject(pending.toString()).put("conteudo","equipamento anterior").put("versao",4)
+        assertFalse(RecordDeletion.alreadyDeleted(pending,previous))
+        assertTrue(RecordDeletion.alreadyDeleted(pending,JSONObject(previous.toString()).put("conteudo","equipamento corrigido")))
+    }
     private fun change() = JSONObject().put("tipo", "item").put("grupo", "ocorrencias_campo")
         .put("chave", "id1").put("autorUid", "opA").put("conteudo", "conteúdo original")
         .put("base", 0).put("excluido", true)

@@ -38,6 +38,7 @@ class MainActivity : Activity() {
     private var profileWatch: com.google.firebase.firestore.ListenerRegistration? = null
     private var syncLabel: TextView? = null
     private var syncMessage = "Conectando à equipe…"
+    private var sessionName = ""
     private var refreshList: (() -> Unit)? = null
     private var returnToParent: (() -> Unit)? = null
     private val syncUiHandler = Handler(Looper.getMainLooper())
@@ -52,6 +53,10 @@ class MainActivity : Activity() {
     override fun getCacheDir(): File = teamStore?.cache ?: super.getCacheDir()
 
     private fun chooseTeam(access: TeamAccess) {
+        val alertTeam=intent.getStringExtra("equipeAlerta")
+        intent.removeExtra("equipeAlerta")
+        if(alertTeam!=null && alertTeam.substringBeforeLast('_') in TeamPolicy.fronts && alertTeam.substringAfterLast('_') in TeamPolicy.shifts &&
+            (access.primary||access.team==alertTeam)) { openTeam(access,alertTeam); return }
         if (!access.primary) { openTeam(access, access.team!!); return }
         val ids = TeamPolicy.fronts.keys.flatMap { f -> TeamPolicy.shifts.map { "${f}_$it" } }
         AlertDialog.Builder(this).setTitle("Qual equipe deseja acompanhar?")
@@ -77,7 +82,7 @@ class MainActivity : Activity() {
                     if (!isFinishing && !isDestroyed && hasWindowFocus() && mapa == null) refreshList?.invoke()
                 }, 300)
             }
-        }, { message -> syncMessage = message; syncLabel?.text = "${TeamPolicy.label(id)}\n$message" })
+        }, { message -> syncMessage = message; syncLabel?.text = "● ${DashboardUi.status(message)}" })
         teamSync!!.start()
         if (!access.primary) profileWatch = FirebaseFirestore.getInstance().collection("usuarios").document(access.uid)
             .addSnapshotListener { document, _ ->
@@ -94,6 +99,7 @@ class MainActivity : Activity() {
                 }
             }
         inicio()
+        AgroNotifications.offer(this, access)
     }
     private fun syncDetails() {
         val sync = teamSync ?: return
@@ -127,6 +133,7 @@ class MainActivity : Activity() {
             finish()
             return
         }
+        sessionName = usuario.displayName.orEmpty()
         val espera = tela()
         espera.addView(texto("Verificando permissões...", 18f).apply {
             gravity = Gravity.CENTER
@@ -616,6 +623,10 @@ class MainActivity : Activity() {
         }
         carregarPermissoes()
     }
+    override fun onResume() {
+        super.onResume()
+        if(acessoConfirmado&&telaAtual=="inicio"&&teamStore!=null) inicio()
+    }
 
     private fun tela(): FrameLayout =
         FrameLayout(this).apply {
@@ -673,11 +684,11 @@ class MainActivity : Activity() {
     }
 
     private fun pagina(titulo: String, parent: () -> Unit = { inicio() }): LinearLayout {
-        returnToParent = if (titulo == "Colheita GPS 2.0") null else parent
-        telaAtual = if (titulo == "Colheita GPS 2.0") "inicio" else "pagina"
+        returnToParent = if (titulo == "DM AGRO") null else parent
+        telaAtual = if (titulo == "DM AGRO") "inicio" else "pagina"
         teamSync?.available(hasWindowFocus() && mapa == null)
         refreshList = when (titulo) {
-            "Colheita GPS 2.0" -> ({ inicio() })
+            "DM AGRO" -> ({ inicio() })
             "Pendências de manutenção" -> ({ pendencias() })
             "Pendências concluídas" -> ({ historicoPendencias() })
             "Ocorrências de campo" -> ({ ocorrenciasCampo() })
@@ -699,12 +710,14 @@ class MainActivity : Activity() {
             botaoVoltar { voltarTela() },
             LinearLayout.LayoutParams(dp(46), dp(46))
         )
-        topo.addView(texto(titulo, 22f, Color.WHITE).apply {
+        if (telaAtual == "inicio") topo.addView(DashboardUi(this).brand(), LinearLayout.LayoutParams(0, -2, 1f))
+        else topo.addView(texto(titulo, 22f, Color.WHITE).apply {
             setPadding(dp(12), 0, 0, 0)
         }, LinearLayout.LayoutParams(0, -2, 1f))
         topo.addView(TextView(this).apply {
             text = "⋮"; textSize = 26f; setTextColor(Color.WHITE)
             setPadding(dp(12), 0, dp(8), 0)
+            contentDescription = "Mais opções"; minWidth = dp(48); minHeight = dp(48); gravity = Gravity.CENTER
             setOnClickListener { v -> PopupMenu(this@MainActivity, v).apply {
                 menu.add("Sair da conta").setOnMenuItemClickListener {
                     sairDaConta()
@@ -712,6 +725,7 @@ class MainActivity : Activity() {
                 }
                 menu.add("Verificar atualização").setOnMenuItemClickListener { startActivity(Intent(this@MainActivity, UpdateActivity::class.java)); true }
                 menu.add("Sincronização").setOnMenuItemClickListener { syncDetails(); true }
+                if (podeGerenciar()) menu.add("Notificações").setOnMenuItemClickListener { startActivity(Intent(this@MainActivity, NotificationSettingsActivity::class.java)); true }
                 if (teamAccess?.primary == true) menu.add("Trocar equipe").setOnMenuItemClickListener { chooseTeam(teamAccess!!); true }
                 menu.add("Início").setOnMenuItemClickListener { inicio(); true }
                 menu.add("Mapas").setOnMenuItemClickListener { biblioteca(); true }
@@ -739,78 +753,81 @@ class MainActivity : Activity() {
     }
 
     private fun inicio() {
-        mapa?.salvar()
-        mapa = null
-        status = null
-        val coluna = pagina("Colheita GPS 2.0")
-        val displayName = teamAccess?.profile?.get("nome")?.toString()?.trim().orEmpty().ifBlank { "Usuário" }
-        coluna.addView(texto("Olá, $displayName", 23f, Color.WHITE).apply {
-            setTypeface(null, Typeface.BOLD); setPadding(0, dp(16), 0, dp(2))
+        mapa?.salvar(); mapa = null; status = null
+        val access = teamAccess ?: return
+        val store = teamStore ?: return
+        val ui = DashboardUi(this)
+        val coluna = pagina("DM AGRO")
+        raiz?.background = GradientDrawable(GradientDrawable.Orientation.TL_BR,
+            intArrayOf(0xFF06351F.toInt(), 0xFF071F16.toInt()))
+        coluna.addView(ui.text("Olá, ${DashboardUi.name(access, sessionName)}", 28f, bold = true).apply {
+            setPadding(0, dp(26), 0, dp(3))
         })
-        syncLabel = texto("${TeamPolicy.label(teamStore!!.team)}\n$syncMessage", 14f, 0xFFB6DCC6.toInt()).also {
-            it.setPadding(0, dp(12), 0, dp(6)); it.setOnClickListener { syncDetails() }
-            coluna.addView(it)
+        coluna.addView(ui.text("Bom trabalho no campo", 17f, ui.mint))
+        val teamPanel = ui.panel().apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        val teamInfo = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        teamInfo.addView(ui.text(TeamPolicy.label(store.team), 16f, bold = true))
+        syncLabel = ui.text("● ${DashboardUi.status(syncMessage)}", 13f, ui.mint).also {
+            it.setPadding(0, dp(7), 0, 0); it.setOnClickListener { syncDetails() }; teamInfo.addView(it)
         }
-        if (teamAccess?.primary == true) {
-            coluna.addView(botao("Trocar equipe") { chooseTeam(teamAccess!!) })
-            if (teamStore!!.hasLegacy()) coluna.addView(botao("Dados antigos deste aparelho") {
-                AlertDialog.Builder(this).setTitle("Preservar e importar dados anteriores")
-                    .setMessage("Os registros antigos não identificam equipe. Importe somente se pertencerem a ${TeamPolicy.label(teamStore!!.team)}. Os originais serão preservados e não serão sobrescritos registros já existentes.")
-                    .setNegativeButton("Cancelar", null).setPositiveButton("Importar para esta equipe") { _, _ ->
-                        try { teamStore!!.importLegacy(); teamSync?.retry(); inicio() }
-                        catch (e: Exception) { Toast.makeText(this, e.message ?: "Falha na importação", Toast.LENGTH_LONG).show() }
-                    }.show()
-            })
-        }
-        coluna.addView(botao("Verificar atualização") { startActivity(Intent(this, UpdateActivity::class.java)) })
-        coluna.addView(botao("Sair da conta") { sairDaConta() }.apply {
-            textSize = 16f
-            setTypeface(null, Typeface.BOLD)
-            minHeight = dp(54)
-            setPadding(dp(16), dp(12), dp(16), dp(12))
-            backgroundTintList = null
-            background = GradientDrawable().apply {
-                setColor(verde)
-                cornerRadius = dp(14).toFloat()
-            }
-        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(16) })
-        val itens = listOf(
-            Triple("MAPAS", "PDF georreferenciado, GPS e talhões", 0),
-            Triple("ORDENS DE SERVIÇO", "Página exclusiva das O.S. por mapa", 1),
-            Triple("ESTOQUE DE CANA", "Registrar entradas e saídas por turno", 2),
-            Triple("RELATÓRIOS DE TURNO", "Resumo dos turnos A, B e C", 3),
-            Triple("PENDÊNCIAS", "Fotos e acompanhamento de manutenção", 4),
-            Triple("CAMINHÕES", "Chegada e saída por voz ou digitação", 5),
-            Triple("📅 CALENDÁRIO", "Consultar estoques, pendências e relatórios por dia", 6),
-            Triple("OCORRÊNCIAS DE CAMPO", "Buracos, erosões, estradas e carreadores", 7),
-            Triple("REGISTRO DE CHUVA", "Chuva em milímetros por data e turno", 8),
+        teamPanel.addView(teamInfo, LinearLayout.LayoutParams(0, -2, 1f))
+        if (access.primary) teamPanel.addView(ui.text("Trocar", 14f, ui.mint, true).apply {
+            gravity = Gravity.CENTER; minHeight = dp(48); setPadding(dp(12), 0, 0, 0)
+            contentDescription = "Trocar equipe"; setOnClickListener { chooseTeam(access) }
+        })
+        coluna.addView(teamPanel, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(22) })
+        if (access.primary && access.profile["nome"]?.toString().isNullOrBlank()) coluna.addView(botao("Definir meu nome") { definirNome() })
+        coluna.addView(WeatherActivity.homeCard(this, store.team), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(14) })
+        coluna.addView(ui.text("Ferramentas", 23f, bold = true).apply { setPadding(0, dp(24), 0, dp(3)) })
+        val open = MaintenanceRecords.summaries(maintenanceCatalog()).sumOf { it.open }
+        val tiles = mutableListOf(
+            DashboardUi.Tile("Mapas", FieldIcon.MAP, { biblioteca() }),
+            DashboardUi.Tile("Pendências", FieldIcon.PENDING, { pendencias() }, open),
+            DashboardUi.Tile("Equipamentos", FieldIcon.EQUIPMENT, { pendencias() }),
+            DashboardUi.Tile("Chuva por turno", FieldIcon.RAIN, { chuvas() })
         )
-        if (acessoConfirmado && podeAprovarUsuarios) {
-            coluna.addView(cartao(if (teamAccess?.primary == true) "GERENCIAR USUÁRIOS" else "APROVAR MINHA EQUIPE", "Gerenciar solicitações de acesso") {
-                startActivity(Intent(this, AdminActivity::class.java))
-            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(16) })
-        }
-        for ((titulo, subtitulo, tipo) in itens) {
-            if (funcionarioRestrito() && tipo !in setOf(0, 4, 7, 8)) continue
-            val item = cartao(titulo, subtitulo) {
-                when (tipo) {
-                    0 -> biblioteca()
-                    1 -> paginaOrdens()
-                    2 -> estoque()
-                    3 -> relatorios()
-                    4 -> pendencias()
-                    5 -> caminhoes()
-                    6 -> calendario()
-                    7 -> ocorrenciasCampo()
-                    8 -> chuvas()
-                    else -> relatoriosTurno()
-                }
-            }
-            coluna.addView(item, LinearLayout.LayoutParams(-1, -2).apply {
-                topMargin = dp(16)
+        if (access.manages) tiles.addAll(listOf(
+            DashboardUi.Tile("Estoque", FieldIcon.STOCK, { estoque() }),
+            DashboardUi.Tile("Ordens de serviço", FieldIcon.ORDER, { paginaOrdens() }),
+            DashboardUi.Tile("Relatórios", FieldIcon.REPORT, { relatorios() })
+        ))
+        tiles.add(DashboardUi.Tile("Ocorrências", FieldIcon.OCCURRENCE, { ocorrenciasCampo() }))
+        if (access.manages) tiles.addAll(listOf(
+            DashboardUi.Tile("Caminhões", FieldIcon.TRUCK, { caminhoes() }),
+            DashboardUi.Tile("Calendário", FieldIcon.CALENDAR, { calendario() })
+        ))
+        ui.grid(coluna, tiles)
+        if (access.manages) coluna.addView(ui.panel { startActivity(Intent(this, AdminActivity::class.java)) }.apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            addView(FieldIconView(this@MainActivity, FieldIcon.PEOPLE), LinearLayout.LayoutParams(dp(36), dp(36)))
+            addView(LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.VERTICAL; setPadding(dp(14), 0, 0, 0)
+                addView(ui.text(if (access.primary) "Gerenciar usuários" else "Aprovar minha equipe", 17f, bold = true))
+                addView(ui.text(if (access.primary) "Administrador" else "Supervisor da equipe", 13f, ui.mint))
             })
-        }
+        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(18) })
+        if (access.primary && store.hasLegacy()) coluna.addView(botao("Dados antigos deste aparelho") {
+            AlertDialog.Builder(this).setTitle("Preservar e importar dados anteriores")
+                .setMessage("Importe somente registros de ${TeamPolicy.label(store.team)}. Os originais e registros atuais serão preservados.")
+                .setNegativeButton("Cancelar", null).setPositiveButton("Importar") { _, _ ->
+                    try { store.importLegacy(); teamSync?.retry(); inicio() }
+                    catch (e: Exception) { Toast.makeText(this, e.message ?: "Falha na importação", Toast.LENGTH_LONG).show() }
+                }.show()
+        })
+    }
 
+    private fun definirNome() {
+        if (teamAccess?.primary != true) return
+        val input = campo("Seu nome")
+        AlertDialog.Builder(this).setTitle("Como deseja ser chamado?").setView(input)
+            .setNegativeButton("Cancelar", null).setPositiveButton("Salvar") { _, _ ->
+                val name = input.text.toString().trim()
+                if (name.length !in 3..100) { Toast.makeText(this, "Informe seu nome, de 3 a 100 caracteres.", Toast.LENGTH_LONG).show(); return@setPositiveButton }
+                FirebaseFirestore.getInstance().document("usuarios/${teamAccess!!.uid}")
+                    .set(mapOf("nome" to name), com.google.firebase.firestore.SetOptions.merge())
+                    .addOnSuccessListener { if (!isDestroyed) { teamAccess = teamAccess!!.copy(profile = teamAccess!!.profile + ("nome" to name)); inicio() } }
+                    .addOnFailureListener { Toast.makeText(this, "Não foi possível salvar. Confira as regras desta atualização e a conexão.", Toast.LENGTH_LONG).show() }
+            }.show()
     }
 
     private fun paginaOrdens() {
@@ -1543,14 +1560,42 @@ class MainActivity : Activity() {
     private fun opcoesEquipamento(equipamento: String, historico: Boolean = false) {
         val number = MaintenanceRecords.number(equipamento)
         val opcoes = mutableListOf(if (historico) "Ver histórico do equipamento" else "Abrir pendências", "Histórico de pendências")
-        if (podeGerenciar() && !historico) opcoes.add("Excluir equipamento e suas pendências")
+        if (podeGerenciar() && !historico) { opcoes.add("Corrigir número do equipamento"); opcoes.add("Excluir equipamento e suas pendências") }
         AlertDialog.Builder(this).setTitle("Equipamento $number").setItems(opcoes.toTypedArray()) { _, escolha ->
             when (escolha) {
                 0 -> pendenciasEquipamento(number, historico)
                 1 -> pendenciasEquipamento(number, true)
-                2 -> excluirEquipamento(number)
+                2 -> corrigirEquipamento(number)
+                3 -> excluirEquipamento(number)
             }
         }.show()
+    }
+
+    private fun corrigirEquipamento(number: String) {
+        if (!exigirGestor()) return
+        pausarSincronizacao()
+        val input = campo("Número correto do equipamento", number)
+        val dialog = AlertDialog.Builder(this).setTitle("Corrigir equipamento $number").setView(input)
+            .setMessage("As pendências e fotos continuarão vinculadas ao equipamento. A correção ficará registrada no histórico.")
+            .setNegativeButton("Cancelar", null).setPositiveButton("Salvar correção", null).create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                try {
+                    synchronized(teamStore!!.lock) {
+                        val all = maintenanceCatalog()
+                        for (i in 0 until all.length()) all.optJSONObject(i)?.let { item ->
+                            item.put("__syncBase", teamSync?.baseRevision("pendencias", item.optString("id")) ?: 0L)
+                        }
+                        val updated = MaintenanceRecords.correctNumber(all, number, input.text.toString(), teamAccess!!.uid,
+                            teamAccess!!.profile["nome"]?.toString().orEmpty(),
+                            java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", Locale("pt", "BR")).format(java.util.Date()))
+                        getSharedPreferences("registros_v3", 0).edit().putString("pendencias", updated.toString()).apply()
+                    }
+                    dialog.dismiss(); pendenciasEquipamento(MaintenanceRecords.number(input.text.toString()))
+                } catch (error: IllegalArgumentException) { input.error = error.message }
+            }
+        }
+        dialog.show()
     }
 
     private fun excluirEquipamento(equipamento: String) {

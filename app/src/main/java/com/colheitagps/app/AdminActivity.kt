@@ -13,6 +13,7 @@ class AdminActivity : Activity() {
     private val db by lazy { FirebaseFirestore.getInstance() }
     private lateinit var ui: AccessUi
     private var busy = false
+    private var removed = false
     override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState); ui = AccessUi(this) }
     override fun onResume() { super.onResume(); if (!busy) load() }
     private fun notice(message: String) {
@@ -36,11 +37,18 @@ class AdminActivity : Activity() {
                     else "${TeamPolicy.label(access.team!!)}. Você pode aprovar somente operadores e tratoristas desta equipe.")
                 ui.button(card, "Atualizar lista") { if (!busy) load() }
                 ui.button(card, "Voltar", true) { finish() }
+                if(access.primary) {
+                    ui.button(card, if(removed) "Ver usuários ativos" else "Cadastros excluídos", true) { removed=!removed; load() }
+                    ui.button(card,"Notificações e serviço gratuito",true) { startActivity(android.content.Intent(this,NotificationSettingsActivity::class.java)) }
+                }
                 if (!it.isSuccessful) {
                     ui.add(card, ui.text("Lista indisponível. Confira a conexão e se as regras e o índice de equipes já foram publicados."))
                     return@addOnCompleteListener
                 }
-                val users = it.result.documents.filter { d -> TeamPolicy.canApprove(access.uid, access.profile, d.id, d.data) }
+                val users = it.result.documents.filter { d ->
+                    if(access.primary && removed) d.id!=access.uid && !TeamPolicy.primary(d.id) && AccessPolicy.normalized(d.get("status"))=="excluido"
+                    else TeamPolicy.canApprove(access.uid, access.profile, d.id, d.data)
+                }
                     .sortedWith(compareBy({ d -> if (d.getString("status") == "pendente") 0 else 1 }, { d -> d.get("nome")?.toString().orEmpty() }))
                 ui.add(card, ui.text("${users.size} usuários", 14f, ui.green, true))
                 for (user in users) {
@@ -52,21 +60,55 @@ class AdminActivity : Activity() {
                     ui.add(card, item, 18)
                     ui.add(item, ui.text(name, 19f, ui.dark, true), 0)
                     ui.add(item, ui.text("Matrícula: ${data["matricula"] ?: "Não informada"}\n${TeamPolicy.team(data)?.let(TeamPolicy::label) ?: "Equipe não definida"}\nSolicita: $role • Status: $state"))
-                    if (!AccessPolicy.approved(data)) ui.button(item, if (state == "bloqueado") "Reativar $role" else "Aprovar $role") {
+                    if (state!="excluido" && !AccessPolicy.approved(data)) ui.button(item, if (state == "bloqueado") "Reativar $role" else "Aprovar $role") {
                         if (!busy) confirm(user.id, name, role, "aprovado")
                     }
-                    if (state != "bloqueado") ui.button(item, "Bloquear acesso", true) {
+                    if (state !in setOf("bloqueado","excluido")) ui.button(item, "Bloquear acesso", true) {
                         if (!busy) confirm(user.id, name, AccessPolicy.role(data).ifEmpty { role }, "bloqueado")
                     }
-                    if (access.primary) ui.button(item, "Excluir usuário", true) {
+                    if (access.primary && state!="excluido") ui.button(item, "Desativar acesso", true) {
                         if (!busy) requestRemoval(user.id, name)
                     }
                     if (access.primary) ui.button(item, "Ajustar frente e turno", true) {
                         if (!busy) adjustTeam(user.id, name)
                     }
+                    if(access.primary) {
+                        ui.button(item,"Corrigir matrícula",true) { if(!busy) accountAction(user.id,name,data["matricula"]?.toString().orEmpty(),false) }
+                        ui.button(item,"Excluir definitivamente e liberar matrícula",true) { if(!busy) accountAction(user.id,name,data["matricula"]?.toString().orEmpty(),true) }
+                    }
                 }
             }
         }, { busy = false; denied("Não foi possível verificar o acesso. Confira a conexão e a configuração das equipes no Firebase.") })
+    }
+    private fun accountAction(uid:String,name:String,matricula:String,delete:Boolean) {
+        val user=auth.currentUser ?: return
+        if(!TeamPolicy.primary(user.uid)||TeamPolicy.primary(uid)||uid==user.uid) return
+        val body=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(ui.dp(18),ui.dp(4),ui.dp(18),ui.dp(12)) }
+        val corrected=if(!delete) ui.field(body,"Matrícula correta").apply { setText(matricula); inputType=android.text.InputType.TYPE_CLASS_NUMBER } else null
+        val password=ui.field(body,"Confirme sua senha de administrador",true)
+        val dialog=AlertDialog.Builder(this).setTitle(if(delete) "Excluir a conta de $name?" else "Corrigir matrícula de $name")
+            .setMessage(if(delete) "A credencial e o cadastro serão removidos, liberando a matrícula. Registros de trabalho e histórico serão preservados."
+                else "A correção atualizará também o Firebase Authentication. A senha e os registros da pessoa serão preservados.")
+            .setView(body).setNegativeButton("Cancelar",null).setPositiveButton(if(delete) "Excluir definitivamente" else "Corrigir",null).create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                if(busy) return@setOnClickListener
+                val value=corrected?.text?.toString()?.trim().orEmpty()
+                if(!delete&&!value.matches(Regex("[0-9]{1,20}"))) { corrected?.error="Informe a matrícula numérica"; return@setOnClickListener }
+                if(password.text.isBlank()) { password.error="Confirme sua senha"; return@setOnClickListener }
+                val email=user.email ?: return@setOnClickListener
+                busy=true
+                user.reauthenticate(com.google.firebase.auth.EmailAuthProvider.getCredential(email,password.text.toString())).addOnCompleteListener { result ->
+                    if(!result.isSuccessful) { busy=false; notice("Não foi possível confirmar sua senha."); return@addOnCompleteListener }
+                    val data=org.json.JSONObject().put("uid",uid)
+                    if(!delete) data.put("matricula",value)
+                    AgroService.async(this,if(delete) "/accounts/delete" else "/accounts/correct",data,{ response ->
+                        busy=false; dialog.dismiss(); load(); notice(response.optString("message","Operação concluída"))
+                    },{error->busy=false;notice(error)})
+                }
+            }
+        }
+        dialog.show()
     }
     private fun denied(message: String) {
         val card = ui.page("Verificação de acesso", message)

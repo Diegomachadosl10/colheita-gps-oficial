@@ -22,6 +22,7 @@ import java.util.concurrent.TimeUnit
 /** Durable per-record queue. Writes compare revisions; conflicts preserve the local copy. */
 internal class TeamSync(context: Context, private val access: TeamAccess, val store: TeamStore,
     private val changed: () -> Unit, private val status: (String) -> Unit) {
+    private val storeContext = context.applicationContext
     private val local = context.applicationContext.getSharedPreferences("sincronizacao_${access.uid}_${store.team}", 0)
     private val db = FirebaseFirestore.getInstance()
     private val records = db.collection("equipes").document(store.team).collection("registros")
@@ -200,6 +201,8 @@ internal class TeamSync(context: Context, private val access: TeamAccess, val st
                     JSONObject(data)
                 }, 25, TimeUnit.SECONDS)
                 synchronized(store.lock) { local.edit().putString("b_$key", written.toString()).remove(prefKey).commit() }
+                if(written.optLong("versao")==1L&&!written.optBoolean("excluido")&&written.optString("tipo")=="item")
+                    AgroNotifications.event(storeContext,"record",store.team,key)
                 remote.remove(key)
             } catch (e: Exception) {
                 var cause: Throwable? = e

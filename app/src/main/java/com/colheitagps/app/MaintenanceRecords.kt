@@ -26,6 +26,23 @@ internal object MaintenanceRecords {
     }
     fun archivedEquipment(all: JSONArray): List<String> = (0 until all.length()).mapNotNull { all.optJSONObject(it) }
         .filter { isEquipment(it) && isArchived(it) }.map { number(it.optString("equipamento")) }.filter { it.isNotBlank() }.distinct().sorted()
+    fun correctNumber(all: JSONArray, previous: String, replacement: String, uid: String, name: String, date: String): JSONArray {
+        val old = number(previous); val next = number(replacement)
+        require(next.isNotBlank() && next.length <= 80 && next != old) { "Informe um número diferente, com até 80 caracteres." }
+        require((0 until all.length()).mapNotNull { all.optJSONObject(it) }.none { number(it.optString("equipamento")) == next }) {
+            "Esse equipamento já possui registros. A correção não pode misturar os históricos."
+        }
+        val result = JSONArray()
+        for (i in 0 until all.length()) all.optJSONObject(i)?.let { item ->
+            result.put(when {
+                number(item.optString("equipamento")) != old -> JSONObject(item.toString())
+                isEquipment(item) -> archive(item, uid, name, date).put("numeroCorrigidoPara", next)
+                else -> JSONObject(item.toString()).put("equipamento", next).put("numeroEquipamentoAnterior", old)
+            })
+        }
+        ensureEquipment(result, next)
+        return result
+    }
     fun number(value: String): String = Normalizer.normalize(value, Normalizer.Form.NFKC)
         .trim().replace(Regex("\\s+"), " ").uppercase(Locale.ROOT)
     fun equipmentId(value: String): String {

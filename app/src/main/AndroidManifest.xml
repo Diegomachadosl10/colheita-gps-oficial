@@ -2,6 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
@@ -21,6 +23,11 @@
         </provider>
 
         <activity android:name="com.colheitagps.app.UpdateActivity" android:exported="false" android:launchMode="singleTop" />
+        <activity android:name="com.colheitagps.app.WeatherActivity" android:exported="false" />
+        <activity android:name="com.colheitagps.app.NotificationSettingsActivity" android:exported="false" />
+        <service android:name="com.colheitagps.app.AgroMessagingService" android:exported="false">
+            <intent-filter><action android:name="com.google.firebase.MESSAGING_EVENT" /></intent-filter>
+        </service>
 
         <activity
             android:name="com.colheitagps.app.MainActivity"

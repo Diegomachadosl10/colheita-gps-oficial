@@ -8,7 +8,8 @@ internal object RecordDeletion {
         listOf("tipo", "grupo", "chave", "autorUid").all { change.optString(it) == remote.optString(it) }
 
     fun alreadyDeleted(change: JSONObject, remote: JSONObject?) =
-        change.optBoolean("excluido") && remote != null && remote.optBoolean("excluido") && sameRecord(change, remote)
+        change.optBoolean("excluido") && remote != null && remote.optBoolean("excluido") && sameRecord(change, remote) &&
+            (change.optString("grupo") != "pendencias" || change.optString("conteudo") == remote.optString("conteudo"))
 
     fun canDeleteUnconfirmed(change: JSONObject, remote: JSONObject?): Boolean =
         change.optBoolean("excluido") && change.optLong("base") == 0L &&

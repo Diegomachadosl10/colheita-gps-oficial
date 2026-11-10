@@ -16,7 +16,14 @@ service cloud.firestore {
         && folha(d.papel) && d.solicitacaoPerfil in ['operador','tratorista'];
     }
     match /usuarios/{uid} {
+      allow create: if principal() && uid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['nome'])
+        && request.resource.data.nome is string && request.resource.data.nome.size() >= 3 && request.resource.data.nome.size() <= 100;
+      allow update: if principal() && uid == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['nome'])
+        && request.resource.data.nome is string && request.resource.data.nome.size() >= 3 && request.resource.data.nome.size() <= 100;
       allow create: if logado() && request.auth.uid == uid
+        && !exists(/databases/$(database)/documents/contasEncerradas/$(uid))
         && request.resource.data.keys().hasOnly(['nome','matricula','frenteId','turno','funcao','papel','perfil','solicitacaoPerfil','status','criadoEm'])
         && request.resource.data.keys().hasAll(['nome','matricula','frenteId','turno','funcao','papel','perfil','solicitacaoPerfil','status'])
         && request.resource.data.nome is string && request.resource.data.nome.size() >= 3
@@ -43,6 +50,13 @@ service cloud.firestore {
     match /configuracao/exclusaoUsuarios { allow get: if principal(); allow list, write: if false; }
     // Readiness probe. No document needs to be created and clients cannot change it.
     match /configuracao/equipes { allow get: if logado(); allow list, write: if false; }
+    match /configuracao/servico {
+      allow get: if logado();
+      allow create, update: if principal() && request.resource.data.keys().hasOnly(['url'])
+        && request.resource.data.url is string
+        && request.resource.data.url.matches('https://[a-z0-9-]+[.][a-z0-9-]+[.]workers[.]dev/?');
+      allow list, delete: if false;
+    }
     function grupoOperador(g) { return g in ['pendencias','ocorrencias_campo','mapas','pinturas','arquivos']; }
     function leRegistro(equipe, d) { return gestor(equipe) || (membro(equipe) && grupoOperador(d.grupo)); }
     function escreveRegistro(equipe, d) {
