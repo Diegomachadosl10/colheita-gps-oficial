@@ -172,6 +172,7 @@ class MainActivity : Activity() {
     private var gpsManager: LocationManager? = null
     private var gpsListener: LocationListener? = null
     private var local: Location? = null
+    private var atualizarGpsAviso: (() -> Unit)? = null
     private var status: TextView? = null
     private var telaAtual = "inicio"
     private var fotoPendente: String? = null
@@ -815,6 +816,7 @@ class MainActivity : Activity() {
                 menu.add("Mapas").setOnMenuItemClickListener { biblioteca(); true }
                 menu.add("Pendências").setOnMenuItemClickListener { pendencias(); true }
                 menu.add("Peças a pedir").setOnMenuItemClickListener { pecas(); true }
+                menu.add("Avisos de encalhado").setOnMenuItemClickListener {avisosEncalhados();true}
                 menu.add("Ocorrências de campo").setOnMenuItemClickListener { ocorrenciasCampo(); true }
                 menu.add("Registro de chuva").setOnMenuItemClickListener { chuvas(); true }
                 if (podeGerenciar()) menu.add("Calendário").setOnMenuItemClickListener { calendario(); true }
@@ -862,6 +864,19 @@ class MainActivity : Activity() {
         })
         coluna.addView(teamPanel, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(22) })
         if (access.primary && access.profile["nome"]?.toString().isNullOrBlank()) coluna.addView(botao("Definir meu nome") { definirNome() })
+        val alertCount=FieldReports.rows(dados(FieldAlertRecords.GROUP)).count {FieldAlertRecords.isAlert(it)&&!it.optBoolean("concluida")}
+        coluna.addView(ui.panel {editarAvisoEncalhado()}.apply {
+            orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL
+            background=GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(0xFF723329.toInt(),0xFF4C241E.toInt())).apply {cornerRadius=dp(18).toFloat();setStroke(dp(1),0xFFB87969.toInt())}
+            contentDescription="Avisar equipamento encalhado ao supervisor da equipe"
+            addView(FieldIconView(this@MainActivity,FieldIcon.BELL,0xFFFFD5B8.toInt()),LinearLayout.LayoutParams(dp(34),dp(34)))
+            addView(LinearLayout(this@MainActivity).apply {
+                orientation=LinearLayout.VERTICAL;setPadding(dp(12),0,0,0)
+                addView(ui.text("Avisar equipamento encalhado",16f,bold=true))
+                addView(ui.text("Solicitar apoio ao supervisor da equipe",13f,0xFFFFD5B8.toInt()))
+            },LinearLayout.LayoutParams(0,-2,1f))
+        },LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(14)})
+        coluna.addView(botao(if(alertCount>0) "Ver avisos de encalhado • $alertCount em aberto" else "Ver avisos de encalhado") {avisosEncalhados()})
         coluna.addView(WeatherActivity.homeCard(this, store.team), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(14) })
         val verse=DailyVerse.forDate()
         coluna.addView(ui.panel().apply {
@@ -2283,10 +2298,78 @@ class MainActivity : Activity() {
         dialogo.show()
     }
 
+    private fun avisosEncalhados(historico:Boolean=false) {
+        val title=if(historico) "Histórico de encalhados" else "Avisos de encalhado"
+        val column=pagina(title,parent={if(historico) avisosEncalhados() else inicio()})
+        refreshList={avisosEncalhados(historico)}
+        val records=FieldReports.rows(dados(FieldAlertRecords.GROUP)).filter {FieldAlertRecords.isAlert(it)&&it.optBoolean("concluida")==historico}.reversed()
+        relatorioAtual={relatorioGrupo(title,FieldAlertRecords.GROUP,records)}
+        column.addView(texto(TeamPolicy.label(teamStore!!.team),17f,0xFFB7E9AF.toInt()))
+        column.addView(botao("Avisar equipamento encalhado") {editarAvisoEncalhado()})
+        column.addView(texto("Os avisos ficam registrados nas ocorrências da equipe. A notificação depende de internet e dos avisos ativados no celular do supervisor; não confirma que ele já leu.",14f))
+        for(item in records) column.addView(cartao("Equipamento ${item.optString("equipamento")} • "+if(historico) "Concluído" else "Encalhado",
+            "${item.optString("dataCadastro")} ${item.optString("horaCadastro")}\n${item.optString("localizacao").ifBlank {"Local não informado"}}\n${item.optString("descricao")}\nGPS: ${item.optString("gps").ifBlank {"Não anexado"}}") {
+                comRegistroAtual(FieldAlertRecords.GROUP,item.optString("id")) {opcoesOcorrencia(it)}
+            },LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(10)})
+        if(records.isEmpty()) column.addView(texto("Nenhum aviso nesta lista.",15f))
+        column.addView(botao(if(historico) "Voltar aos avisos abertos" else "Histórico de avisos concluídos") {avisosEncalhados(!historico)})
+    }
+    private fun editarAvisoEncalhado(existing:JSONObject?=null) {
+        val access=teamAccess?:return;val store=teamStore?:return
+        if(!acessoConfirmado||!exigirEdicao(FieldAlertRecords.GROUP,existing)) return
+        pausarSincronizacao()
+        val ui=AccessUi(this,attach=false)
+        val body=LinearLayout(this).apply {orientation=LinearLayout.VERTICAL;setPadding(dp(18),dp(8),dp(18),dp(16))}
+        ui.add(body,ui.text(TeamPolicy.label(store.team),16f,ui.green,true),0)
+        ui.add(body,ui.text("Informe o equipamento e confirme o aviso. Ele será registrado na equipe e seguirá pelas notificações já configuradas. Sem internet, abra o aplicativo conectado para concluir a sincronização.",14f),8)
+        val equipment=ui.field(body,"Número do equipamento").apply {setText(existing?.optString("equipamento").orEmpty())}
+        val catalog=MaintenanceRecords.summaries(maintenanceCatalog())
+        if(catalog.isNotEmpty()) ui.button(body,"Escolher equipamento salvo",true) {
+            AlertDialog.Builder(this).setTitle("Equipamento encalhado").setItems(catalog.map {it.number}.toTypedArray()) {_,i->equipment.setText(catalog[i].number)}.show()
+        }
+        val place=ui.field(body,"Local / talhão / ponto de referência (opcional)").apply {setText(existing?.optString("localizacao").orEmpty())}
+        val note=ui.field(body,"Observação (opcional)").apply {setSingleLine(false);minLines=2;setText(existing?.optString("observacaoEncalhado").orEmpty())}
+        val gpsInfo=ui.text("")
+        val attach=CheckBox(this).apply {text="Anexar minha localização GPS atual, se disponível";setTextColor(ui.dark);isChecked=existing==null;minHeight=dp(48)}
+        ui.add(body,attach);ui.add(body,gpsInfo,5)
+        val updateGps:()->Unit={
+            val current=FieldAlertRecords.currentLocation(local,SystemClock.elapsedRealtimeNanos())
+            gpsInfo.text=if(current!=null) String.format(Locale("pt","BR"),"GPS atual: %.6f, %.6f • precisão informada ±%.0f m",current.latitude,current.longitude,current.accuracy)
+                else if(existing?.optString("gps").orEmpty().isNotBlank()) "Localização já registrada: ${existing!!.optString("gps")}. Ela será mantida se não houver nova posição atual."
+                else "Sem posição GPS recente. Você pode buscar o GPS ou registrar o aviso com um ponto de referência."
+        }
+        updateGps();ui.button(body,"Buscar localização GPS atual",true) {attach.isChecked=true;iniciarGps();updateGps()}
+        ui.add(body,ui.text("Registrar o aviso não confirma a leitura pelo supervisor. A entrega depende da conexão e das configurações do Android.",13f),10)
+        val dialog=AlertDialog.Builder(this).setTitle(if(existing==null) "Avisar equipamento encalhado" else "Corrigir aviso de encalhado")
+            .setView(ScrollView(this).apply {addView(body)}).setNegativeButton("Cancelar",null)
+            .setPositiveButton(if(existing==null) "Registrar aviso" else "Salvar correção",null).create()
+        dialog.setOnShowListener {
+            atualizarGpsAviso=updateGps
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                if(!acessoConfirmado||teamAccess?.uid!=access.uid||teamStore?.team!=store.team||!exigirEdicao(FieldAlertRecords.GROUP,existing)) return@setOnClickListener
+                val record=try {FieldAlertRecords.build(existing,equipment.text.toString(),place.text.toString(),note.text.toString(),access.uid,
+                    DashboardUi.name(access,sessionName),store.team,if(attach.isChecked) local else null,System.currentTimeMillis(),SystemClock.elapsedRealtimeNanos())}
+                    catch(error:IllegalArgumentException) {equipment.error=error.message;return@setOnClickListener}
+                val all=dados(FieldAlertRecords.GROUP)
+                if(!colocarRegistro(all,if(existing==null) -1 else 0,record)) return@setOnClickListener
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled=false
+                guardar(FieldAlertRecords.GROUP,all)
+                dialog.dismiss();mapa?.salvar();mapa=null;chaveAtual=""
+                avisosEncalhados();teamSync?.retry()
+                Toast.makeText(this,"Aviso salvo neste aparelho para a equipe. Aguarde a sincronização para o envio da notificação.",Toast.LENGTH_LONG).show()
+            }
+        }
+        dialog.setOnDismissListener {if(atualizarGpsAviso===updateGps) atualizarGpsAviso=null;teamSync?.available(hasWindowFocus()&&mapa==null)}
+        dialog.show()
+    }
+
     private fun ocorrenciasCampo(concluidas: Boolean = false) {
         val coluna = pagina(if (concluidas) "Histórico de ocorrências" else "Ocorrências de campo", parent = { if (concluidas) ocorrenciasCampo() else inicio() })
         refreshList = { ocorrenciasCampo(concluidas) }
-        if (!concluidas) coluna.addView(botao("+ Nova ocorrência") { editarOcorrencia(-1) })
+        if (!concluidas) {
+            coluna.addView(botao("Avisar equipamento encalhado") {editarAvisoEncalhado()})
+            coluna.addView(botao("+ Nova ocorrência") { editarOcorrencia(-1) })
+        }
         val arr = dados("ocorrencias_campo")
         var quantidade = 0
         for (i in arr.length() - 1 downTo 0) {
@@ -2309,6 +2392,7 @@ class MainActivity : Activity() {
         pausarSincronizacao()
         val atual = if (idx >= 0) dados("ocorrencias_campo").optJSONObject(idx) else null
         if (!exigirEdicao("ocorrencias_campo", atual)) return
+        if(atual!=null&&FieldAlertRecords.isAlert(atual)) {editarAvisoEncalhado(atual);return}
         val corpo = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(18), dp(8), dp(18), dp(8)) }
         val tipos = arrayOf("Buraco", "Erosão", "Problema em curva", "Obstáculo", "Outro")
         val tipo = Spinner(this).apply {
@@ -3338,6 +3422,9 @@ class MainActivity : Activity() {
             LinearLayout.LayoutParams(dp(62), dp(52))
         )
 
+        cab.addView(texto("0°",15f,Color.WHITE).apply {
+            gravity=Gravity.CENTER;contentDescription="Repor orientação original do mapa";setOnClickListener {visual.reporOrientacao()}
+        },LinearLayout.LayoutParams(dp(48),dp(52)))
         val resumoArea = texto("Destaque: —    •    Total: —", 14f, Color.WHITE).apply {
             setPadding(dp(12), dp(8), dp(12), dp(8))
             setBackgroundColor(0xEE173A2A.toInt())
@@ -3422,8 +3509,17 @@ class MainActivity : Activity() {
             "Borracha", "Desfazer", "Excluir última pintura",
             "O.S. de trabalho", "GPS", "Salvar mapa pintado", "Voltar aos mapas"
         )
+        val navigation=arrayOf("Repor orientação original (0°)","Como girar o mapa","Avisar equipamento encalhado")
         AlertDialog.Builder(this).setTitle("Ferramentas")
-            .setItems(opcoes) { _, i ->
+            .setItems(opcoes+navigation) { _, i ->
+                if(i>=opcoes.size) {
+                    when(i-opcoes.size) {
+                        0->v.reporOrientacao()
+                        1->AlertDialog.Builder(this).setTitle("Girar, aproximar e mover").setMessage("Coloque dois dedos no mapa e gire livremente. Afaste ou aproxime os dedos para mudar o zoom. Arraste com dois dedos para mover. O botão 0° repõe a orientação original do PDF; o GPS, as pinturas e as medidas acompanham o mapa.").setPositiveButton("Entendi",null).show()
+                        2->editarAvisoEncalhado()
+                    }
+                    return@setItems
+                }
                 if (ativo) when (i) {
                     0 -> v.adicionarPontoCentral()
                     1 -> v.desfazer()
@@ -3545,6 +3641,7 @@ class MainActivity : Activity() {
 
         gpsListener = LocationListener { p: Location ->
             local = p
+            atualizarGpsAviso?.invoke()
             mapa?.atualizarGps(p.latitude, p.longitude)
 
             status?.text = String.format(
@@ -3645,12 +3742,12 @@ class MapaView(context: Context) : View(context) {
     private var id = ""
     private var geo: GeoPdf? = null
 
-    private var escala = 1f
-    private var dx = 0f
-    private var dy = 0f
-    private var anteriorX = 0f
-    private var anteriorY = 0f
-    private var multitoque = false
+    private val viewport=MapViewport()
+    private val gestos=MapGestureController(viewport,20f*resources.displayMetrics.density)
+    private val escala get()=viewport.scale
+    private var anteriorX=0f
+    private var anteriorY=0f
+    private var inicioPincel:PointF?=null
 
     private var gpsLat: Double? = null
     private var gpsLon: Double? = null
@@ -3662,23 +3759,6 @@ class MapaView(context: Context) : View(context) {
     private val coresLinhas = mutableListOf<Int>()
 
     private var linhaAtual: MutableList<PointF>? = null
-
-    private val detector = ScaleGestureDetector(
-        context,
-        object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
-            override fun onScale(d: ScaleGestureDetector): Boolean {
-                val old = escala
-                escala = (escala * d.scaleFactor).coerceIn(0.05f, 16f)
-                val f = escala / old
-
-                dx = d.focusX - (d.focusX - dx) * f
-                dy = d.focusY - (d.focusY - dy) * f
-
-                invalidate()
-                return true
-            }
-        }
-    )
 
     fun carregar(
         b: Bitmap,
@@ -3700,12 +3780,7 @@ class MapaView(context: Context) : View(context) {
 
         post {
             if (width > 0 && height > 0) {
-                escala = minOf(
-                    width.toFloat() / b.width,
-                    height.toFloat() / b.height
-                )
-                dx = (width - b.width * escala) / 2f
-                dy = (height - b.height * escala) / 2f
+                viewport.fit(b.width,b.height,width,height)
                 invalidate()
             }
         }
@@ -3743,12 +3818,7 @@ class MapaView(context: Context) : View(context) {
             !areaFechada &&
             imagem != null
         ) {
-            pontos.add(
-                PointF(
-                    (width / 2f - dx) / escala,
-                    (height / 2f - dy) / escala
-                )
-            )
+            pontos.add(viewport.toMap(width/2f,height/2f))
             invalidate()
             aoAtualizarArea?.invoke()
         }
@@ -3923,10 +3993,11 @@ class MapaView(context: Context) : View(context) {
             return
         }
 
-        dx = width / 2f - p.x * escala
-        dy = height / 2f - p.y * escala
+        viewport.centerOn(p.x,p.y,width/2f,height/2f)
         invalidate()
     }
+
+    fun reporOrientacao() {viewport.resetRotation(width/2f,height/2f);invalidate()}
 
     private fun caminho(
         lista: List<PointF>,
@@ -3950,8 +4021,7 @@ class MapaView(context: Context) : View(context) {
         c.drawColor(0xFF18231D.toInt())
 
         c.save()
-        c.translate(dx, dy)
-        c.scale(escala, escala)
+        viewport.apply(c)
 
         imagem?.let {
             c.drawBitmap(it, 0f, 0f, null)
@@ -4023,7 +4093,7 @@ class MapaView(context: Context) : View(context) {
 
             if (!areaFechada && pontos.isNotEmpty() && modo in 7..9) {
                 val ultimo = pontos.last()
-                val centro = PointF((width / 2f - dx) / escala, (height / 2f - dy) / escala)
+                val centro = viewport.toMap(width/2f,height/2f)
                 val referencia = Paint(3).apply {
                     color = 0xFF22A8FF.toInt()
                     style = Paint.Style.STROKE
@@ -4111,29 +4181,14 @@ class MapaView(context: Context) : View(context) {
     override fun onTouchEvent(e: MotionEvent): Boolean {
         if (imagem == null) return true
 
-        if (
-            e.actionMasked ==
-            MotionEvent.ACTION_POINTER_DOWN
-        ) {
-            multitoque = true
-            linhaAtual = null
+        if(e.pointerCount>1||gestos.active) {
+            // Finish an existing stroke, but never paint/erase just because the first finger landed.
+            if(linhaAtual!=null) salvar()
+            linhaAtual=null;inicioPincel=null;verticeSelecionado=-1;arrastou=true
         }
-
-        detector.onTouchEvent(e)
-
-        if (e.pointerCount > 1 || multitoque) {
-            if (
-                e.actionMasked == MotionEvent.ACTION_UP ||
-                e.actionMasked == MotionEvent.ACTION_CANCEL
-            ) {
-                multitoque = false
-            }
-            invalidate()
-            return true
-        }
-
-        val x = (e.x - dx) / escala
-        val y = (e.y - dy) / escala
+        if(gestos.onTouch(e)) {invalidate();return true}
+        val point=viewport.toMap(e.x,e.y)
+        val x=point.x;val y=point.y
 
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
@@ -4149,12 +4204,10 @@ class MapaView(context: Context) : View(context) {
                 }
 
                 if (modo == 1) {
-                    linhaAtual = mutableListOf(PointF(x, y))
-                    linhas.add(linhaAtual!!)
-                    coresLinhas.add(corAtual())
+                    inicioPincel=PointF(x,y)
                 }
 
-                if (modo == 2) apagar(x, y)
+
             }
 
             MotionEvent.ACTION_MOVE -> {
@@ -4168,23 +4221,29 @@ class MapaView(context: Context) : View(context) {
                 }
                 when (modo) {
                     0, 7, 8, 9 -> {
-                        dx += e.x - anteriorX
-                        dy += e.y - anteriorY
+                        viewport.pan(e.x-anteriorX,e.y-anteriorY)
                     }
-                    1 -> linhaAtual?.add(PointF(x, y))
-                    2 -> apagar(x, y)
+                    1 -> if(arrastou) {
+                        if(linhaAtual==null) {linhaAtual=mutableListOf(inicioPincel?:PointF(x,y));linhas.add(linhaAtual!!);coresLinhas.add(corAtual())}
+                        linhaAtual?.add(PointF(x,y))
+                    }
+                    2 -> if(arrastou) apagar(x,y)
                 }
                 anteriorX = e.x
                 anteriorY = e.y
             }
 
+            MotionEvent.ACTION_CANCEL -> {verticeSelecionado=-1;inicioPincel=null;linhaAtual=null}
             MotionEvent.ACTION_UP -> {
                 if (modo == 0 && !arrastou && hypot(e.x - inicioToqueX, e.y - inicioToqueY) < 14f * resources.displayMetrics.density) {
                     abrirAreaPintada(x, y)
                 }
-                verticeSelecionado = -1
-                linhaAtual = null
-                if (modo == 1 || modo == 2) salvar()
+                if(modo==1&&linhaAtual==null) inicioPincel?.let {first->
+                    if(hypot(first.x-x,first.y-y)>0.5f) {linhas.add(mutableListOf(first,PointF(x,y)));coresLinhas.add(corAtual())}
+                }
+                verticeSelecionado=-1;inicioPincel=null;linhaAtual=null
+                if(modo==2&&!arrastou) apagar(x,y)
+                if(modo==1||modo==2) salvar()
             }
         }
 

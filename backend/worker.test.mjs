@@ -194,3 +194,18 @@ test('an unregistered device is removed without deleting devices on unrelated FC
   fcmError={status:404,body:{error:{details:[{errorCode:'UNREGISTERED'}]}}};
   assert.equal((await request(OWNER,'/devices/test',{token})).status,409);assert.equal(docs.has(path),false);
 });
+
+test('encalhado alerts use the already deployed occurrence pipeline and reach only the authorized team',async()=>{
+  const key='e'.repeat(64);
+  put(`equipes/santo_inacio_C/registros/${key}`,{tipo:'item',grupo:'ocorrencias_campo',autorUid:'opA',editadoPor:'opA',versao:1,excluido:false,
+    conteudo:JSON.stringify({categoriaRegistro:'encalhado',tipo:'Equipamento encalhado',equipamento:'21569',descricao:'EQUIPAMENTO ENCALHADO. Preciso de apoio. Talhão 15',gps:'-22.5, -51.4'})});
+  put(`dispositivos/${OWNER}/tokens/a`,{token:'token-owner',front:'santo_inacio',seen:1});
+  put('dispositivos/supA/tokens/a',{token:'token-supA',front:'santo_inacio',seen:1});
+  put('dispositivos/supB/tokens/a',{token:'token-supB',front:'colorado',seen:1});
+  const body={kind:'record',team:'santo_inacio_C',key,revision:1};
+  assert.equal((await request('opA','/events/notify',body)).status,200);
+  assert.deepEqual(sent.map(m=>m.token).sort(),['token-owner','token-supA']);
+  assert.ok(sent.every(m=>m.data.body.includes('21569')&&m.data.body.includes('EQUIPAMENTO ENCALHADO')&&m.android.priority==='HIGH'));
+  assert.equal((await request('opA','/events/notify',body)).status,200);assert.equal(sent.length,2);
+  assert.equal((await request('opA','/events/notify',{...body,team:'colorado_C'})).status,403);
+});

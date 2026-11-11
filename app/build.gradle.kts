@@ -13,8 +13,8 @@ android {
         applicationId = "com.colheitagps.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 16
-        versionName = "1.5.0"
+        versionCode = 17
+        versionName = "1.6.0"
     }
 
     buildTypes {
