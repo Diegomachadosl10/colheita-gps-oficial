@@ -232,6 +232,12 @@ test('operador não cria exclusão de registro novo e supervisor restaura o equi
   }
 });
 test('o histórico de ordens de serviço é exclusivo dos gestores autorizados',async()=>{
+  const closedPath=['equipes',team,'registros','os-encerrada'];
+  await assertSucceeds(setDoc(doc(db('supA'),...closedPath),record('supA','historico_os',1,{chave:'os-encerrada',excluido:false,conteudo:JSON.stringify({numeroOs:'K/05',talhoes:'17 ao 68',statusOs:'encerrada',encerradaPorUid:'supA'})})));
+  const closed=await assertSucceeds(getDoc(doc(db(owner),...closedPath)));
+  assert.equal(JSON.parse(closed.data().conteudo).statusOs,'encerrada');
+  for(const uid of ['opA','supB','supOutra']) await assertFails(getDoc(doc(db(uid),...closedPath)));
+  await assertSucceeds(updateDoc(doc(db('supA'),...closedPath),{conteudo:JSON.stringify({numeroOs:'K/05',talhoes:'17 ao 68',statusOs:'reaberta'}),editadoPor:'supA',versao:2,atualizadoEm:serverTimestamp()}));
   const path=['equipes',team,'registros','os-excluida'];
   await assertSucceeds(setDoc(doc(db('supA'),...path),record('supA','historico_os',1,{chave:'os-excluida',excluido:true,conteudo:'{"numeroOs":"123","talhoes":"1 a 3"}'})));
   await assertSucceeds(getDoc(doc(db(owner),...path)));

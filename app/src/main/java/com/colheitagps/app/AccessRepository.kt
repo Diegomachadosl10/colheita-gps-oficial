@@ -5,13 +5,15 @@ import android.content.Intent
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Source
+import com.google.android.gms.tasks.Tasks
+import java.util.concurrent.TimeUnit
 
 internal object AccessRepository {
     fun load(activity: Activity, success: (Map<String, Any>?) -> Unit, failure: (Exception) -> Unit) {
         val user = FirebaseAuth.getInstance().currentUser
             ?: return failure(IllegalStateException("Sessão encerrada. Entre novamente."))
-        FirebaseFirestore.getInstance().collection("usuarios").document(user.uid)
-            .get(Source.SERVER)
+        Tasks.withTimeout(FirebaseFirestore.getInstance().collection("usuarios").document(user.uid)
+            .get(Source.SERVER),20,TimeUnit.SECONDS)
             .addOnSuccessListener {
                 if (!activity.isDestroyed && !activity.isFinishing && FirebaseAuth.getInstance().currentUser?.uid == user.uid) success(it.data)
             }.addOnFailureListener { if (!activity.isDestroyed && !activity.isFinishing) failure(it) }
@@ -25,7 +27,7 @@ internal object AccessRepository {
                 failure(IllegalStateException("Cadastro não aprovado ou equipe inválida."))
             } else {
                 // This read is denied by old rules, preventing accidental use before setup.
-                FirebaseFirestore.getInstance().document("configuracao/equipes").get(Source.SERVER)
+                Tasks.withTimeout(FirebaseFirestore.getInstance().document("configuracao/equipes").get(Source.SERVER),20,TimeUnit.SECONDS)
                     .addOnSuccessListener {
                         if (!activity.isDestroyed && !activity.isFinishing && FirebaseAuth.getInstance().currentUser?.uid == uid)
                             success(TeamAccess(uid, data.orEmpty()))

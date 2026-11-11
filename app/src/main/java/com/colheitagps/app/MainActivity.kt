@@ -934,6 +934,7 @@ class MainActivity : Activity() {
         coluna.addView(texto("Selecione um mapa para consultar ou editar suas O.S.", 14f).apply {
             setPadding(0, dp(16), 0, dp(8))
         })
+        coluna.addView(botao("O.S. encerradas / histórico") {historicoOrdensEncerradas()})
         val todos = arquivos()
         if (todos.isEmpty()) coluna.addView(texto("Nenhum mapa importado."))
         for (f in todos) {
@@ -3051,12 +3052,13 @@ class MainActivity : Activity() {
         val prefTalhoes = getSharedPreferences("talhoes_por_os", 0)
         val itens = (
             dados.map { "O.S. $it • Talhões: ${prefTalhoes.getString(id + "_" + it, "Não informados")}" } +
-                "Adicionar número"
+                listOf("Adicionar número","O.S. encerradas / histórico")
             ).toTypedArray()
 
         AlertDialog.Builder(this)
             .setTitle("O.S. • ${nome(id)}")
             .setItems(itens) { _, pos ->
+                if(pos==dados.size+1) {historicoOrdensEncerradas(id);return@setItems}
                 val novo = pos == dados.size
 
                 val campo = EditText(this).apply {
@@ -3079,6 +3081,7 @@ class MainActivity : Activity() {
                 }
                 corpoOs.addView(campo)
                 corpoOs.addView(talhoesOs)
+                val closeButton=if(!novo) botao("Encerrar O.S.") {}.also {corpoOs.addView(it)} else null
                 val dialogo = AlertDialog.Builder(this)
                     .setTitle(if (novo) "Nova O.S." else "Editar O.S.")
                     .setView(corpoOs)
@@ -3109,11 +3112,69 @@ class MainActivity : Activity() {
                         excluirOrdemServico(id,dados[pos])
                     }
                 }
-                dialogo.show()
+                val opened=dialogo.create()
+                closeButton?.setOnClickListener {
+                    if(campo.text.toString().trim()!=dados[pos]||talhoesOs.text.toString()!=prefTalhoes.getString(id+"_"+dados[pos],"").orEmpty()) {
+                        campo.error="Salve as alterações antes de encerrar a O.S.";return@setOnClickListener
+                    }
+                    opened.dismiss();encerrarOrdemServico(id,dados[pos])
+                }
+                opened.show()
             }
             .setNeutralButton("PDF / imagem") {_,_->compartilharRelatorio(FieldReport("Ordens de serviço",TeamPolicy.label(teamStore!!.team),nome(id),listOf(secoesOrdens(id))))}
             .setNegativeButton("Fechar", null)
             .show()
+    }
+
+    private fun encerrarOrdemServico(mapId:String,number:String) {
+        if(!exigirGestor()) return
+        pausarSincronizacao()
+        AlertDialog.Builder(this).setTitle("Encerrar O.S. $number?")
+            .setMessage("A O.S. sairá da lista em andamento. Número, mapa, talhões, data e responsável ficarão no histórico da equipe, com sincronização quando houver conexão.")
+            .setNegativeButton("Cancelar",null).setPositiveButton("Encerrar e guardar") {_,_->
+                if(!exigirGestor()) return@setPositiveButton
+                try {
+                    synchronized(teamStore!!.lock) {
+                        val prefs=getSharedPreferences("ordens_servico",0)
+                        val current=JSONArray(prefs.getString(mapId,"[]"))
+                        if((0 until current.length()).none {current.optString(it)==number}) return@setPositiveButton
+                        val plots=getSharedPreferences("talhoes_por_os",0)
+                        val fields=plots.getString(mapId+"_"+number,"").orEmpty()
+                        val history=todosRegistros(OrderRecords.GROUP)
+                        // If removing the active list failed earlier, reuse the preserved snapshot.
+                        val existing=(0 until history.length()).mapNotNull {history.optJSONObject(it)}.any {
+                            OrderRecords.closed(it)&&it.optString("mapaId")==mapId&&it.optString("numeroOs")==number&&it.optString("talhoes")==fields
+                        }
+                        if(!existing) history.put(OrderRecords.close(mapId,nome(mapId),number,fields,teamAccess!!.uid,
+                            DashboardUi.name(teamAccess,sessionName),archiveDate(),System.currentTimeMillis()))
+                        check(getSharedPreferences("registros_v3",0).edit().putString(OrderRecords.GROUP,history.toString()).commit()) {"Não foi possível guardar o histórico. A O.S. foi mantida."}
+                        val remaining=JSONArray();for(i in 0 until current.length()) if(current.optString(i)!=number) remaining.put(current.optString(i))
+                        check(prefs.edit().putString(mapId,remaining.toString()).commit()) {"O histórico foi salvo. Tente encerrar novamente para atualizar a lista ativa."}
+                        plots.edit().remove(mapId+"_"+number).commit()
+                    }
+                    historicoOrdensEncerradas(mapId);teamSync?.retry()
+                    Toast.makeText(this,"O.S. encerrada e preservada no histórico. Confira a sincronização da equipe.",Toast.LENGTH_LONG).show()
+                } catch(error:Exception) {Toast.makeText(this,error.message?:"Não foi possível encerrar a O.S.",Toast.LENGTH_LONG).show()}
+            }.show()
+    }
+    private fun historicoOrdensEncerradas(mapId:String?=null) {
+        if(!exigirGestor()) return
+        val column=pagina("O.S. encerradas",parent={if(mapId==null) paginaOrdens() else ordens(mapId)})
+        refreshList={historicoOrdensEncerradas(mapId)}
+        val records=FieldReports.rows(dados(OrderRecords.GROUP)).filter {OrderRecords.historical(it)&&(mapId==null||it.optString("mapaId")==mapId)}.sortedByDescending {it.optLong("encerradaTimestamp")}
+        relatorioAtual={relatorioGrupo("Histórico de O.S. encerradas",OrderRecords.GROUP,records)}
+        column.addView(texto(TeamPolicy.label(teamStore!!.team),16f,0xFFB7E9AF.toInt()))
+        for(item in records) column.addView(cartao("O.S. ${item.optString("numeroOs")} • "+if(OrderRecords.closed(item)) "Encerrada" else "Reaberta",
+            "${item.optString("nomeMapa")}\nTalhões: ${item.optString("talhoes")}\nEncerrada em: ${item.optString("encerradaEm")}\nPor: ${item.optString("encerradaPorNome")}") {
+                val actions=mutableListOf<Pair<String,()->Unit>>()
+                actions.add("Ver informações" to {AlertDialog.Builder(this).setTitle("O.S. ${item.optString("numeroOs")}")
+                    .setMessage(RecordArchive.description(item)+"\nMapa: ${item.optString("nomeMapa")}").setPositiveButton("Fechar",null).show()})
+                actions.add("Compartilhar PDF / imagem" to {compartilharRelatorio(relatorioGrupo("O.S. ${item.optString("numeroOs")}",OrderRecords.GROUP,listOf(item)))})
+                if(OrderRecords.closed(item)) actions.add("Reabrir O.S." to {restaurarOrdemServico(item.optString("id"))})
+                AlertDialog.Builder(this).setTitle("O.S. ${item.optString("numeroOs")}").setItems(actions.map {it.first}.toTypedArray()) {_,i->actions[i].second()}.show()
+            },LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(10)})
+        if(records.isEmpty()) column.addView(texto("Nenhuma O.S. encerrada nesta equipe.",15f))
+        column.addView(botao("Compartilhar histórico em PDF / imagem") {relatorioAtual?.invoke()?.let(::compartilharRelatorio)})
     }
 
     private fun excluirOrdemServico(mapId:String,number:String) {
@@ -3144,18 +3205,19 @@ class MainActivity : Activity() {
     private fun restaurarOrdemServico(id:String) {
         if(!exigirGestor()) return
         val all=todosRegistros("historico_os")
-        val snapshot=(0 until all.length()).mapNotNull {all.optJSONObject(it)}.firstOrNull {it.optString("id")==id&&RecordArchive.archived(it)}?:return
+        val snapshot=(0 until all.length()).mapNotNull {all.optJSONObject(it)}.firstOrNull {it.optString("id")==id&&(RecordArchive.archived(it)||OrderRecords.closed(it))}?:return
+        val reopening=OrderRecords.closed(snapshot)
         val body=LinearLayout(this).apply {orientation=LinearLayout.VERTICAL;setPadding(dp(18),dp(8),dp(18),dp(12))}
         val number=campo("Número da O.S.",snapshot.optString("numeroOs"));body.addView(number)
         val fields=campo("Talhões",snapshot.optString("talhoes"));body.addView(fields)
-        val dialog=AlertDialog.Builder(this).setTitle("Restaurar ordem de serviço").setMessage("${snapshot.optString("nomeMapa")}\nSe esse número já existir com outros talhões, escolha um número diferente para preservar os dois registros.")
-            .setView(body).setNegativeButton("Cancelar",null).setPositiveButton("Restaurar",null).create()
+        val dialog=AlertDialog.Builder(this).setTitle(if(reopening) "Reabrir ordem de serviço" else "Restaurar ordem de serviço").setMessage("${snapshot.optString("nomeMapa")}\nSe esse número já existir com outros talhões, escolha um número diferente para preservar os dois registros.")
+            .setView(body).setNegativeButton("Cancelar",null).setPositiveButton(if(reopening) "Reabrir" else "Restaurar",null).create()
         dialog.setOnShowListener {dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
             if(!exigirGestor()) return@setOnClickListener
             val value=number.text.toString().trim();if(value.isBlank()||fields.text.isBlank()) {number.error="Informe a O.S. e os talhões";return@setOnClickListener}
             synchronized(teamStore!!.lock) {
                 val history=todosRegistros("historico_os")
-                val index=(0 until history.length()).firstOrNull {history.optJSONObject(it)?.optString("id")==id&&RecordArchive.archived(history.getJSONObject(it))}?:return@setOnClickListener
+                val index=(0 until history.length()).firstOrNull {history.optJSONObject(it)?.optString("id")==id&&(RecordArchive.archived(history.getJSONObject(it))||OrderRecords.closed(history.getJSONObject(it)))}?:return@setOnClickListener
                 val item=history.getJSONObject(index);val mapId=item.optString("mapaId")
                 val prefs=getSharedPreferences("ordens_servico",0);val areas=getSharedPreferences("talhoes_por_os",0)
                 val current=try {JSONArray(prefs.getString(mapId,"[]"))} catch(_:Exception) {JSONArray()}
@@ -3163,10 +3225,11 @@ class MainActivity : Activity() {
                 if(exists&&areas.getString(mapId+"_"+value,"")!=fields.text.toString()) {number.error="Essa O.S. já existe. Use outro número para preservar os dados atuais.";return@setOnClickListener}
                 if(!exists) current.put(value)
                 areas.edit().putString(mapId+"_"+value,fields.text.toString()).commit();prefs.edit().putString(mapId,current.toString()).commit()
-                history.put(index,RecordArchive.restore(item,teamAccess!!.uid,teamAccess!!.profile["nome"]?.toString().orEmpty(),archiveDate()).put("restauradaComo",value))
+                history.put(index,if(reopening) OrderRecords.reopen(item,value,fields.text.toString(),teamAccess!!.uid,DashboardUi.name(teamAccess,sessionName),archiveDate())
+                    else RecordArchive.restore(item,teamAccess!!.uid,teamAccess!!.profile["nome"]?.toString().orEmpty(),archiveDate()).put("restauradaComo",value))
                 guardar("historico_os",history)
             }
-            dialog.dismiss();registrosExcluidos()
+            dialog.dismiss();if(reopening) historicoOrdensEncerradas() else registrosExcluidos()
         } }
         dialog.show()
     }

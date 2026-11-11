@@ -43,6 +43,6 @@ internal object RecordArchive {
     fun description(record:JSONObject)=listOf("Descrição" to "descricao","Localização" to "localizacao","Talhões" to "talhoes",
         "Área (ha)" to "areaRestante","Produtividade (t/ha)" to "produtividade","Chuva (mm)" to "chuvaMm",
         "Observação" to "observacaoChuva","Quantidade" to "quantidadePeca","Referência" to "equipamentoReferencia",
-        "Data do registro" to "dataCadastro","Excluído em" to "arquivadoEm","Excluído por" to "arquivadoPorNome")
+        "Data do registro" to "dataCadastro","Situação da O.S." to "statusOs","Encerrada em" to "encerradaEm","Encerrada por" to "encerradaPorNome","Reaberta em" to "reabertaEm","Reaberta como" to "reabertaComo","Excluído em" to "arquivadoEm","Excluído por" to "arquivadoPorNome")
         .mapNotNull {(label,key)->record.optString(key).takeIf {it.isNotBlank()}?.let {"$label: $it"}}.joinToString("\n")
 }

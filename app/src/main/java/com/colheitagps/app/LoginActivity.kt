@@ -4,6 +4,14 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
+import android.widget.Button
+import android.widget.EditText
+import android.widget.TextView
+import android.view.View
+import com.google.firebase.auth.AuthResult
 import android.text.InputType
 import android.widget.LinearLayout
 import com.google.firebase.FirebaseNetworkException
@@ -25,6 +33,24 @@ class LoginActivity : Activity() {
     private var waiting = false
     private var listener: ListenerRegistration? = null
     private var attempt = 0
+    private val waitHandler=Handler(Looper.getMainLooper())
+    private var enterButton:Button?=null
+    private var loginIdentity:EditText?=null
+    private var loginPassword:EditText?=null
+    private var connectionHelp:View?=null
+    private var connectionMessage:TextView?=null
+    private var observedSignIn:AccessAttempt<AuthResult>?=null
+    private var resumed=false
+    private var needsVerification=false
+    private var deferredSignInError:String?=null
+    private val slowSignIn=Runnable {
+        val pending=SignInAttempts.requests.current
+        if(onLoginPage&&pending!=null&&!pending.task.isComplete&&!isFinishing&&!isDestroyed) {
+            enterButton?.text="Aguardando resposta do acesso"
+            connectionHelp?.visibility=View.VISIBLE
+            connectionMessage?.text="O acesso está demorando a responder nesta rede. Use Testar conexão ou alterne a rede. A tentativa continua em andamento; sua autorização ainda não foi confirmada. Você pode sair desta tela com a tecla Voltar."
+        }
+    }
     private val frentes = arrayOf("Santo Inácio", "Santa Inês", "Itororó", "Cafeara", "Lupionópolis", "Colorado", "Sandovalina", "Jardim Olinda", "Itaguajé")
     private val ids = arrayOf("santo_inacio", "santa_ines", "itororo", "cafeara", "lupionopolis", "colorado", "sandovalina", "jardim_olinda", "itaguaje")
     private fun notice(message: String) {
@@ -33,20 +59,31 @@ class LoginActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         ui = AccessUi(this)
-        if (auth.currentUser == null) welcome() else verify()
+        val pending=SignInAttempts.requests.current
+        if(pending!=null&&!pending.task.isComplete) login()
+        else {if(pending!=null) SignInAttempts.requests.consume(pending);if(auth.currentUser==null) welcome() else verify()}
     }
-    override fun onResume() { super.onResume(); if(onWelcomePage) welcome(); StartupUpdates.resume(this) }
+    override fun onResume() {
+        super.onResume();resumed=true
+        if(onWelcomePage) welcome()
+        StartupUpdates.resume(this)
+        if(needsVerification) {needsVerification=false;verify()}
+        deferredSignInError?.let {deferredSignInError=null;notice(it)}
+    }
+    override fun onPause() {resumed=false;super.onPause()}
     override fun onWindowFocusChanged(hasFocus:Boolean) { super.onWindowFocusChanged(hasFocus);if(hasFocus) StartupUpdates.focused(this) }
     private fun welcome() {
         waiting=false;onLoginPage=false;onWelcomePage=true;listener?.remove();listener=null
         WelcomeUi.render(this,{login()},{register()})
     }
-    override fun onStart() { super.onStart(); if (waiting) watchApproval() }
-    override fun onStop() { listener?.remove(); listener = null; super.onStop() }
-    override fun onDestroy() { attempt++; listener?.remove(); super.onDestroy() }
+    override fun onStart() {super.onStart();if(waiting) watchApproval();if(onLoginPage) observeSignIn()}
+    override fun onStop() {listener?.remove();listener=null;observedSignIn=null;waitHandler.removeCallbacks(slowSignIn);super.onStop()}
+    override fun onDestroy() {attempt++;listener?.remove();waitHandler.removeCallbacksAndMessages(null);super.onDestroy()}
 
     private fun page(title: String, description: String): LinearLayout {
         if(onWelcomePage) ui=AccessUi(this)
+        waitHandler.removeCallbacks(slowSignIn)
+        observedSignIn=null
         waiting = false
         onLoginPage = false
         onWelcomePage = false
@@ -56,6 +93,7 @@ class LoginActivity : Activity() {
     private fun logout() {
         attempt++; busy = false
         AgroNotifications.logout(this)
+        SignInAttempts.requests.current?.let {SignInAttempts.requests.consume(it)}
         auth.signOut(); login()
     }
     private fun errorMessage(error: Exception, registering: Boolean = false): String = when {
@@ -66,8 +104,11 @@ class LoginActivity : Activity() {
             "ERROR_USER_DISABLED" -> "Esta conta foi desativada. Procure o administrador principal."
             "ERROR_OPERATION_NOT_ALLOWED" -> "O acesso por senha está indisponível no Firebase. Informe o administrador."
             "ERROR_WEAK_PASSWORD" -> "Escolha uma senha com pelo menos 8 caracteres."
-            else -> if (registering) "Não foi possível criar a conta. Confira os dados e tente novamente."
-                else "Identificação ou senha incorreta. Para matrícula, use o mesmo número do cadastro, incluindo zeros à esquerda."
+            "ERROR_NETWORK_REQUEST_FAILED" -> "O aplicativo não conseguiu conectar ao serviço de acesso nesta rede. Use Testar conexão."
+            "ERROR_APP_NOT_AUTHORIZED", "ERROR_INVALID_API_KEY" -> "O serviço recusou a configuração do aplicativo. Informe esse problema ao administrador."
+            "ERROR_INVALID_CREDENTIAL", "ERROR_INVALID_LOGIN_CREDENTIALS", "ERROR_WRONG_PASSWORD", "ERROR_USER_NOT_FOUND" -> "Identificação ou senha incorreta. Para matrícula, use o mesmo número do cadastro, incluindo zeros à esquerda."
+            else -> if(registering) "Não foi possível criar a conta. Confira os dados e tente novamente."
+                else "Não foi possível concluir o acesso. Use Testar conexão e tente novamente."
         }
         else -> "Não foi possível concluir. Verifique a conexão e tente novamente."
     }
@@ -87,14 +128,20 @@ class LoginActivity : Activity() {
                 else -> { notice("Informe a matrícula numérica ou o e-mail cadastrado do administrador."); return@setOnClickListener }
             }
             if (secret.isBlank()) { notice("Informe sua senha."); return@setOnClickListener }
-            busy = true; enter.isEnabled = false; enter.text = "Entrando…"
-            auth.signInWithEmailAndPassword(email, secret).addOnCompleteListener { result ->
-                if (isDestroyed) return@addOnCompleteListener
-                busy = false; enter.isEnabled = true; enter.text = "Entrar"
-                if (result.isSuccessful) verify() else notice(errorMessage(result.exception ?: Exception()))
-            }
+            try {
+                SignInAttempts.requests.start(value,SystemClock.elapsedRealtime()) {auth.signInWithEmailAndPassword(email,secret)}
+                observeSignIn()
+            } catch(error:Exception) {busy=false;enter.isEnabled=true;notice(errorMessage(error))}
         }
-        ui.button(card, "Verificar atualização", true) { if (!busy) startActivity(Intent(this, UpdateActivity::class.java)) }
+        enterButton=enter;loginIdentity=id;loginPassword=password
+        val help=LinearLayout(this).apply {orientation=LinearLayout.VERTICAL;visibility=View.GONE}
+        connectionMessage=ui.text("");ui.add(help,connectionMessage!!,8)
+        ui.button(help,"Testar conexão",true) {testConnection()}
+        ui.button(help,"Abrir configurações de Wi-Fi",true) {
+            try {startActivity(Intent(android.provider.Settings.ACTION_WIFI_SETTINGS))} catch(_:Exception) {notice("Abra as configurações de Wi-Fi do Android.")}
+        }
+        connectionHelp=help;ui.add(card,help,0)
+        ui.button(card, "Verificar atualização", true) { startActivity(Intent(this, UpdateActivity::class.java)) }
         ui.button(card, "Solicitar acesso", true) { if (!busy) register() }
         ui.button(card, "Recuperar senha", true) {
             if (!busy) {
@@ -110,6 +157,48 @@ class LoginActivity : Activity() {
                 }
             }
         }
+        observeSignIn()
+    }
+    private fun observeSignIn() {
+        val pending=SignInAttempts.requests.current?:return
+        if(!onLoginPage||observedSignIn===pending||isDestroyed) return
+        observedSignIn=pending;busy=true
+        enterButton?.isEnabled=false;enterButton?.text="Entrando…"
+        loginIdentity?.setText(pending.identity);loginIdentity?.isEnabled=false;loginPassword?.isEnabled=false
+        waitHandler.removeCallbacks(slowSignIn)
+        waitHandler.postDelayed(slowSignIn,pending.remaining(SystemClock.elapsedRealtime()))
+        pending.task.addOnCompleteListener(this) {result->
+            if(isDestroyed||!onLoginPage||observedSignIn!==pending||SignInAttempts.requests.current!==pending) return@addOnCompleteListener
+            SignInAttempts.requests.consume(pending);observedSignIn=null;waitHandler.removeCallbacks(slowSignIn)
+            busy=false;enterButton?.isEnabled=true;enterButton?.text="Entrar";loginIdentity?.isEnabled=true;loginPassword?.isEnabled=true
+            if(result.isSuccessful&&auth.currentUser?.uid==result.result?.user?.uid) {
+                if(resumed) verify() else needsVerification=true
+            } else {
+                val error=result.exception?:IllegalStateException("A sessão mudou. Tente entrar novamente.")
+                val message=errorMessage(error)
+                connectionHelp?.visibility=View.VISIBLE;connectionMessage?.text=message
+                if(resumed) notice(message) else deferredSignInError=message
+            }
+        }
+    }
+    private fun testConnection() {
+        val dialog=AlertDialog.Builder(this).setTitle("Teste da conexão do aplicativo")
+            .setMessage("Verificando o endereço do serviço nesta rede, sem enviar matrícula, e-mail ou senha…")
+            .setNegativeButton("Fechar",null).setPositiveButton("Copiar resultado",null).create()
+        dialog.show();dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled=false
+        Thread {
+            val report=try {AccessConnection.check(applicationContext)} catch(_:Exception) {"Não foi possível concluir o diagnóstico nesta rede."}
+            runOnUiThread {
+                if(isDestroyed||isFinishing||!dialog.isShowing) return@runOnUiThread
+                dialog.setMessage(report)
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE).apply {
+                    isEnabled=true;setOnClickListener {
+                        (getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("Diagnóstico de conexão",report))
+                        android.widget.Toast.makeText(this@LoginActivity,"Resultado copiado",android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        }.start()
     }
     private fun register(existing: Boolean = false) {
         val card = page(if (existing) "Concluir solicitação" else "Solicitar acesso",
@@ -228,7 +317,7 @@ class LoginActivity : Activity() {
     }
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-        if (busy) return
+        if (busy) {moveTaskToBack(true);return}
         when {
             onWelcomePage -> moveTaskToBack(true)
             onLoginPage -> welcome()
