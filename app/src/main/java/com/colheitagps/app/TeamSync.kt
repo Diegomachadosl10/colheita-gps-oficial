@@ -60,25 +60,13 @@ internal class TeamSync(context: Context, private val access: TeamAccess, val st
     private fun base(id: String) = local.getString("b_$id", null)?.let(::JSONObject)
     private fun permitted(group: String) = access.manages || group in TeamPolicy.operatorGroups
     private fun editable(d: JSONObject) = access.manages ||
-        (!(d.optString("grupo") == "pendencias" && d.optBoolean("excluido")) &&
+        (!(d.optString("tipo") == "item" && d.optBoolean("excluido")) &&
             (d.optString("autorUid") == access.uid || d.optString("grupo") == "pinturas" ||
                 (d.optString("grupo") == "arquivos" && d.optString("chave").matches(Regex("mapa_relatorio_[0-9a-f]{64}[.]png")))))
     private fun proposed(kind: String, group: String, key: String, content: String, deleted: Boolean = false): JSONObject = JSONObject()
         .put("tipo", kind).put("grupo", group).put("chave", key).put("conteudo", content).put("excluido", deleted)
     fun start() {
-        // Previous versions removed these items from the list, but retained their confirmed contents.
-        synchronized(store.lock) {
-            val prefs = preferences.getValue("registros_v3")
-            val all = JSONArray(prefs.getString("pendencias", "[]"))
-            val ids = (0 until all.length()).mapNotNull { all.optJSONObject(it)?.optString("id") }.toMutableSet()
-            for ((key, value) in local.all) if (key.startsWith("b_") && value is String) {
-                val record = JSONObject(value)
-                if (record.optString("tipo") == "item" && record.optString("grupo") == "pendencias" &&
-                    record.optBoolean("excluido") && ids.add(record.getString("chave")))
-                    all.put(MaintenanceRecords.withArchiveState(JSONObject(store.decode(record.getString("conteudo"))), true))
-            }
-            prefs.edit().putString("pendencias", all.toString()).commit()
-        }
+        ArchiveRecovery.recover(store,local,access)
         preferences.values.forEach { it.registerOnSharedPreferenceChangeListener(prefListener) }
         val query = if (access.manages) records else records.whereIn("grupo", TeamPolicy.operatorGroups.toList())
         subscription = query.addSnapshotListener(MetadataChanges.INCLUDE) { snapshot, error ->
@@ -104,6 +92,11 @@ internal class TeamSync(context: Context, private val access: TeamAccess, val st
     private fun queue(key: String, value: JSONObject) {
         if (local.contains("c_$key")) return
         val old = base(key)
+        if(!access.manages&&value.optString("tipo")=="item"&&value.optBoolean("excluido")) {
+            if(old!=null) {local.edit().remove("q_$key").remove("b_$key").commit();remote[key]=old}
+            announce("Somente o supervisor ou administrador pode excluir ou restaurar registros.")
+            return
+        }
         if (old != null && !editable(old)) {
             announce("Somente o autor ou o supervisor pode alterar esse registro.")
             local.edit().remove("b_$key").commit(); remote[key] = old
@@ -133,7 +126,7 @@ internal class TeamSync(context: Context, private val access: TeamAccess, val st
                     if (obj.optString("id").isBlank()) { obj.put("id", UUID.randomUUID().toString()); assigned = true }
                     val recordKey = obj.getString("id")
                     val wire = proposed("item", group, recordKey, store.encode((if (TeamPolicy.AUTOMATIC_ATTACHMENTS) obj else TeamContent.textOnly(obj)).toString()),
-                        group == "pendencias" && MaintenanceRecords.isArchived(obj))
+                        RecordArchive.archived(obj))
                     if (obj.has("__syncBase")) wire.put("__syncBase", obj.getLong("__syncBase"))
                     now[id("item", group, recordKey)] = wire
                 }
@@ -146,7 +139,7 @@ internal class TeamSync(context: Context, private val access: TeamAccess, val st
             val old = base(key)
             val previousContent = old?.let {
                 val decoded = store.decode(it.optString("conteudo"))
-                if (it.optString("tipo") == "item" && it.optString("grupo") == "pendencias")
+                if (it.optString("tipo") == "item")
                     store.encode(MaintenanceRecords.withArchiveState(JSONObject(decoded), it.optBoolean("excluido")).toString())
                 else store.encode(decoded)
             }
@@ -195,15 +188,15 @@ internal class TeamSync(context: Context, private val access: TeamAccess, val st
                         "tipo" to change.getString("tipo"), "grupo" to change.getString("grupo"), "chave" to change.getString("chave"),
                         "conteudo" to change.getString("conteudo"), "excluido" to change.getBoolean("excluido"),
                         "autorUid" to change.getString("autorUid"), "editadoPor" to access.uid,
-                        "versao" to (if (!doc.exists() && change.getBoolean("excluido") && change.getString("grupo") != "pendencias") 0L else revision + 1), "atualizadoEm" to FieldValue.serverTimestamp()
+                        "versao" to (if (!doc.exists() && change.getBoolean("excluido") && change.getString("tipo") != "item") 0L else revision + 1), "atualizadoEm" to FieldValue.serverTimestamp()
                     )
-                    if (doc.exists() || !change.getBoolean("excluido") || change.getString("grupo") == "pendencias") tx.set(records.document(key), data)
+                    if (doc.exists() || !change.getBoolean("excluido") || change.getString("tipo") == "item") tx.set(records.document(key), data)
                     data.remove("atualizadoEm")
                     JSONObject(data)
                 }, 25, TimeUnit.SECONDS)
                 synchronized(store.lock) {
                     val edit=local.edit().putString("b_$key",written.toString()).remove(prefKey)
-                    if(!written.optBoolean("excluido")&&written.optString("tipo")=="item")
+                    if(!written.optBoolean("excluido")&&written.optString("tipo")=="item"&&written.optString("grupo")!="historico_os")
                         edit.putLong("n_$key",written.optLong("versao"))
                     check(edit.commit())
                 }
@@ -258,28 +251,21 @@ internal class TeamSync(context: Context, private val access: TeamAccess, val st
                 if (!available) return@synchronized
                 when (data.getString("tipo")) {
                     "item" -> {
-                        val group = data.getString("grupo")
-                        val keepHistory = group == "pendencias"
-                        val prefs = preferences.getValue(if (group == "movimentos") "controle_colheita" else "registros_v3")
-                        val prefKey = if (group == "movimentos") "movimentos" else group
-                        val current = JSONArray(prefs.getString(prefKey, "[]")); val result = JSONArray(); var found = false
-                        for (i in 0 until current.length()) {
-                            val obj = current.optJSONObject(i) ?: continue
-                            if (obj.optString("id") == data.getString("chave")) {
-                                found = true
-                                if (!data.optBoolean("excluido") || keepHistory) {
-                                    val decoded = JSONObject(store.decode(data.getString("conteudo")))
-                                    val incoming = if (keepHistory) MaintenanceRecords.withArchiveState(decoded, data.optBoolean("excluido")) else decoded
-                                    result.put(if (TeamPolicy.AUTOMATIC_ATTACHMENTS) incoming else TeamContent.preserveLocalMedia(incoming, obj))
-                                }
+                        val group=data.getString("grupo")
+                        val prefs=preferences.getValue(if(group=="movimentos") "controle_colheita" else "registros_v3")
+                        val prefKey=if(group=="movimentos") "movimentos" else group
+                        val current=JSONArray(prefs.getString(prefKey,"[]"));val result=JSONArray();var found=false
+                        val decoded=JSONObject(store.decode(data.getString("conteudo")))
+                        val incoming=RecordArchive.withState(decoded,data.optBoolean("excluido"))
+                        for(i in 0 until current.length()) {
+                            val obj=current.optJSONObject(i)?:continue
+                            if(obj.optString("id")==data.getString("chave")) {
+                                found=true
+                                result.put(if(TeamPolicy.AUTOMATIC_ATTACHMENTS) incoming else TeamContent.preserveLocalMedia(incoming,obj))
                             } else result.put(obj)
                         }
-                        if (!found && (!data.optBoolean("excluido") || keepHistory)) {
-                            val decoded = JSONObject(store.decode(data.getString("conteudo")))
-                            val incoming = if (keepHistory) MaintenanceRecords.withArchiveState(decoded, data.optBoolean("excluido")) else decoded
-                            result.put(if (TeamPolicy.AUTOMATIC_ATTACHMENTS) incoming else TeamContent.preserveLocalMedia(incoming, null))
-                        }
-                        prefs.edit().putString(prefKey, result.toString()).commit()
+                        if(!found) result.put(if(TeamPolicy.AUTOMATIC_ATTACHMENTS) incoming else TeamContent.preserveLocalMedia(incoming,null))
+                        prefs.edit().putString(prefKey,result.toString()).commit()
                     }
                     "preferencia" -> {
                         val edit = preferences.getValue(data.getString("grupo")).edit()

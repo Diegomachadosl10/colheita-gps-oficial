@@ -205,3 +205,49 @@ test('somente o gestor exclui equipamentos e pendências, preservando os documen
   await assertFails(setDoc(doc(db('opA'),'equipes',team,'registros','forjado'),record('opA','pendencias',1,{excluido:true})));
   await assertSucceeds(setDoc(doc(db(owner),'equipes',team,'registros','arquivo-administrador'),record(owner,'pendencias',1,{excluido:true})));
 });
+
+test('somente gestores excluem e restauram ocorrências e chuva, preservando a edição normal do autor',async()=>{
+  for(const id of ['ocorrencia','chuva']) {
+    const path=['equipes',team,'registros',id];
+    await assertSucceeds(setDoc(doc(db('opA'),...path),record('opA','ocorrencias_campo',1,{chave:id})));
+    await assertSucceeds(updateDoc(doc(db('opA'),...path),{conteudo:'{"descricao":"corrigida pelo autor"}',editadoPor:'opA',versao:2,atualizadoEm:serverTimestamp()}));
+    await assertFails(updateDoc(doc(db('opA'),...path),{excluido:true,editadoPor:'opA',versao:3,atualizadoEm:serverTimestamp()}));
+    await assertSucceeds(updateDoc(doc(db('supA'),...path),{excluido:true,editadoPor:'supA',versao:3,atualizadoEm:serverTimestamp()}));
+    await assertFails(updateDoc(doc(db('opA'),...path),{excluido:false,editadoPor:'opA',versao:4,atualizadoEm:serverTimestamp()}));
+    await assertFails(updateDoc(doc(db('opA'),...path),{conteudo:'{}',editadoPor:'opA',versao:4,atualizadoEm:serverTimestamp()}));
+    await assertFails(updateDoc(doc(db('supB'),...path),{excluido:false,editadoPor:'supB',versao:4,atualizadoEm:serverTimestamp()}));
+    await assertSucceeds(updateDoc(doc(db(owner),...path),{excluido:false,editadoPor:owner,versao:4,atualizadoEm:serverTimestamp()}));
+    await assertSucceeds(updateDoc(doc(db('opA'),...path),{conteudo:'{"descricao":"editada após restaurar"}',editadoPor:'opA',versao:5,atualizadoEm:serverTimestamp()}));
+    assert.equal((await getDoc(doc(db('supA'),...path))).data().autorUid,'opA');
+  }
+});
+test('operador não cria exclusão de registro novo e supervisor restaura o equipamento da própria equipe',async()=>{
+  await assertFails(setDoc(doc(db('opA'),'equipes',team,'registros','novo-excluido'),record('opA','ocorrencias_campo',1,{excluido:true})));
+  for(const id of ['equipamento','pendencia']) {
+    const path=['equipes',team,'registros',id];
+    await assertSucceeds(setDoc(doc(db('opA'),...path),record('opA','pendencias',1,{chave:id})));
+    await assertSucceeds(updateDoc(doc(db('supA'),...path),{excluido:true,editadoPor:'supA',versao:2,atualizadoEm:serverTimestamp()}));
+    await assertFails(updateDoc(doc(db('opA'),...path),{excluido:false,editadoPor:'opA',versao:3,atualizadoEm:serverTimestamp()}));
+    await assertSucceeds(updateDoc(doc(db('supA'),...path),{excluido:false,editadoPor:'supA',versao:3,atualizadoEm:serverTimestamp()}));
+  }
+});
+test('o histórico de ordens de serviço é exclusivo dos gestores autorizados',async()=>{
+  const path=['equipes',team,'registros','os-excluida'];
+  await assertSucceeds(setDoc(doc(db('supA'),...path),record('supA','historico_os',1,{chave:'os-excluida',excluido:true,conteudo:'{"numeroOs":"123","talhoes":"1 a 3"}'})));
+  await assertSucceeds(getDoc(doc(db(owner),...path)));
+  for(const uid of ['opA','supB','supOutra']) await assertFails(getDoc(doc(db(uid),...path)));
+  await assertFails(setDoc(doc(db('opA'),'equipes',team,'registros','os-falsa'),record('opA','historico_os')));
+  await assertSucceeds(updateDoc(doc(db('supA'),...path),{excluido:false,editadoPor:'supA',versao:2,atualizadoEm:serverTimestamp()}));
+});
+test('a exceção de exclusão dos mapas do próprio dono é preservada',async()=>{
+  const path=['equipes',team,'registros','mapa-pessoal-legado'];
+  await assertSucceeds(setDoc(doc(db('opA'),...path),record('opA','mapas',1,{tipo:'preferencia',chave:'mapa-pessoal-legado',conteudo:'Meu mapa'})));
+  await assertSucceeds(updateDoc(doc(db('opA'),...path),{excluido:true,editadoPor:'opA',versao:2,atualizadoEm:serverTimestamp()}));
+  await assertFails(updateDoc(doc(db('opA2'),...path),{excluido:false,editadoPor:'opA2',versao:3,atualizadoEm:serverTimestamp()}));
+  const painting=['equipes',team,'registros','pintura-legada'];
+  await assertSucceeds(setDoc(doc(db('opA'),...painting),record('opA','pinturas',1,{tipo:'preferencia',chave:'pintura-legada',conteudo:'{}'})));
+  await assertSucceeds(updateDoc(doc(db('opA2'),...painting),{conteudo:'{"linhas":[]}',editadoPor:'opA2',versao:2,atualizadoEm:serverTimestamp()}));
+  await assertFails(updateDoc(doc(db('opA2'),...painting),{excluido:true,editadoPor:'opA2',versao:3,atualizadoEm:serverTimestamp()}));
+  await assertSucceeds(updateDoc(doc(db('opA'),...painting),{excluido:true,editadoPor:'opA',versao:3,atualizadoEm:serverTimestamp()}));
+  await assertFails(updateDoc(doc(db('opA2'),...painting),{excluido:false,editadoPor:'opA2',versao:4,atualizadoEm:serverTimestamp()}));
+});

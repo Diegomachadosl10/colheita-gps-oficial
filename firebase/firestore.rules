@@ -69,11 +69,11 @@ service cloud.firestore {
       allow list: if leRegistro(equipe, resource.data);
       allow create: if escreveRegistro(equipe, request.resource.data)
         && request.resource.data.autorUid == request.auth.uid && valido(equipe, request.resource.data)
-        && (request.resource.data.grupo != 'pendencias' || !request.resource.data.excluido || gestor(equipe))
+        && (request.resource.data.tipo != 'item' || !request.resource.data.excluido || gestor(equipe))
         && request.resource.data.versao == 1;
       allow update: if escreveRegistro(equipe, resource.data) && valido(equipe, request.resource.data)
-        && (resource.data.grupo != 'pendencias' || gestor(equipe)
-          || (!resource.data.excluido && !request.resource.data.excluido))
+        && (gestor(equipe) || (!resource.data.excluido && !request.resource.data.excluido)
+          || (resource.data.tipo != 'item' && resource.data.autorUid == request.auth.uid))
         && request.resource.data.autorUid == resource.data.autorUid
         && request.resource.data.grupo == resource.data.grupo && request.resource.data.chave == resource.data.chave
         && request.resource.data.tipo == resource.data.tipo
@@ -88,10 +88,10 @@ service cloud.firestore {
         && d.autorUid is string && d.versao is int && d.excluido is bool
         && d.atualizadoEm == request.time && d.conteudo is string && d.conteudo.size() < 750000
         && d.chave is string && d.chave.size() < 250
-        && ((d.tipo == 'item' && d.grupo in ['pendencias','ocorrencias_campo','estoques_salvos','historico_estoque','relatorios_turno','caminhoes','movimentos'])
+        && ((d.tipo == 'item' && d.grupo in ['pendencias','ocorrencias_campo','estoques_salvos','historico_estoque','relatorios_turno','caminhoes','movimentos','historico_os'])
           || (d.tipo == 'preferencia' && d.grupo in ['mapas','pinturas','ordens_servico','talhoes_por_os'])
           || (d.tipo == 'arquivo' && d.grupo == 'arquivos'))
-        && d.grupo in ['pendencias','ocorrencias_campo','estoques_salvos','historico_estoque','relatorios_turno','caminhoes','movimentos','mapas','pinturas','ordens_servico','talhoes_por_os','arquivos'];
+        && d.grupo in ['pendencias','ocorrencias_campo','estoques_salvos','historico_estoque','relatorios_turno','caminhoes','movimentos','historico_os','mapas','pinturas','ordens_servico','talhoes_por_os','arquivos'];
     }
     // Legacy collection is kept; documents without trustworthy team metadata are owner-only.
     match /pendencias/{id} {

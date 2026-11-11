@@ -67,6 +67,18 @@ class AdminActivity : Activity() {
                 val front=if(access.primary) ui.spinner(card,"Frente",arrayOf("Todas as frentes")+TeamPolicy.fronts.values.toTypedArray()).apply {
                     setSelection((TeamPolicy.fronts.keys.indexOf(frontFilter)+1).coerceAtLeast(0))
                 } else null
+                ui.button(card,"Compartilhar lista em PDF / imagem",true) {
+                    val filtered=AdminUserList.filter(users,search,statusFilter,frontFilter)
+                    AccessRepository.loadTeamAccess(this,{current->
+                        if(current.uid!=access.uid||!current.manages||(!current.primary&&current.team!=access.team)) {notice("Não foi possível confirmar a permissão para compartilhar.");return@loadTeamAccess}
+                        val report=FieldReport("Lista de usuários",if(current.primary) "Administração DM AGRO" else TeamPolicy.label(current.team!!),
+                            "${filtered.size} usuário(s) • resultado dos filtros da tela",listOf(ReportSection("Cadastros",listOf("Nome / matrícula","Equipe","Perfil / situação"),filtered.map {user->
+                                val d=user.data;listOf("${d["nome"]?:"Sem nome"}\nMatrícula: ${d["matricula"]?:"Não informada"}",TeamPolicy.team(d)?.let(TeamPolicy::label)?:"Não definida","${TeamPolicy.requested(d)}\n${AccessPolicy.normalized(d["status"])}")
+                            })))
+                        val cache=TeamStore(applicationContext,current.team?:"santo_inacio_A").cache
+                        FieldReportSharing.choose(this,report,cache) {auth.currentUser?.uid==current.uid}
+                    },{notice("Confira sua conexão antes de compartilhar a lista.")})
+                }
                 val rows=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }; ui.add(card,rows)
                 fun refresh() {
                     val filtered=AdminUserList.filter(users,search,statusFilter,frontFilter)

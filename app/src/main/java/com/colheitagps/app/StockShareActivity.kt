@@ -87,7 +87,8 @@ class StockShareActivity:Activity() {
         }
         val enabled=records.isNotEmpty()&&records.size==ids.size&&a.manages
         ui.button(body,"Enviar mensagem e fotos") {send(false)}.isEnabled=enabled
-        ui.button(body,"Enviar tudo em PDF",true) {send(true)}.isEnabled=enabled
+        ui.button(body,"Enviar tudo em PDF",true) {sendReport(true)}.isEnabled=enabled
+        ui.button(body,"Enviar tudo em imagem",true) {sendReport(false)}.isEnabled=enabled
         ui.button(body,"Voltar",true){finish()}
     }
     private fun choosePhoto(id:String) {
@@ -114,6 +115,7 @@ class StockShareActivity:Activity() {
         synchronized(s.lock) {
             val prefs=s.prefs("registros_v3");val all=JSONArray(prefs.getString("estoques_salvos","[]"))
             val record=(0 until all.length()).mapNotNull {all.optJSONObject(it)}.firstOrNull {it.optString("id")==id}?:error("Este lote foi removido. Volte e confira sua seleção.")
+            require(!RecordArchive.archived(record)) {"Este estoque foi excluído. Restaure antes de editar a foto."}
             record.put("fotoEstoque",file.path);check(prefs.edit().putString("estoques_salvos",all.toString()).commit())
             val active=s.prefs("controle_colheita");val progress=try {JSONObject(active.getString("progresso","{}")?:"{}")} catch(_:Exception) {JSONObject()}
             if(progress.optString("id")==id) active.edit().putString("progresso",progress.put("fotoEstoque",file.path).toString()).commit()
@@ -138,6 +140,15 @@ class StockShareActivity:Activity() {
             try {contentResolver.takePersistableUriPermission(pendingUri!!,Intent.FLAG_GRANT_READ_URI_PERMISSION)} catch(_:Exception) {}
             if(access!=null) receivePhoto()
         } else {pendingLot=null;pendingUri=null;if(access!=null) render()}
+    }
+    private fun sendReport(pdf:Boolean) {
+        val a=access?:return;val s=store?:return
+        if(!a.manages) return
+        val selected=records().map {JSONObject(it.toString()).apply {if(optString("id") in omitted) remove("fotoEstoque")}}
+        if(selected.isEmpty()||selected.size!=ids.size||selected.any {!StockBatch.complete(it)}) {notice("Confira os lotes selecionados antes de enviar.");return}
+        val report=FieldReport("Estoques selecionados",TeamPolicy.label(s.team),sections=listOf(FieldReports.group("Lotes","estoques_salvos",selected)),
+            pictures=selected.mapNotNull {record->StockShareFiles.photo(s.files,record)?.let {ReportPicture(it,"Lote ${record.optString("os")} • Talhões: ${record.optString("talhoes")}")}})
+        FieldReportSharing.share(this,report,s.cache,pdf) {access?.uid==a.uid&&access?.manages==true&&store?.team==s.team}
     }
     private fun send(pdf:Boolean) {
         if(access?.manages!=true) return

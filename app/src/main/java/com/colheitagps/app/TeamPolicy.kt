@@ -12,7 +12,7 @@ internal object TeamPolicy {
     val leafRoles = setOf("operador", "funcionario", "tratorista")
     val operatorGroups = setOf("pendencias", "ocorrencias_campo")
     val preferences = setOf("registros_v3", "controle_colheita", "mapas", "pinturas", "ordens_servico", "talhoes_por_os")
-    val recordGroups = setOf("pendencias", "ocorrencias_campo", "estoques_salvos", "historico_estoque", "relatorios_turno", "caminhoes", "movimentos")
+    val recordGroups = setOf("pendencias", "ocorrencias_campo", "estoques_salvos", "historico_estoque", "relatorios_turno", "caminhoes", "movimentos", "historico_os")
     fun team(data: Map<String, Any>?): String? {
         val front = data?.get("frenteId") as? String ?: return null
         val shift = data["turno"] as? String ?: return null

@@ -10,19 +10,27 @@ import java.util.Locale
 internal object MaintenanceRecords {
     private const val CATEGORY = "equipamento"
     fun isEquipment(record: JSONObject) = record.optString("categoriaRegistro") == CATEGORY
-    fun isArchived(record: JSONObject) = record.optBoolean("__arquivado")
-    fun withArchiveState(record: JSONObject, archived: Boolean): JSONObject = JSONObject(record.toString()).apply {
-        if (archived) put("__arquivado", true) else remove("__arquivado")
-    }
+    fun isArchived(record: JSONObject) = RecordArchive.archived(record)
+    fun withArchiveState(record: JSONObject, archived: Boolean): JSONObject = RecordArchive.withState(record,archived)
     fun archive(record: JSONObject, uid: String, name: String, date: String): JSONObject =
-        withArchiveState(record, true).apply {
-            put("arquivadoPorUid", uid); put("arquivadoPorNome", name); put("arquivadoEm", date)
-        }
+        RecordArchive.archive(record,uid,name,date)
     fun archiveEquipment(all: JSONArray, equipment: String, uid: String, name: String, date: String): JSONArray = JSONArray().apply {
+        val batch=java.util.UUID.randomUUID().toString()
         for (i in 0 until all.length()) all.optJSONObject(i)?.let { item ->
             put(if (number(item.optString("equipamento")) == number(equipment) && !isArchived(item))
-                archive(item, uid, name, date) else JSONObject(item.toString()))
+                archive(item, uid, name, date).put("exclusaoEquipamentoId",batch) else JSONObject(item.toString()))
         }
+    }
+    fun restoreEquipment(all:JSONArray,equipment:String,includeIssues:Boolean,uid:String,name:String,date:String):JSONArray {
+        val normalized=number(equipment)
+        val catalog=(0 until all.length()).mapNotNull {all.optJSONObject(it)}.firstOrNull {isEquipment(it)&&number(it.optString("equipamento"))==normalized&&isArchived(it)}
+            ?:error("Esse equipamento não está excluído. Atualize a lista.")
+        val batch=catalog.optString("exclusaoEquipamentoId")
+        return JSONArray().apply {for(i in 0 until all.length()) all.optJSONObject(i)?.let {record->
+            val matching=number(record.optString("equipamento"))==normalized&&isArchived(record)
+            val restore=matching&&(isEquipment(record)||(includeIssues&&!PartsRecords.isPart(record)&&(batch.isBlank()||record.optString("exclusaoEquipamentoId")==batch)))
+            put(if(restore) RecordArchive.restore(record,uid,name,date) else JSONObject(record.toString()))
+        }}
     }
     fun archivedEquipment(all: JSONArray): List<String> = (0 until all.length()).mapNotNull { all.optJSONObject(it) }
         .filter { isEquipment(it) && isArchived(it) }.map { number(it.optString("equipamento")) }.filter { it.isNotBlank() }.distinct().sorted()

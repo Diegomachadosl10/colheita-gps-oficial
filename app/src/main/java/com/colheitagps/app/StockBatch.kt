@@ -13,7 +13,7 @@ internal object StockBatch {
             .put("talhoes",d.fields.trim()).put("areaRestante",d.area.trim()).put("produtividade",d.yield.trim()).put("dataCadastro",date) }
     }
     fun selected(array:JSONArray,ids:Set<String>):List<JSONObject> = (0 until array.length()).mapNotNull { array.optJSONObject(it) }
-        .filter { it.optString("id") in ids }.map { JSONObject(it.toString()) }
+        .filter { it.optString("id") in ids&&!RecordArchive.archived(it) }.map { JSONObject(it.toString()) }
     fun complete(record:JSONObject)=listOf("os","talhoes","areaRestante","produtividade").all { record.optString(it).isNotBlank() }
     fun text(records:List<JSONObject>,team:String,date:String):String {
         require(records.isNotEmpty())
