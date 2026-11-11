@@ -2,46 +2,53 @@ package com.colheitagps.app
 
 import android.app.Activity
 import android.content.Intent
+import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.Source
+import com.google.firebase.auth.FirebaseUser
+import com.google.android.gms.tasks.Task
 import com.google.android.gms.tasks.Tasks
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 internal object AccessRepository {
-    fun load(activity: Activity, success: (Map<String, Any>?) -> Unit, failure: (Exception) -> Unit) {
-        val user = FirebaseAuth.getInstance().currentUser
-            ?: return failure(IllegalStateException("Sessão encerrada. Entre novamente."))
-        Tasks.withTimeout(FirebaseFirestore.getInstance().collection("usuarios").document(user.uid)
-            .get(Source.SERVER),20,TimeUnit.SECONDS)
-            .addOnSuccessListener {
-                if (!activity.isDestroyed && !activity.isFinishing && FirebaseAuth.getInstance().currentUser?.uid == user.uid) success(it.data)
-            }.addOnFailureListener { if (!activity.isDestroyed && !activity.isFinishing) failure(it) }
-    }
-
-    fun loadTeamAccess(activity: Activity, success: (TeamAccess) -> Unit, failure: (Exception) -> Unit) {
-        val uid = FirebaseAuth.getInstance().currentUser?.uid
-            ?: return failure(IllegalStateException("Entre novamente."))
-        load(activity, { data ->
-            if (!TeamPolicy.allowed(uid, data)) {
-                failure(IllegalStateException("Cadastro não aprovado ou equipe inválida."))
-            } else {
-                // This read is denied by old rules, preventing accidental use before setup.
-                Tasks.withTimeout(FirebaseFirestore.getInstance().document("configuracao/equipes").get(Source.SERVER),20,TimeUnit.SECONDS)
-                    .addOnSuccessListener {
-                        if (!activity.isDestroyed && !activity.isFinishing && FirebaseAuth.getInstance().currentUser?.uid == uid)
-                            success(TeamAccess(uid, data.orEmpty()))
-                    }.addOnFailureListener { if (!activity.isDestroyed) failure(it) }
+    private val reads=Executors.newCachedThreadPool {work->Thread(work,"dm-agro-access").apply {isDaemon=true}}
+    private fun document(user:FirebaseUser,readiness:Boolean=false):Task<Map<String,Any>?> {
+        val request=Tasks.call(reads,java.util.concurrent.Callable<Map<String,Any>?> {
+            val project=FirebaseApp.getInstance().options.projectId?:throw AccessFailure("INVALID_RESPONSE")
+            fun read(forceRefresh:Boolean):Map<String,Any>? {
+                if(FirebaseAuth.getInstance().currentUser?.uid!=user.uid) throw AccessFailure("SESSION_CHANGED")
+                val token=Tasks.await(user.getIdToken(forceRefresh),6,TimeUnit.SECONDS).token?:throw AccessFailure("UNAUTHENTICATED")
+                if(FirebaseAuth.getInstance().currentUser?.uid!=user.uid) throw AccessFailure("SESSION_CHANGED")
+                return FirestoreAccessHttp.get(project,user.uid,token,readiness)
             }
-        }, failure)
+            try {read(false)} catch(error:AccessFailure) {if(error.code=="UNAUTHENTICATED") read(true) else throw error}
+        })
+        // This deadline also bounds DNS, which can outlast a socket connect timeout.
+        return Tasks.withTimeout(request,20,TimeUnit.SECONDS)
     }
-
+    fun load(activity: Activity, success: (Map<String, Any>?) -> Unit, failure: (Exception) -> Unit) {
+        val user=FirebaseAuth.getInstance().currentUser?:return failure(AccessFailure("UNAUTHENTICATED"))
+        document(user).addOnSuccessListener {data->
+            if(!activity.isDestroyed&&!activity.isFinishing&&FirebaseAuth.getInstance().currentUser?.uid==user.uid) success(data)
+        }.addOnFailureListener {error->
+            if(!activity.isDestroyed&&!activity.isFinishing&&FirebaseAuth.getInstance().currentUser?.uid==user.uid) failure(error)
+        }
+    }
+    fun loadTeamAccess(activity: Activity, success: (TeamAccess) -> Unit, failure: (Exception) -> Unit) {
+        val user=FirebaseAuth.getInstance().currentUser?:return failure(AccessFailure("UNAUTHENTICATED"))
+        load(activity,{data->
+            if(!TeamPolicy.allowed(user.uid,data)) failure(AccessFailure("PROFILE_INVALID"))
+            else document(user,true).addOnSuccessListener {
+                if(!activity.isDestroyed&&!activity.isFinishing&&FirebaseAuth.getInstance().currentUser?.uid==user.uid) success(TeamAccess(user.uid,data.orEmpty()))
+            }.addOnFailureListener {error->
+                if(!activity.isDestroyed&&!activity.isFinishing&&FirebaseAuth.getInstance().currentUser?.uid==user.uid) failure(error)
+            }
+        },failure)
+    }
     fun logout(activity: Activity) {
         AgroNotifications.logout(activity)
         FirebaseAuth.getInstance().signOut()
-        activity.startActivity(Intent(activity, LoginActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-        })
+        activity.startActivity(Intent(activity, LoginActivity::class.java).apply {flags=Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK})
         activity.finish()
     }
 }

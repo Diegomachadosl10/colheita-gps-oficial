@@ -54,9 +54,9 @@ class TruckScreenTest {
         val exported=report(a);assertTrue(exported.team.contains("Santo Inácio"));assertTrue(exported.period.contains("12/11/2026 01:00"))
         assertEquals(listOf("1","0","1"),exported.sections.first().rows.single());assertEquals(1,exported.sections.last().rows.size)
         assertFalse(exported.toString().contains("OUTRO"));assertFalse(exported.toString().contains("02:00"))
-        views(a.window.decorView).filterIsInstance<TextView>().single {it.text.toString()=="Compartilhar PDF / imagem deste período"}.performClick()
+        views(a.window.decorView).filterIsInstance<TextView>().single {it.text.toString()=="Compartilhar caminhões"}.performClick()
         val choices=ShadowAlertDialog.getLatestAlertDialog().listView.adapter
-        assertEquals("PDF organizado",choices.getItem(0));assertEquals("Imagem organizada (PNG)",choices.getItem(1))
+        assertEquals("Mensagem",choices.getItem(0));assertEquals("PDF",choices.getItem(1));assertEquals("Imagem",choices.getItem(2))
     }
     @Test fun openEquipmentIssuesHaveARedAccessibleIconAndCompletedOnesDoNot() {
         val a=activity()

@@ -257,3 +257,24 @@ test('a exceção de exclusão dos mapas do próprio dono é preservada',async()
   await assertSucceeds(updateDoc(doc(db('opA'),...painting),{excluido:true,editadoPor:'opA',versao:3,atualizadoEm:serverTimestamp()}));
   await assertFails(updateDoc(doc(db('opA2'),...painting),{excluido:false,editadoPor:'opA2',versao:4,atualizadoEm:serverTimestamp()}));
 });
+
+test('consulta HTTPS com ID token do usuário obedece às regras e não usa acesso de administrador do servidor',async()=>{
+  const host=process.env.FIRESTORE_EMULATOR_HOST;
+  assert.ok(host,'Run only against the configured demo emulator');
+  const project='demo-dm-agro';
+  const token=uid=>{
+    const now=Math.floor(Date.now()/1000);
+    const encode=v=>Buffer.from(JSON.stringify(v)).toString('base64url');
+    return encode({alg:'none',typ:'JWT'})+'.'+encode({sub:uid,user_id:uid,aud:project,iss:'https://securetoken.google.com/'+project,iat:now,exp:now+3600,
+      firebase:{sign_in_provider:'custom'},email:'matricula.80911@acesso.dm-agro.app'})+'.';
+  };
+  async function read(actor,path) {
+    return fetch(`http://${host}/v1/projects/${project}/databases/(default)/documents/${path}`,{headers:actor?{Authorization:'Bearer '+token(actor)}:{}});
+  }
+  const own=await read('opA','usuarios/opA');assert.equal(own.status,200);assert.equal((await own.json()).fields.status.stringValue,'aprovado');
+  assert.equal((await read('opA','usuarios/opB')).status,403);
+  assert.equal((await read(null,'usuarios/opA')).status,403);
+  assert.equal((await read(owner,'usuarios/opA')).status,200);
+  assert.equal((await read('opA','configuracao/equipes')).status,404);
+  const blockedOwn=await read('blocked','usuarios/blocked');assert.equal(blockedOwn.status,200);assert.equal((await blockedOwn.json()).fields.status.stringValue,'bloqueado');
+});

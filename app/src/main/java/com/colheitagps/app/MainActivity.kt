@@ -155,9 +155,9 @@ class MainActivity : Activity() {
                         AccessRepository.logout(this)
                     }.show()
             }
-        }, {
+        }, {error->
             AlertDialog.Builder(this).setTitle("Sem verificação de acesso")
-                .setMessage("Não foi possível confirmar seu acesso à equipe. Confira a conexão ou procure o administrador.")
+                .setMessage(AccessFailures.description(error))
                 .setCancelable(false).setPositiveButton("Tentar novamente") { _, _ ->
                     carregarPermissoes()
                 }.setNegativeButton("Voltar ao login") { _, _ ->
@@ -705,6 +705,18 @@ class MainActivity : Activity() {
             acessoConfirmado&&teamStore?.team==store.team&&teamAccess?.uid==uid
         }
     }
+    private fun compartilharFormatos(report:FieldReport,message:String,savePdf:(()->Unit)?=null) {
+        val store=teamStore?:return;val uid=teamAccess?.uid?:return
+        val options=listOf("Mensagem","PDF","Imagem")+if(savePdf!=null) listOf("Salvar PDF no celular") else emptyList()
+        AlertDialog.Builder(this).setTitle("Compartilhar ${report.title}").setItems(options.toTypedArray()) {_,selected->
+            if(!acessoConfirmado||teamAccess?.uid!=uid||teamStore?.team!=store.team) return@setItems
+            when(selected) {
+                0->startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {type="text/plain";putExtra(Intent.EXTRA_TEXT,message)},"Compartilhar"))
+                1,2->FieldReportSharing.share(this,report,store.cache,selected==1) {acessoConfirmado&&teamAccess?.uid==uid&&teamStore?.team==store.team}
+                3->savePdf?.invoke()
+            }
+        }.setNegativeButton("Cancelar",null).show()
+    }
     private fun salvarRelatorioPdf(report:FieldReport,name:String) {
         val store=teamStore?:return;val uid=teamAccess?.uid?:return
         Toast.makeText(this,"Preparando PDF…",Toast.LENGTH_SHORT).show()
@@ -903,7 +915,6 @@ class MainActivity : Activity() {
                 addView(ui.text(if (access.primary) "Administrador" else "Supervisor da equipe", 13f, ui.mint))
             })
         }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(18) })
-        if(access.manages) coluna.addView(botao("Registros excluídos") {registrosExcluidos()})
         if (access.primary && store.hasLegacy()) coluna.addView(botao("Dados antigos deste aparelho") {
             AlertDialog.Builder(this).setTitle("Preservar e importar dados anteriores")
                 .setMessage("Importe somente registros de ${TeamPolicy.label(store.team)}. Os originais e registros atuais serão preservados.")
@@ -1419,13 +1430,8 @@ class MainActivity : Activity() {
         coluna.addView(botao("+ Registrar ocorrência") { editarRegistro("relatorios_turno", -1, false, turno) })
         coluna.addView(botao("Editar / excluir registros do turno") {listarRegistros("relatorios_turno","Registros do turno $turno",false)})
         coluna.addView(botao("Compartilhar relatório") {
-            startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
-                type = "text/plain"
-                putExtra(Intent.EXTRA_TEXT, textoRelatorio(turno))
-            }, "Compartilhar turno $turno"))
+            relatorioAtual?.invoke()?.let {compartilharFormatos(it,textoRelatorio(turno)) {gerarPdfTurno(turno)}}
         })
-        coluna.addView(botao("Gerar PDF") {gerarPdfTurno(turno)})
-        coluna.addView(botao("Compartilhar PDF / imagem") {relatorioAtual?.invoke()?.let(::compartilharRelatorio)})
     }
 
     private fun gerarPdfTurno(turno:String) {
@@ -1862,7 +1868,6 @@ class MainActivity : Activity() {
         coluna.addView(botao(if (concluidas) "Voltar às pendências abertas" else "✓ Histórico deste equipamento") {
             pendenciasEquipamento(number, !concluidas)
         })
-        coluna.addView(botao("← Voltar aos equipamentos") { pendencias() })
         if (!concluidas && !archivedEquipment && podeGerenciar()) coluna.addView(botao("Excluir equipamento e suas pendências") { excluirEquipamento(number) })
     }
     private fun historicoPendencias() {
@@ -2714,9 +2719,8 @@ class MainActivity : Activity() {
         if(rows.isEmpty()) column.addView(texto("Nenhum caminhão neste período.",15f))
         val report=FieldReports.trucks(TeamPolicy.label(teamStore!!.team),period,rows,summary)
         relatorioAtual={report}
-        column.addView(botao("Compartilhar PDF / imagem deste período") {compartilharRelatorio(report)})
-        column.addView(botao("Compartilhar resumo em texto") {
-            startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {type="text/plain";putExtra(Intent.EXTRA_TEXT,TruckRecords.report(rows,TeamPolicy.label(teamStore!!.team),period,summary))},"Compartilhar controle de caminhões"))
+        column.addView(botao("Compartilhar caminhões") {
+            compartilharFormatos(report,TruckRecords.report(rows,TeamPolicy.label(teamStore!!.team),period,summary))
         })
         periodoCaminhoesMostrado=TruckShift.at(now).key
         if(live) agendarViradaCaminhoes(now)
@@ -2808,10 +2812,6 @@ class MainActivity : Activity() {
         }
         cab.addView(texto("COLHEITA GPS 2.0", 23f, Color.WHITE))
         cab.addView(botao("←") { inicio() })
-        cab.addView(botao("Compartilhar lista em PDF / imagem") {
-            compartilharRelatorio(FieldReport("Biblioteca de mapas",TeamPolicy.label(teamStore!!.team),sections=listOf(
-                ReportSection("Mapas neste aparelho",listOf("Mapa"),arquivos().map {listOf(nome(it.nameWithoutExtension))}))))
-        })
         cab.addView(
             texto("Mapas desta equipe neste aparelho. Receba o PDF compartilhado e importe pelo botão +.", 14f, 0xFFB6DCC6.toInt())
         )

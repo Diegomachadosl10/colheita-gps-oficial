@@ -86,9 +86,11 @@ class StockShareActivity:Activity() {
             ui.button(card,if(photo==null) "Adicionar foto a este lote" else "Trocar foto deste lote",true) { choosePhoto(id) }
         }
         val enabled=records.isNotEmpty()&&records.size==ids.size&&a.manages
-        ui.button(body,"Enviar mensagem e fotos") {send(false)}.isEnabled=enabled
-        ui.button(body,"Enviar tudo em PDF",true) {sendReport(true)}.isEnabled=enabled
-        ui.button(body,"Enviar tudo em imagem",true) {sendReport(false)}.isEnabled=enabled
+        ui.button(body,"Compartilhar estoques") {
+            AlertDialog.Builder(this).setTitle("Compartilhar estoques").setItems(arrayOf("Mensagem e fotos","PDF","Imagem")) {_,option->
+                when(option) {0->send(false);1->sendReport(true);2->sendReport(false)}
+            }.setNegativeButton("Cancelar",null).show()
+        }.isEnabled=enabled
         ui.button(body,"Voltar",true){finish()}
     }
     private fun choosePhoto(id:String) {

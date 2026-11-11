@@ -37,7 +37,6 @@ class LoginActivity : Activity() {
     private var enterButton:Button?=null
     private var loginIdentity:EditText?=null
     private var loginPassword:EditText?=null
-    private var connectionHelp:View?=null
     private var connectionMessage:TextView?=null
     private var observedSignIn:AccessAttempt<AuthResult>?=null
     private var resumed=false
@@ -47,8 +46,8 @@ class LoginActivity : Activity() {
         val pending=SignInAttempts.requests.current
         if(onLoginPage&&pending!=null&&!pending.task.isComplete&&!isFinishing&&!isDestroyed) {
             enterButton?.text="Aguardando resposta do acesso"
-            connectionHelp?.visibility=View.VISIBLE
-            connectionMessage?.text="O acesso está demorando a responder nesta rede. Use Testar conexão ou alterne a rede. A tentativa continua em andamento; sua autorização ainda não foi confirmada. Você pode sair desta tela com a tecla Voltar."
+            connectionMessage?.visibility=View.VISIBLE
+            connectionMessage?.text="O serviço de entrada está demorando a responder. A tentativa continua em andamento. Você pode voltar à tela inicial do celular e tentar outra rede."
         }
     }
     private val frentes = arrayOf("Santo Inácio", "Santa Inês", "Itororó", "Cafeara", "Lupionópolis", "Colorado", "Sandovalina", "Jardim Olinda", "Itaguajé")
@@ -104,11 +103,11 @@ class LoginActivity : Activity() {
             "ERROR_USER_DISABLED" -> "Esta conta foi desativada. Procure o administrador principal."
             "ERROR_OPERATION_NOT_ALLOWED" -> "O acesso por senha está indisponível no Firebase. Informe o administrador."
             "ERROR_WEAK_PASSWORD" -> "Escolha uma senha com pelo menos 8 caracteres."
-            "ERROR_NETWORK_REQUEST_FAILED" -> "O aplicativo não conseguiu conectar ao serviço de acesso nesta rede. Use Testar conexão."
+            "ERROR_NETWORK_REQUEST_FAILED" -> "O aplicativo não conseguiu conectar ao serviço de acesso nesta rede. Tente novamente quando a conexão estiver disponível."
             "ERROR_APP_NOT_AUTHORIZED", "ERROR_INVALID_API_KEY" -> "O serviço recusou a configuração do aplicativo. Informe esse problema ao administrador."
             "ERROR_INVALID_CREDENTIAL", "ERROR_INVALID_LOGIN_CREDENTIALS", "ERROR_WRONG_PASSWORD", "ERROR_USER_NOT_FOUND" -> "Identificação ou senha incorreta. Para matrícula, use o mesmo número do cadastro, incluindo zeros à esquerda."
             else -> if(registering) "Não foi possível criar a conta. Confira os dados e tente novamente."
-                else "Não foi possível concluir o acesso. Use Testar conexão e tente novamente."
+                else "Não foi possível concluir o acesso. Tente novamente."
         }
         else -> "Não foi possível concluir. Verifique a conexão e tente novamente."
     }
@@ -134,13 +133,8 @@ class LoginActivity : Activity() {
             } catch(error:Exception) {busy=false;enter.isEnabled=true;notice(errorMessage(error))}
         }
         enterButton=enter;loginIdentity=id;loginPassword=password
-        val help=LinearLayout(this).apply {orientation=LinearLayout.VERTICAL;visibility=View.GONE}
-        connectionMessage=ui.text("");ui.add(help,connectionMessage!!,8)
-        ui.button(help,"Testar conexão",true) {testConnection()}
-        ui.button(help,"Abrir configurações de Wi-Fi",true) {
-            try {startActivity(Intent(android.provider.Settings.ACTION_WIFI_SETTINGS))} catch(_:Exception) {notice("Abra as configurações de Wi-Fi do Android.")}
-        }
-        connectionHelp=help;ui.add(card,help,0)
+        connectionMessage=ui.text("").apply {visibility=View.GONE}
+        ui.add(card,connectionMessage!!,8)
         ui.button(card, "Verificar atualização", true) { startActivity(Intent(this, UpdateActivity::class.java)) }
         ui.button(card, "Solicitar acesso", true) { if (!busy) register() }
         ui.button(card, "Recuperar senha", true) {
@@ -176,29 +170,10 @@ class LoginActivity : Activity() {
             } else {
                 val error=result.exception?:IllegalStateException("A sessão mudou. Tente entrar novamente.")
                 val message=errorMessage(error)
-                connectionHelp?.visibility=View.VISIBLE;connectionMessage?.text=message
+                connectionMessage?.visibility=View.VISIBLE;connectionMessage?.text=message
                 if(resumed) notice(message) else deferredSignInError=message
             }
         }
-    }
-    private fun testConnection() {
-        val dialog=AlertDialog.Builder(this).setTitle("Teste da conexão do aplicativo")
-            .setMessage("Verificando o endereço do serviço nesta rede, sem enviar matrícula, e-mail ou senha…")
-            .setNegativeButton("Fechar",null).setPositiveButton("Copiar resultado",null).create()
-        dialog.show();dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled=false
-        Thread {
-            val report=try {AccessConnection.check(applicationContext)} catch(_:Exception) {"Não foi possível concluir o diagnóstico nesta rede."}
-            runOnUiThread {
-                if(isDestroyed||isFinishing||!dialog.isShowing) return@runOnUiThread
-                dialog.setMessage(report)
-                dialog.getButton(AlertDialog.BUTTON_POSITIVE).apply {
-                    isEnabled=true;setOnClickListener {
-                        (getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("Diagnóstico de conexão",report))
-                        android.widget.Toast.makeText(this@LoginActivity,"Resultado copiado",android.widget.Toast.LENGTH_SHORT).show()
-                    }
-                }
-            }
-        }.start()
     }
     private fun register(existing: Boolean = false) {
         val card = page(if (existing) "Concluir solicitação" else "Solicitar acesso",
@@ -289,7 +264,7 @@ class LoginActivity : Activity() {
                 }
             }
         }, {
-            if (token == attempt && !isDestroyed) status("Não foi possível verificar", "Conecte-se à internet e tente novamente. Sua aprovação será consultada no servidor.")
+            if(token==attempt&&!isDestroyed) status("Não foi possível verificar",AccessFailures.description(it))
         })
     }
     private fun watchApproval() {
@@ -312,7 +287,6 @@ class LoginActivity : Activity() {
     }
     private fun status(title: String, message: String) {
         val card = page(title, message)
-        if(title.startsWith("Não foi possível")) ui.button(card,"Testar conexão",true) {testConnection()}
         ui.button(card, "Verificar novamente") { verify() }
         ui.button(card, "Sair da conta", true) { logout() }
     }
