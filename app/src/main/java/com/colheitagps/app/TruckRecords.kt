@@ -64,6 +64,6 @@ internal object TruckRecords {
     fun details(record:JSONObject):String = "Entrada: ${entryDay(record)?.let(::label)?:"Sem data"} ${record.optString("chegada").ifBlank {"Sem horário"}}\n"+
         "Saída: "+if(record.optString("saida").isBlank()) record.optString("saidaAteCorte").takeIf {it.isNotBlank()}?.let {"Sem saída até $it"}?:"Aguardando saída" else "${exitDay(record)?.let(::label)?:"Sem data"} ${record.optString("saida")}"
     fun report(records:List<JSONObject>,team:String,period:String,summary:Summary)=
-        "DM AGRO — CAMINHÕES\n$team\n$period\nEntradas: ${summary.entries}\nSaídas: ${summary.exits}\nAguardando saída na equipe: ${summary.pending}\n\n"+
+        "DM AGRO — CAMINHÕES\n$team\n$period\nEntradas: ${summary.entries}\nSaídas: ${summary.exits}\nAguardando saída no período: ${summary.pending}\n\n"+
             records.joinToString("\n\n") {"Caminhão ${it.optString("numero")} • Turno ${it.optString("turno")}\n${details(it)}"}
 }

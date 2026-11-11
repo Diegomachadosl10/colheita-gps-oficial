@@ -31,7 +31,7 @@ internal object FieldReports {
         return ReportSection(title,listOf("Registro","Informações"),data)
     }
     fun trucks(team:String,period:String,records:List<JSONObject>,summary:TruckRecords.Summary):FieldReport = FieldReport("Entrada e saída de caminhões",team,period,listOf(
-        ReportSection("Resumo do período",listOf("Entradas","Saídas","Aguardando saída na equipe"),listOf(listOf(summary.entries.toString(),summary.exits.toString(),summary.pending.toString()))),
+        ReportSection("Resumo do período",listOf("Entradas","Saídas","Aguardando saída no período"),listOf(listOf(summary.entries.toString(),summary.exits.toString(),summary.pending.toString()))),
         ReportSection("Caminhões",listOf("Caminhão / turno","Entrada","Saída"),records.map {r->listOf("${r.optString("numero")} / ${r.optString("turno")}",
             "${TruckRecords.entryDay(r)?.let(TruckRecords::label)?:"Sem data"}\n${r.optString("chegada")}",
             if(r.optString("saida").isBlank()) r.optString("saidaAteCorte").takeIf {it.isNotBlank()}?.let {"Sem saída até\n$it"}?:"Aguardando saída" else "${TruckRecords.exitDay(r)?.let(TruckRecords::label)?:"Sem data"}\n${r.optString("saida")}")})

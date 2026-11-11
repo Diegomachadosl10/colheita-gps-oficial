@@ -47,13 +47,13 @@ class TruckScreenTest {
     }
     @Test fun theTruckScreenAndItsExportUseTheSameDayAndCutoffAndDoNotMixTeams() {
         val a=activity();val day=LocalDate.of(2026,11,11)
-        val trip=TruckRecords.build(null,"123","10:00","14:00",day,null,"santo_inacio_C")
+        val trip=TruckRecords.build(null,"123","00:30","02:00",day.plusDays(1),null,"santo_inacio_C")
         a.getSharedPreferences("registros_v3",0).edit().putString("caminhoes",JSONArray().put(trip).toString()).commit()
         TeamStore(a.applicationContext,"sandovalina_C").prefs("registros_v3").edit().putString("caminhoes",JSONArray().put(TruckRecords.build(null,"OUTRO","10:00","",day,null,"sandovalina_C")).toString()).commit()
-        ReflectionHelpers.setField(a,"diaCaminhoes","11/11/2026");ReflectionHelpers.setField(a,"corteCaminhoes",LocalTime.NOON);call(a,"caminhoes")
-        val exported=report(a);assertTrue(exported.team.contains("Santo Inácio"));assertTrue(exported.period.contains("12:00"))
+        ReflectionHelpers.setField(a,"diaCaminhoes","11/11/2026");ReflectionHelpers.setField(a,"corteCaminhoes",LocalTime.of(1,0));call(a,"caminhoes")
+        val exported=report(a);assertTrue(exported.team.contains("Santo Inácio"));assertTrue(exported.period.contains("12/11/2026 01:00"))
         assertEquals(listOf("1","0","1"),exported.sections.first().rows.single());assertEquals(1,exported.sections.last().rows.size)
-        assertFalse(exported.toString().contains("OUTRO"));assertFalse(exported.toString().contains("14:00"))
+        assertFalse(exported.toString().contains("OUTRO"));assertFalse(exported.toString().contains("02:00"))
         views(a.window.decorView).filterIsInstance<TextView>().single {it.text.toString()=="Compartilhar PDF / imagem deste período"}.performClick()
         val choices=ShadowAlertDialog.getLatestAlertDialog().listView.adapter
         assertEquals("PDF organizado",choices.getItem(0));assertEquals("Imagem organizada (PNG)",choices.getItem(1))

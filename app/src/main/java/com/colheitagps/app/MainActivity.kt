@@ -113,7 +113,10 @@ class MainActivity : Activity() {
     }
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        if(hasFocus) StartupUpdates.focused(this)
+        if(hasFocus) {
+            StartupUpdates.focused(this)
+            if(telaAtual=="caminhoes"&&diaCaminhoes.isBlank()) atualizarTurnoCaminhoes.run()
+        }
         teamSync?.available(hasFocus && mapa == null)
     }
     private fun pausarSincronizacao() {
@@ -172,7 +175,6 @@ class MainActivity : Activity() {
     private var gpsManager: LocationManager? = null
     private var gpsListener: LocationListener? = null
     private var local: Location? = null
-    private var atualizarGpsAviso: (() -> Unit)? = null
     private var status: TextView? = null
     private var telaAtual = "inicio"
     private var fotoPendente: String? = null
@@ -637,7 +639,9 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         StartupUpdates.resume(this)
-        if(acessoConfirmado&&telaAtual=="inicio"&&teamStore!=null) inicio()
+        if(acessoConfirmado&&teamStore!=null) {
+            if(telaAtual=="inicio") inicio() else if(telaAtual=="caminhoes") caminhoes()
+        }
     }
 
     private fun tela(): FrameLayout =
@@ -765,6 +769,7 @@ class MainActivity : Activity() {
     }
 
     private fun pagina(titulo: String, parent: () -> Unit = { inicio() }): LinearLayout {
+        syncUiHandler.removeCallbacks(atualizarTurnoCaminhoes)
         relatorioAtual = {relatorioPadrao(titulo)}
         if(titulo=="DM AGRO") relatorioAtual=null
         returnToParent = if (titulo == "DM AGRO") null else parent
@@ -816,11 +821,10 @@ class MainActivity : Activity() {
                 menu.add("Mapas").setOnMenuItemClickListener { biblioteca(); true }
                 menu.add("Pendências").setOnMenuItemClickListener { pendencias(); true }
                 menu.add("Peças a pedir").setOnMenuItemClickListener { pecas(); true }
-                menu.add("Avisos de encalhado").setOnMenuItemClickListener {avisosEncalhados();true}
                 menu.add("Ocorrências de campo").setOnMenuItemClickListener { ocorrenciasCampo(); true }
                 menu.add("Registro de chuva").setOnMenuItemClickListener { chuvas(); true }
                 if (podeGerenciar()) menu.add("Calendário").setOnMenuItemClickListener { calendario(); true }
-                if (podeGerenciar()) menu.add("Caminhões").setOnMenuItemClickListener { caminhoes(); true }
+                if (podeGerenciar()) menu.add("Caminhões").setOnMenuItemClickListener { abrirCaminhoes(); true }
                 if (podeGerenciar()) menu.add("Relatórios de turno").setOnMenuItemClickListener { relatorios(); true }
                 if (podeGerenciar() && titulo == "Estoque de cana") {
                     menu.add("Compartilhar estoque").setOnMenuItemClickListener { escolherCompartilhamentoEstoque(); true }
@@ -864,19 +868,6 @@ class MainActivity : Activity() {
         })
         coluna.addView(teamPanel, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(22) })
         if (access.primary && access.profile["nome"]?.toString().isNullOrBlank()) coluna.addView(botao("Definir meu nome") { definirNome() })
-        val alertCount=FieldReports.rows(dados(FieldAlertRecords.GROUP)).count {FieldAlertRecords.isAlert(it)&&!it.optBoolean("concluida")}
-        coluna.addView(ui.panel {editarAvisoEncalhado()}.apply {
-            orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL
-            background=GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(0xFF723329.toInt(),0xFF4C241E.toInt())).apply {cornerRadius=dp(18).toFloat();setStroke(dp(1),0xFFB87969.toInt())}
-            contentDescription="Avisar equipamento encalhado ao supervisor da equipe"
-            addView(FieldIconView(this@MainActivity,FieldIcon.BELL,0xFFFFD5B8.toInt()),LinearLayout.LayoutParams(dp(34),dp(34)))
-            addView(LinearLayout(this@MainActivity).apply {
-                orientation=LinearLayout.VERTICAL;setPadding(dp(12),0,0,0)
-                addView(ui.text("Avisar equipamento encalhado",16f,bold=true))
-                addView(ui.text("Solicitar apoio ao supervisor da equipe",13f,0xFFFFD5B8.toInt()))
-            },LinearLayout.LayoutParams(0,-2,1f))
-        },LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(14)})
-        coluna.addView(botao(if(alertCount>0) "Ver avisos de encalhado • $alertCount em aberto" else "Ver avisos de encalhado") {avisosEncalhados()})
         coluna.addView(WeatherActivity.homeCard(this, store.team), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(14) })
         val verse=DailyVerse.forDate()
         coluna.addView(ui.panel().apply {
@@ -899,7 +890,7 @@ class MainActivity : Activity() {
         ))
         tiles.add(DashboardUi.Tile("Ocorrências", FieldIcon.OCCURRENCE, { ocorrenciasCampo() }))
         if (access.manages) tiles.addAll(listOf(
-            DashboardUi.Tile("Caminhões", FieldIcon.TRUCK, { caminhoes() }),
+            DashboardUi.Tile("Caminhões", FieldIcon.TRUCK, { abrirCaminhoes() }),
             DashboardUi.Tile("Calendário", FieldIcon.CALENDAR, { calendario() })
         ))
         ui.grid(coluna, tiles)
@@ -2298,78 +2289,10 @@ class MainActivity : Activity() {
         dialogo.show()
     }
 
-    private fun avisosEncalhados(historico:Boolean=false) {
-        val title=if(historico) "Histórico de encalhados" else "Avisos de encalhado"
-        val column=pagina(title,parent={if(historico) avisosEncalhados() else inicio()})
-        refreshList={avisosEncalhados(historico)}
-        val records=FieldReports.rows(dados(FieldAlertRecords.GROUP)).filter {FieldAlertRecords.isAlert(it)&&it.optBoolean("concluida")==historico}.reversed()
-        relatorioAtual={relatorioGrupo(title,FieldAlertRecords.GROUP,records)}
-        column.addView(texto(TeamPolicy.label(teamStore!!.team),17f,0xFFB7E9AF.toInt()))
-        column.addView(botao("Avisar equipamento encalhado") {editarAvisoEncalhado()})
-        column.addView(texto("Os avisos ficam registrados nas ocorrências da equipe. A notificação depende de internet e dos avisos ativados no celular do supervisor; não confirma que ele já leu.",14f))
-        for(item in records) column.addView(cartao("Equipamento ${item.optString("equipamento")} • "+if(historico) "Concluído" else "Encalhado",
-            "${item.optString("dataCadastro")} ${item.optString("horaCadastro")}\n${item.optString("localizacao").ifBlank {"Local não informado"}}\n${item.optString("descricao")}\nGPS: ${item.optString("gps").ifBlank {"Não anexado"}}") {
-                comRegistroAtual(FieldAlertRecords.GROUP,item.optString("id")) {opcoesOcorrencia(it)}
-            },LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(10)})
-        if(records.isEmpty()) column.addView(texto("Nenhum aviso nesta lista.",15f))
-        column.addView(botao(if(historico) "Voltar aos avisos abertos" else "Histórico de avisos concluídos") {avisosEncalhados(!historico)})
-    }
-    private fun editarAvisoEncalhado(existing:JSONObject?=null) {
-        val access=teamAccess?:return;val store=teamStore?:return
-        if(!acessoConfirmado||!exigirEdicao(FieldAlertRecords.GROUP,existing)) return
-        pausarSincronizacao()
-        val ui=AccessUi(this,attach=false)
-        val body=LinearLayout(this).apply {orientation=LinearLayout.VERTICAL;setPadding(dp(18),dp(8),dp(18),dp(16))}
-        ui.add(body,ui.text(TeamPolicy.label(store.team),16f,ui.green,true),0)
-        ui.add(body,ui.text("Informe o equipamento e confirme o aviso. Ele será registrado na equipe e seguirá pelas notificações já configuradas. Sem internet, abra o aplicativo conectado para concluir a sincronização.",14f),8)
-        val equipment=ui.field(body,"Número do equipamento").apply {setText(existing?.optString("equipamento").orEmpty())}
-        val catalog=MaintenanceRecords.summaries(maintenanceCatalog())
-        if(catalog.isNotEmpty()) ui.button(body,"Escolher equipamento salvo",true) {
-            AlertDialog.Builder(this).setTitle("Equipamento encalhado").setItems(catalog.map {it.number}.toTypedArray()) {_,i->equipment.setText(catalog[i].number)}.show()
-        }
-        val place=ui.field(body,"Local / talhão / ponto de referência (opcional)").apply {setText(existing?.optString("localizacao").orEmpty())}
-        val note=ui.field(body,"Observação (opcional)").apply {setSingleLine(false);minLines=2;setText(existing?.optString("observacaoEncalhado").orEmpty())}
-        val gpsInfo=ui.text("")
-        val attach=CheckBox(this).apply {text="Anexar minha localização GPS atual, se disponível";setTextColor(ui.dark);isChecked=existing==null;minHeight=dp(48)}
-        ui.add(body,attach);ui.add(body,gpsInfo,5)
-        val updateGps:()->Unit={
-            val current=FieldAlertRecords.currentLocation(local,SystemClock.elapsedRealtimeNanos())
-            gpsInfo.text=if(current!=null) String.format(Locale("pt","BR"),"GPS atual: %.6f, %.6f • precisão informada ±%.0f m",current.latitude,current.longitude,current.accuracy)
-                else if(existing?.optString("gps").orEmpty().isNotBlank()) "Localização já registrada: ${existing!!.optString("gps")}. Ela será mantida se não houver nova posição atual."
-                else "Sem posição GPS recente. Você pode buscar o GPS ou registrar o aviso com um ponto de referência."
-        }
-        updateGps();ui.button(body,"Buscar localização GPS atual",true) {attach.isChecked=true;iniciarGps();updateGps()}
-        ui.add(body,ui.text("Registrar o aviso não confirma a leitura pelo supervisor. A entrega depende da conexão e das configurações do Android.",13f),10)
-        val dialog=AlertDialog.Builder(this).setTitle(if(existing==null) "Avisar equipamento encalhado" else "Corrigir aviso de encalhado")
-            .setView(ScrollView(this).apply {addView(body)}).setNegativeButton("Cancelar",null)
-            .setPositiveButton(if(existing==null) "Registrar aviso" else "Salvar correção",null).create()
-        dialog.setOnShowListener {
-            atualizarGpsAviso=updateGps
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                if(!acessoConfirmado||teamAccess?.uid!=access.uid||teamStore?.team!=store.team||!exigirEdicao(FieldAlertRecords.GROUP,existing)) return@setOnClickListener
-                val record=try {FieldAlertRecords.build(existing,equipment.text.toString(),place.text.toString(),note.text.toString(),access.uid,
-                    DashboardUi.name(access,sessionName),store.team,if(attach.isChecked) local else null,System.currentTimeMillis(),SystemClock.elapsedRealtimeNanos())}
-                    catch(error:IllegalArgumentException) {equipment.error=error.message;return@setOnClickListener}
-                val all=dados(FieldAlertRecords.GROUP)
-                if(!colocarRegistro(all,if(existing==null) -1 else 0,record)) return@setOnClickListener
-                dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled=false
-                guardar(FieldAlertRecords.GROUP,all)
-                dialog.dismiss();mapa?.salvar();mapa=null;chaveAtual=""
-                avisosEncalhados();teamSync?.retry()
-                Toast.makeText(this,"Aviso salvo neste aparelho para a equipe. Aguarde a sincronização para o envio da notificação.",Toast.LENGTH_LONG).show()
-            }
-        }
-        dialog.setOnDismissListener {if(atualizarGpsAviso===updateGps) atualizarGpsAviso=null;teamSync?.available(hasWindowFocus()&&mapa==null)}
-        dialog.show()
-    }
-
     private fun ocorrenciasCampo(concluidas: Boolean = false) {
         val coluna = pagina(if (concluidas) "Histórico de ocorrências" else "Ocorrências de campo", parent = { if (concluidas) ocorrenciasCampo() else inicio() })
         refreshList = { ocorrenciasCampo(concluidas) }
-        if (!concluidas) {
-            coluna.addView(botao("Avisar equipamento encalhado") {editarAvisoEncalhado()})
-            coluna.addView(botao("+ Nova ocorrência") { editarOcorrencia(-1) })
-        }
+        if (!concluidas) coluna.addView(botao("+ Nova ocorrência") {editarOcorrencia(-1)})
         val arr = dados("ocorrencias_campo")
         var quantidade = 0
         for (i in arr.length() - 1 downTo 0) {
@@ -2392,9 +2315,10 @@ class MainActivity : Activity() {
         pausarSincronizacao()
         val atual = if (idx >= 0) dados("ocorrencias_campo").optJSONObject(idx) else null
         if (!exigirEdicao("ocorrencias_campo", atual)) return
-        if(atual!=null&&FieldAlertRecords.isAlert(atual)) {editarAvisoEncalhado(atual);return}
         val corpo = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(18), dp(8), dp(18), dp(8)) }
-        val tipos = arrayOf("Buraco", "Erosão", "Problema em curva", "Obstáculo", "Outro")
+        val baseTipos=arrayOf("Buraco","Erosão","Problema em curva","Obstáculo","Outro")
+        val previousType=atual?.optString("tipo").orEmpty()
+        val tipos=if(previousType.isNotBlank()&&previousType !in baseTipos) baseTipos+previousType else baseTipos
         val tipo = Spinner(this).apply {
             adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, tipos)
             setSelection(tipos.indexOf(atual?.optString("tipo")).coerceAtLeast(0))
@@ -2715,36 +2639,71 @@ class MainActivity : Activity() {
     }
     private var diaCaminhoes=""
     private var corteCaminhoes:java.time.LocalTime?=null
+    private var relogioCaminhoes:java.time.Clock=java.time.Clock.systemDefaultZone()
+    private var periodoCaminhoesMostrado=""
+    private val atualizarTurnoCaminhoes=object:Runnable {
+        override fun run() {
+            if(telaAtual!="caminhoes"||diaCaminhoes.isNotBlank()||!acessoConfirmado||isFinishing||isDestroyed) return
+            val now=java.time.LocalDateTime.now(relogioCaminhoes)
+            if(TruckShift.at(now).key!=periodoCaminhoesMostrado) {corteCaminhoes=null;caminhoes()}
+            else agendarViradaCaminhoes(now)
+        }
+    }
+    private fun agendarViradaCaminhoes(now:java.time.LocalDateTime) {
+        syncUiHandler.removeCallbacks(atualizarTurnoCaminhoes)
+        val delay=java.time.Duration.between(now,TruckShift.at(now).end).toMillis().coerceIn(1L,60_000L)
+        syncUiHandler.postDelayed(atualizarTurnoCaminhoes,delay)
+    }
+    private fun abrirCaminhoes() {diaCaminhoes="";corteCaminhoes=null;caminhoes()}
     private fun escolherDiaCaminhao(initial:java.time.LocalDate,selected:(java.time.LocalDate)->Unit) {
         DatePickerDialog(this,{_,year,month,day->selected(java.time.LocalDate.of(year,month+1,day))},initial.year,initial.monthValue-1,initial.dayOfMonth).show()
+    }
+    private fun historicoCaminhoes() {
+        val now=java.time.LocalDateTime.now(relogioCaminhoes)
+        AlertDialog.Builder(this).setTitle("Histórico de caminhões")
+            .setItems(arrayOf("Escolher data de início do turno","Todos os registros")) {_,option->
+                if(option==1) {diaCaminhoes="todos";corteCaminhoes=null;caminhoes()}
+                else escolherDiaCaminhao(RainRecords.date(diaCaminhoes)?:TruckShift.at(now).date) {date->diaCaminhoes=TruckRecords.label(date);corteCaminhoes=null;caminhoes()}
+            }.setNegativeButton("Cancelar",null).show()
     }
     private fun caminhoes() {
         if(!exigirGestor()) return
         val column=pagina("Controle de caminhões")
-        refreshList={caminhoes()}
-        val selected=when(diaCaminhoes) {"todos","sem_data"->null;""->java.time.LocalDate.now();else->RainRecords.date(diaCaminhoes)}
-        val period=if(diaCaminhoes=="sem_data") "Registros antigos sem data ou horário" else selected?.let {"Dia: ${TruckRecords.label(it)} • "+(corteCaminhoes?.let {hour->"até ${hour}"}?:"dia completo")}?:"Todos os dias"
-        column.addView(texto(TeamPolicy.label(teamStore!!.team),17f,0xFFB7E9AF.toInt()))
-        column.addView(botao("📅 $period") {escolherDiaCaminhao(selected?:java.time.LocalDate.now()) {day->diaCaminhoes=TruckRecords.label(day);corteCaminhoes=null;caminhoes()}})
-        val filters=LinearLayout(this).apply {orientation=LinearLayout.HORIZONTAL}
-        for((label,value) in listOf("Hoje" to dataHoje(),"Todos os dias" to "todos")) filters.addView(botao(label) {diaCaminhoes=value;corteCaminhoes=null;caminhoes()},LinearLayout.LayoutParams(0,-2,1f))
-        column.addView(filters)
-        if(selected!=null) {
-            column.addView(botao("Até que horas: ${corteCaminhoes?.toString()?:"dia completo"}") {
-                val initial=corteCaminhoes?:java.time.LocalTime.now()
-                TimePickerDialog(this,{_,hour,minute->corteCaminhoes=java.time.LocalTime.of(hour,minute);caminhoes()},initial.hour,initial.minute,true).show()
-            })
-            if(corteCaminhoes!=null) column.addView(botao("Mostrar o dia completo") {corteCaminhoes=null;caminhoes()})
+        telaAtual="caminhoes";refreshList={caminhoes()}
+        val now=java.time.LocalDateTime.now(relogioCaminhoes)
+        val shift=teamStore!!.team.substringAfterLast('_')
+        val live=diaCaminhoes.isBlank()
+        if(live&&periodoCaminhoesMostrado!=TruckShift.at(now).key) corteCaminhoes=null
+        val selectedDate=RainRecords.date(diaCaminhoes)
+        val interval=if(live) TruckShift.active(shift,now) else selectedDate?.let {TruckShift.period(shift,it)}
+        val cutoff=interval?.let {period->
+            corteCaminhoes?.let {hour->TruckShift.cutoff(period,hour)}?:if(live) now else period.end
         }
+        val period=if(diaCaminhoes=="todos") "Histórico • todos os registros" else interval?.let {
+            (if(live) "Turno atual\n" else "Histórico\n")+it.label()+cutoff?.let {end->"\nAté ${end.format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"))}"}.orEmpty()
+        }?:"Turno $shift • ${TruckShift.hours(shift)}\nFora do horário deste turno • lista ativa vazia"
+        column.addView(texto(TeamPolicy.label(teamStore!!.team),17f,0xFFB7E9AF.toInt()))
+        column.addView(texto(period,16f))
+        val filters=LinearLayout(this).apply {orientation=LinearLayout.HORIZONTAL}
+        filters.addView(botao("Turno atual") {abrirCaminhoes()},LinearLayout.LayoutParams(0,-2,1f))
+        filters.addView(botao("Histórico") {historicoCaminhoes()},LinearLayout.LayoutParams(0,-2,1f))
+        column.addView(filters)
+        if(interval!=null) column.addView(botao("Até que horas: ${corteCaminhoes?.toString()?:if(live) "agora" else "fim do turno"}") {
+            val initial=corteCaminhoes?:if(live) now.toLocalTime() else interval.end.toLocalTime()
+            TimePickerDialog(this,{_,hour,minute->
+                val value=java.time.LocalTime.of(hour,minute)
+                try {TruckShift.cutoff(interval,value);corteCaminhoes=value;caminhoes()}
+                catch(error:IllegalArgumentException) {noticeCaminhao(error.message?:"Confira o horário.")}
+            },initial.hour,initial.minute,true).show()
+        })
+        if(corteCaminhoes!=null) column.addView(botao("Remover horário de corte") {corteCaminhoes=null;caminhoes()})
         column.addView(botao("+ Registrar entrada") {editarCaminhao(-1)})
         val original=dados("caminhoes")
-        val all=if(selected==null) original else TruckRecords.until(original,java.time.LocalDateTime.of(selected,corteCaminhoes?:java.time.LocalTime.MAX))
-        var rows=TruckRecords.rows(all,selected,includeOldPending=selected!=null)
-        if(diaCaminhoes=="sem_data") rows=rows.filter {TruckRecords.entryDay(it)==null||TruckRecords.time(it.optString("chegada"))==null}
-        else if(TruckRecords.active(original).any {TruckRecords.entryDay(it)==null||TruckRecords.time(it.optString("chegada"))==null}) column.addView(botao("Corrigir registros antigos sem data ou horário") {diaCaminhoes="sem_data";caminhoes()})
-        val summary=TruckRecords.summary(if(diaCaminhoes=="sem_data") JSONArray(rows) else all,selected)
-        column.addView(texto("Entradas: ${summary.entries} • Saídas: ${summary.exits}\nAguardando saída na equipe: ${summary.pending}",16f))
-        if(selected!=null) column.addView(texto("A situação considera o horário de corte. Caminhões de dias anteriores ainda sem saída também aparecem. Cada registro pertence ao turno desta equipe.",14f))
+        val snapshot=if(diaCaminhoes=="todos") TruckShift.Snapshot(TruckRecords.rows(original,null),TruckRecords.summary(original,null))
+            else TruckShift.snapshot(original,interval,cutoff)
+        val rows=snapshot.rows;val summary=snapshot.summary
+        column.addView(texto("Entradas: ${summary.entries} • Saídas: ${summary.exits}\nAguardando saída neste período: ${summary.pending}",16f))
+        column.addView(texto("A lista zera na troca de turno. Os registros anteriores ficam no Histórico.",14f))
         for(record in rows) column.addView(cartao("Caminhão ${record.optString("numero")} • Turno ${record.optString("turno")}",TruckRecords.details(record)) {
             AlertDialog.Builder(this).setTitle("Caminhão ${record.optString("numero")}")
                 .setItems(arrayOf("Registrar saída / editar entrada","Excluir e manter no histórico")) {_,option->
@@ -2758,32 +2717,47 @@ class MainActivity : Activity() {
         column.addView(botao("Compartilhar resumo em texto") {
             startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {type="text/plain";putExtra(Intent.EXTRA_TEXT,TruckRecords.report(rows,TeamPolicy.label(teamStore!!.team),period,summary))},"Compartilhar controle de caminhões"))
         })
+        periodoCaminhoesMostrado=TruckShift.at(now).key
+        if(live) agendarViradaCaminhoes(now)
     }
     private fun editarCaminhao(idx:Int) {
         if(!exigirGestor()) return
         pausarSincronizacao()
         val current=if(idx>=0) dados("caminhoes").optJSONObject(idx) else null
         if(!exigirEdicao("caminhoes",current)) return
-        var entryDay=current?.let(TruckRecords::entryDay)?:RainRecords.date(diaCaminhoes)?:java.time.LocalDate.now()
+        val selectedStart=RainRecords.date(diaCaminhoes)
+        val shift=teamStore!!.team.substringAfterLast('_')
+        var manualDate=false
+        var entryDay=current?.let(TruckRecords::entryDay)?:selectedStart?:java.time.LocalDate.now(relogioCaminhoes)
         var exitDay=current?.let {if(it.optString("saida").isNotBlank()) TruckRecords.exitDay(it) else null}
         val ui=AccessUi(this,attach=false)
         val body=LinearLayout(this).apply {orientation=LinearLayout.VERTICAL;setPadding(dp(18),dp(8),dp(18),dp(12))}
         ui.add(body,ui.text(TeamPolicy.label(teamStore!!.team),15f,ui.green,true),0)
         val number=ui.field(body,"Número do caminhão").apply {setText(current?.optString("numero").orEmpty())}
         val entryButton=ui.button(body,"Data da entrada: ${TruckRecords.label(entryDay)}",true) {}
-        entryButton.setOnClickListener {escolherDiaCaminhao(entryDay) {day->entryDay=day;entryButton.text="Data da entrada: ${TruckRecords.label(day)}"}}
+        entryButton.setOnClickListener {escolherDiaCaminhao(entryDay) {day->manualDate=true;entryDay=day;entryButton.text="Data da entrada: ${TruckRecords.label(day)}"}}
         val arrival=ui.field(body,"Entrada (HH:mm)").apply {setText(current?.optString("chegada").orEmpty());inputType=android.text.InputType.TYPE_CLASS_DATETIME or android.text.InputType.TYPE_DATETIME_VARIATION_TIME}
+        ui.add(body,ui.text("Turno $shift: ${TruckShift.hours(shift)}. Informe a data real da entrada.",13f),5)
+        arrival.addTextChangedListener(object:android.text.TextWatcher {
+            override fun beforeTextChanged(s:CharSequence?,start:Int,count:Int,after:Int) {}
+            override fun afterTextChanged(s:android.text.Editable?) {}
+            override fun onTextChanged(s:CharSequence?,start:Int,before:Int,count:Int) {
+                if(current==null&&selectedStart!=null&&!manualDate) TruckRecords.time(s.toString())?.let {hour->
+                    entryDay=TruckShift.entryDate(selectedStart,shift,hour);entryButton.text="Data da entrada: ${TruckRecords.label(entryDay)}"
+                }
+            }
+        })
         val departure=ui.field(body,"Saída (HH:mm), opcional").apply {setText(current?.optString("saida").orEmpty());inputType=android.text.InputType.TYPE_CLASS_DATETIME or android.text.InputType.TYPE_DATETIME_VARIATION_TIME}
         val exitButton=ui.button(body,"Data da saída: ${exitDay?.let(TruckRecords::label)?:"automática"}",true) {}
         exitButton.setOnClickListener {escolherDiaCaminhao(exitDay?:entryDay) {day->exitDay=day;exitButton.text="Data da saída: ${TruckRecords.label(day)}"}}
         ui.add(body,ui.text("Sem data de saída escolhida, um horário menor que a entrada será registrado no dia seguinte. Deixe a saída vazia enquanto o caminhão estiver na frente.",13f),8)
         ui.button(body,"Preencher entrada agora",true) {
-            entryDay=java.time.LocalDate.now();entryButton.text="Data da entrada: ${TruckRecords.label(entryDay)}"
-            arrival.setText(java.time.LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm")))
+            manualDate=true;entryDay=java.time.LocalDate.now(relogioCaminhoes);entryButton.text="Data da entrada: ${TruckRecords.label(entryDay)}"
+            arrival.setText(java.time.LocalTime.now(relogioCaminhoes).format(java.time.format.DateTimeFormatter.ofPattern("HH:mm")))
         }
         ui.button(body,"Preencher saída agora",true) {
-            exitDay=java.time.LocalDate.now();exitButton.text="Data da saída: ${TruckRecords.label(exitDay!!)}"
-            departure.setText(java.time.LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm")))
+            exitDay=java.time.LocalDate.now(relogioCaminhoes);exitButton.text="Data da saída: ${TruckRecords.label(exitDay!!)}"
+            departure.setText(java.time.LocalTime.now(relogioCaminhoes).format(java.time.format.DateTimeFormatter.ofPattern("HH:mm")))
         }
         ui.button(body,"🎤 Ditar informações",true) {ouvir {speech->
             Regex("(?:caminhão|caminhao)\\s*(?:número\\s*)?([0-9]+)",RegexOption.IGNORE_CASE).find(speech)?.groupValues?.get(1)?.let {number.setText(it)}
@@ -2798,6 +2772,10 @@ class MainActivity : Activity() {
             if(!exigirGestor()) return@setOnClickListener
             val record=try {TruckRecords.build(current,number.text.toString(),arrival.text.toString(),departure.text.toString(),entryDay,exitDay,teamStore!!.team)}
                 catch(error:IllegalArgumentException) {noticeCaminhao(error.message?:"Confira os dados do caminhão.");return@setOnClickListener}
+            if(current==null||entryDay!=TruckRecords.entryDay(current)||record.optString("chegada")!=current.optString("chegada")) {
+                try {TruckShift.requireEntry(shift,TruckShift.entry(record)!!)}
+                catch(error:IllegalArgumentException) {arrival.error=error.message;return@setOnClickListener}
+            }
             val all=dados("caminhoes")
             if(!colocarRegistro(all,if(current==null) -1 else 0,record)) return@setOnClickListener
             guardar("caminhoes",all);dialog.dismiss();caminhoes()
@@ -3509,14 +3487,13 @@ class MainActivity : Activity() {
             "Borracha", "Desfazer", "Excluir última pintura",
             "O.S. de trabalho", "GPS", "Salvar mapa pintado", "Voltar aos mapas"
         )
-        val navigation=arrayOf("Repor orientação original (0°)","Como girar o mapa","Avisar equipamento encalhado")
+        val navigation=arrayOf("Repor orientação original (0°)","Como girar o mapa")
         AlertDialog.Builder(this).setTitle("Ferramentas")
             .setItems(opcoes+navigation) { _, i ->
                 if(i>=opcoes.size) {
                     when(i-opcoes.size) {
                         0->v.reporOrientacao()
                         1->AlertDialog.Builder(this).setTitle("Girar, aproximar e mover").setMessage("Coloque dois dedos no mapa e gire livremente. Afaste ou aproxime os dedos para mudar o zoom. Arraste com dois dedos para mover. O botão 0° repõe a orientação original do PDF; o GPS, as pinturas e as medidas acompanham o mapa.").setPositiveButton("Entendi",null).show()
-                        2->editarAvisoEncalhado()
                     }
                     return@setItems
                 }
@@ -3641,7 +3618,6 @@ class MainActivity : Activity() {
 
         gpsListener = LocationListener { p: Location ->
             local = p
-            atualizarGpsAviso?.invoke()
             mapa?.atualizarGps(p.latitude, p.longitude)
 
             status?.text = String.format(
@@ -3707,6 +3683,7 @@ class MainActivity : Activity() {
 
     override fun onPause() {
         super.onPause()
+        syncUiHandler.removeCallbacks(atualizarTurnoCaminhoes)
         mapa?.salvar()
     }
 
