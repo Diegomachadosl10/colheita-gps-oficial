@@ -312,6 +312,7 @@ class LoginActivity : Activity() {
     }
     private fun status(title: String, message: String) {
         val card = page(title, message)
+        if(title.startsWith("Não foi possível")) ui.button(card,"Testar conexão",true) {testConnection()}
         ui.button(card, "Verificar novamente") { verify() }
         ui.button(card, "Sair da conta", true) { logout() }
     }

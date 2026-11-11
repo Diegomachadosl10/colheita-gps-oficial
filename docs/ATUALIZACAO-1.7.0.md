@@ -23,7 +23,7 @@ O teste de conexão consulta somente a configuração pública do projeto na red
 1. Instale DM-AGRO-1.7.0.apk sobre o aplicativo atual. Não desinstale e não limpe dados. A assinatura é a mesma das versões anteriores.
 2. Ative o Wi-Fi e tente entrar digitando seus dados somente no aplicativo.
 3. Se continuar esperando, aguarde 25 segundos e toque em Testar conexão. Pode ser necessário rolar a tela.
-4. Aguarde o resultado e toque em Copiar resultado. Envie somente esse texto para continuarmos a investigação. Não envie a senha ou captura com a senha visível.
+4. Se o aplicativo estiver com a sessão salva e mostrar Não foi possível verificar, o botão Testar conexão também aparece nessa tela. Aguarde o resultado e toque em Copiar resultado. Envie somente esse texto para continuarmos a investigação. Não envie a senha ou captura com a senha visível.
 5. Se precisar usar o aplicativo enquanto o Wi-Fi é investigado, alterne para os dados móveis, que já funcionaram no teste anterior.
 6. Para testar a O.S., use uma ordem fictícia como TESTE-OS com talhões de exemplo. Encerre, abra o histórico, confira os dados e reabra usando um número diferente se já existir outro cadastro. Confira a sincronização da equipe.
 
@@ -44,6 +44,6 @@ Para compilar pelo Actions quando o código remoto estiver atualizado e a assina
 
 ## Verificação e configuração
 
-Compilação testDebugUnitTest + assembleDebug aprovada, com 122 testes Android sem falhas. Incluem tarefa de login sem resposta, exibição da ajuda após 25 segundos, liberação após erro de rede, prevenção de logins simultâneos, classificação do diagnóstico sem reproduzir dados brutos, fechamento de O.S. offline sem perder informações, impedimento de encerrar com alterações não salvas, reabertura sem sobrescrever outra ordem e proteção dos gestores. Os testes Android simulam respostas do SDK; não fazem login na conta do usuário nem reproduzem o Wi-Fi doméstico.
+Compilação testDebugUnitTest + assembleDebug aprovada, com 123 testes Android sem falhas. Incluem tarefa de login sem resposta, exibição da ajuda após 25 segundos, liberação após erro de rede, prevenção de logins simultâneos, classificação do diagnóstico sem reproduzir dados brutos, fechamento de O.S. offline sem perder informações, impedimento de encerrar com alterações não salvas, reabertura sem sobrescrever outra ordem e proteção dos gestores. Os testes Android simulam respostas do SDK; não fazem login na conta do usuário nem reproduzem o Wi-Fi doméstico.
 
 Emuladores Firebase: 22 testes aprovados, incluindo gravação e leitura de O.S. encerradas e reabertura por gestores, com acesso negado às demais equipes e aos operadores. Não houve alteração nas regras publicadas ou no arquivo de regras desta versão; o grupo historico_os já era previsto nas regras de 1.5.0. Se aquelas regras ainda não foram publicadas, elas continuam necessárias para a sincronização desse grupo. Nenhuma alteração no Worker Cloudflare, assinatura, administrador principal ou plano gratuito foi feita. O APK não foi instalado em aparelho físico nesta sessão.

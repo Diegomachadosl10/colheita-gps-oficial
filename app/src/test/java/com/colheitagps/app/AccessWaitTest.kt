@@ -50,6 +50,13 @@ class AccessWaitTest {
         assertTrue(button.isEnabled);assertNull(SignInAttempts.requests.current)
         assertTrue(views(a.window.decorView).filterIsInstance<TextView>().any {it.text.toString().startsWith("Sem conexão com o serviço")})
     }
+    @Test fun aSavedSessionWhoseServerCheckFailsStillOffersTheNetworkTest() {
+        val a=Robolectric.buildActivity(LoginActivity::class.java).get();a.setTheme(android.R.style.Theme_Material_Light_NoActionBar)
+        ReflectionHelpers.setField(a,"ui",AccessUi(a))
+        a.javaClass.getDeclaredMethod("status",String::class.java,String::class.java).apply {isAccessible=true}.invoke(a,"Não foi possível verificar","Conecte-se à internet e tente novamente.")
+        assertTrue(views(a.window.decorView).filterIsInstance<Button>().any {it.text.toString()=="Testar conexão"})
+        assertTrue(views(a.window.decorView).filterIsInstance<Button>().any {it.text.toString()=="Verificar novamente"})
+    }
     @Test fun theDiagnosticClassifiesDnsTlsAndUnexpectedPagesWithoutExposingRawErrors() {
         assertTrue(AccessConnection.failure(java.net.UnknownHostException("SECRET-URL")).contains("DNS"))
         assertTrue(AccessConnection.failure(javax.net.ssl.SSLException("SECRET-URL")).contains("TLS"))
