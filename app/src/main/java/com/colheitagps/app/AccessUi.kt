@@ -14,30 +14,30 @@ import android.widget.*
 
 /** Shared native controls, sized in dp and with explicit colors on every Android theme. */
 internal class AccessUi(private val activity: Activity,attach:Boolean=true) {
-    val green = 0xFF187447.toInt()
-    val dark = 0xFF102D23.toInt()
-    val muted = 0xFF52665B.toInt()
-    private val pale = 0xFFEEF5EF.toInt()
+    private val palette=AppTheme.colors(activity)
+    val green=palette.accent
+    val dark=palette.text
+    val muted=palette.muted
+    private val pale=palette.alternate
     private val root = LinearLayout(activity).apply {
         orientation = LinearLayout.VERTICAL
         setPadding(dp(24), dp(28), dp(24), dp(28))
-        background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(dark, 0xFF205B3D.toInt()))
+        setBackgroundColor(palette.background)
     }
     init {
       if(attach) {
-        activity.window.statusBarColor = dark
-        activity.window.navigationBarColor = dark
+        AppTheme.apply(activity)
         activity.setContentView(ScrollView(activity).apply {
             isFillViewport = true
             fitsSystemWindows = true
-            setBackgroundColor(dark)
+            setBackgroundColor(palette.background)
             addView(root)
         })
       }
     }
     fun dp(n: Int) = (n * activity.resources.displayMetrics.density).toInt()
     fun background(color: Int, radius: Int = 16) = GradientDrawable().apply {
-        setColor(color); cornerRadius = dp(radius).toFloat()
+        setColor(AppTheme.surface(activity,color)); cornerRadius = dp(radius).toFloat()
     }
     fun text(value: String, size: Float = 15f, color: Int = muted, bold: Boolean = false) = TextView(activity).apply {
         text = value; textSize = size; setTextColor(color)
@@ -49,19 +49,23 @@ internal class AccessUi(private val activity: Activity,attach:Boolean=true) {
     }
     fun page(title: String, description: String): LinearLayout {
         root.removeAllViews()
-        add(root, text("DM AGRO", 30f, Color.WHITE, true), 0)
-        add(root, text("COLHEITA GPS  •  GESTÃO NO CAMPO", 11f, 0xFFC4E6CD.toInt(), true), 2)
+        val brand=LinearLayout(activity).apply {
+            orientation=LinearLayout.VERTICAL;setPadding(dp(18),dp(18),dp(18),dp(18));background=background(palette.header,18)
+            addView(text("DM AGRO",28f,Color.WHITE,true))
+            addView(text("COLHEITA GPS  •  GESTÃO NO CAMPO",11f,0xFFD1E8D3.toInt(),true))
+        }
+        add(root,brand,0)
         val card = card()
         add(root, card, 26)
         add(card, text(title, 24f, dark, true), 0)
         add(card, text(description), 6)
-        add(root, text("Criado por Diego Machado", 12f, 0xFFC4E6CD.toInt()).apply { gravity = Gravity.CENTER }, 24)
+        add(root, text("Criado por Diego Machado",12f,muted).apply { gravity = Gravity.CENTER }, 24)
         return card
     }
     fun card() = LinearLayout(activity).apply {
         orientation = LinearLayout.VERTICAL
         setPadding(dp(20), dp(22), dp(20), dp(22))
-        background = background(Color.WHITE, 22)
+        background = background(palette.surface,22)
         elevation = dp(3).toFloat()
     }
     fun field(container: LinearLayout, label: String, password: Boolean = false): EditText {
@@ -71,7 +75,7 @@ internal class AccessUi(private val activity: Activity,attach:Boolean=true) {
             textSize = 16f; setTextColor(dark); setHintTextColor(muted)
             setSingleLine(true); minHeight = dp(54)
             setPadding(dp(14), dp(12), dp(14), dp(12))
-            background = background(pale, 12).apply { setStroke(dp(1), 0xFFCEDCD1.toInt()) }
+            background = background(pale, 12).apply { setStroke(dp(1),palette.border) }
             backgroundTintList = null
             inputType = if (password) InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
                 else InputType.TYPE_CLASS_TEXT
@@ -93,7 +97,7 @@ internal class AccessUi(private val activity: Activity,attach:Boolean=true) {
         var visible = false
         val eye = ImageButton(activity).apply {
             setImageResource(R.drawable.ic_password_show)
-            imageTintList = null
+            imageTintList=ColorStateList.valueOf(green)
             contentDescription = "Mostrar senha: $label"
             tooltipText = "Mostrar senha"
             setPadding(dp(12), dp(12), dp(12), dp(12))
@@ -133,7 +137,7 @@ internal class AccessUi(private val activity: Activity,attach:Boolean=true) {
                 }
             override fun getDropDownView(position: Int, convertView: View?, parent: android.view.ViewGroup): View =
                 (super.getDropDownView(position, convertView, parent) as TextView).apply {
-                    setTextColor(dark); setBackgroundColor(Color.WHITE); minHeight = dp(48)
+                    setTextColor(dark); setBackgroundColor(palette.surface); minHeight = dp(48)
                 }
         }.apply { setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item) }
         return Spinner(activity).apply {
@@ -150,7 +154,7 @@ internal class AccessUi(private val activity: Activity,attach:Boolean=true) {
             minHeight = dp(54); minimumHeight = dp(54)
             setPadding(dp(12), dp(12), dp(12), dp(12))
             backgroundTintList = null
-            background = background(if (secondary) pale else green, 14)
+            background = background(if(secondary) pale else palette.primary,14)
             setTextColor(ColorStateList(arrayOf(intArrayOf(-android.R.attr.state_enabled), intArrayOf()),
                 intArrayOf(0xFF637A6B.toInt(), if (secondary) dark else Color.WHITE)))
             setOnClickListener { action() }

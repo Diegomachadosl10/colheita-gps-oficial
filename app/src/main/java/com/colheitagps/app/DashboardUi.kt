@@ -12,7 +12,7 @@ import android.widget.*
 internal enum class FieldIcon { BRAND, MAP, PENDING, EQUIPMENT, PART, RAIN, STOCK, ORDER, REPORT, OCCURRENCE, TRUCK, CALENDAR, PEOPLE, WEATHER, BELL }
 
 /** Native vector icons stay sharp at every Android font/display size. */
-internal class FieldIconView(context: android.content.Context, private val icon: FieldIcon, private val iconColor:Int=0xFFB7E9AF.toInt()) : View(context) {
+internal class FieldIconView(context: android.content.Context, private val icon: FieldIcon, private val iconColor:Int=AppTheme.colors(context).accent) : View(context) {
     private val ink = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = iconColor; strokeWidth = 2.2f; style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND }
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
@@ -47,26 +47,25 @@ internal class FieldIconView(context: android.content.Context, private val icon:
 }
 
 internal class DashboardUi(private val activity: Activity) {
-    val mint = 0xFFB7E9AF.toInt()
+    private val palette=AppTheme.colors(activity)
+    val mint=palette.muted
     fun dp(value: Int) = (value * activity.resources.displayMetrics.density).toInt()
-    fun text(value: String, size: Float, color: Int = Color.WHITE, bold: Boolean = false) = TextView(activity).apply {
+    fun text(value: String, size: Float, color:Int=palette.text, bold: Boolean = false) = TextView(activity).apply {
         text = value; textSize = size; setTextColor(color); if (bold) setTypeface(null, Typeface.BOLD)
     }
     fun panel(action: (() -> Unit)? = null) = LinearLayout(activity).apply {
         orientation = LinearLayout.VERTICAL; setPadding(dp(17), dp(18), dp(17), dp(18))
-        val shape = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(0xFF174E34.toInt(), 0xFF103D29.toInt())).apply {
-            cornerRadius = dp(18).toFloat(); setStroke(dp(1), 0xFF34664A.toInt())
-        }
+        val shape=GradientDrawable().apply {setColor(palette.surface);cornerRadius=dp(18).toFloat();setStroke(dp(1),palette.border)}
         background = if (action == null) shape else RippleDrawable(ColorStateList.valueOf(0x33B7E9AF), shape, null)
         if (action != null) setOnClickListener { action() }
         elevation = dp(2).toFloat()
     }
     fun brand(): View = LinearLayout(activity).apply {
         gravity = Gravity.CENTER_VERTICAL
-        addView(FieldIconView(activity, FieldIcon.BRAND), LinearLayout.LayoutParams(dp(47), dp(47)))
+        addView(FieldIconView(activity,FieldIcon.BRAND,0xFFB7E9AF.toInt()), LinearLayout.LayoutParams(dp(47), dp(47)))
         addView(LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL; setPadding(dp(10), 0, 0, 0)
-            addView(text("DM AGRO", 26f, bold = true)); addView(text("Colheita GPS", 16f, mint))
+            addView(text("DM AGRO",26f,Color.WHITE,true));addView(text("Colheita GPS",14f,0xFFD1E8D3.toInt()))
         })
     }
     data class Tile(val title: String, val icon: FieldIcon, val action: () -> Unit, val badge: Int = 0)
@@ -75,11 +74,15 @@ internal class DashboardUi(private val activity: Activity) {
         for (rowItems in tiles.chunked(columns)) {
             val row = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL; isBaselineAligned = false }
             for ((index, tile) in rowItems.withIndex()) {
-                val card = panel(tile.action).apply {
-                    gravity = Gravity.CENTER; minimumHeight = dp(136); contentDescription = tile.title + if (tile.badge > 0) ", ${tile.badge} em aberto" else ""
-                    addView(FieldIconView(activity, tile.icon), LinearLayout.LayoutParams(dp(45), dp(45)))
-                    addView(text(tile.title, 16f, bold = true).apply { gravity = Gravity.CENTER; setPadding(0, dp(10), 0, 0) })
-                    if (tile.badge > 0) addView(text("${tile.badge} em aberto", 12f, mint).apply { gravity = Gravity.CENTER })
+                val card=panel(tile.action).apply {
+                    orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL;minimumHeight=dp(88)
+                    contentDescription=tile.title+if(tile.badge>0) ", ${tile.badge} em aberto" else ""
+                    addView(FieldIconView(activity,tile.icon),LinearLayout.LayoutParams(dp(32),dp(32)))
+                    addView(LinearLayout(activity).apply {
+                        orientation=LinearLayout.VERTICAL;setPadding(dp(10),0,0,0)
+                        addView(text(tile.title,15f,bold=true))
+                        if(tile.badge>0) addView(text("${tile.badge} em aberto",12f,mint))
+                    },LinearLayout.LayoutParams(0,-2,1f))
                 }
                 row.addView(card, LinearLayout.LayoutParams(0, -1, 1f).apply { if (index > 0) marginStart = dp(12) })
             }

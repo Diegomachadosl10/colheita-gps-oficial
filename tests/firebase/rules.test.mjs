@@ -345,3 +345,15 @@ test('PATCH HTTPS de ativação respeita máscara e regras, sem alterar a frente
   await assertSucceeds(updateDoc(doc(db(owner),'usuarios','pendingSupervisor'),{status:'bloqueado'}));
   assert.equal((await patch('pendingSupervisor')).status,403);
 });
+
+test('urgência sincroniza como conteúdo da pendência e não muda autoria nem autorização de equipe',async()=>{
+  const path=['equipes',team,'registros','urgente'];
+  const data=record('opA','pendencias',1,{chave:'urgente',conteudo:JSON.stringify({id:'urgente',equipamento:'21569',descricao:'Mangueira rompida',urgente:true})});
+  await assertSucceeds(setDoc(doc(db('opA'),...path),data));
+  const read=await assertSucceeds(getDoc(doc(db('supA'),...path)));assert.equal(JSON.parse(read.data().conteudo).urgente,true);
+  const change={conteudo:JSON.stringify({id:'urgente',equipamento:'21569',descricao:'Mangueira rompida',urgente:false}),versao:2,atualizadoEm:serverTimestamp()};
+  await assertFails(updateDoc(doc(db('opA2'),...path),{...change,editadoPor:'opA2'}));
+  await assertFails(updateDoc(doc(db('supB'),...path),{...change,editadoPor:'supB'}));
+  await assertSucceeds(updateDoc(doc(db('supA'),...path),{...change,editadoPor:'supA'}));
+  assert.equal((await getDoc(doc(db('opA'),...path))).data().autorUid,'opA');
+});

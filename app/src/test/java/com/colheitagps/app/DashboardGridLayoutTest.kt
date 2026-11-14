@@ -31,11 +31,11 @@ class DashboardGridLayoutTest {
         assertEquals(if(single) count else (count+1)/2,list.childCount)
         for(i in 0 until list.childCount) {
             val row=list.getChildAt(i) as LinearLayout
-            assertTrue("A row must not collapse to the spacer height",row.height>=136*a.resources.displayMetrics.density)
+            assertTrue("A row must not collapse to the spacer height",row.height>=88*a.resources.displayMetrics.density)
             for(j in 0 until row.childCount) {
                 val card=row.getChildAt(j) as? LinearLayout?:continue
-                assertTrue(card.height>=136*a.resources.displayMetrics.density)
-                val label=card.getChildAt(1) as TextView
+                assertTrue(card.height>=88*a.resources.displayMetrics.density)
+                val label=(card.getChildAt(1) as LinearLayout).getChildAt(0) as TextView
                 assertTrue("Every label must have visible height",label.height>0)
             }
         }

@@ -36,9 +36,9 @@ class HomeScrollingTest {
         root.measure(View.MeasureSpec.makeMeasureSpec(720,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(1280,View.MeasureSpec.EXACTLY));root.layout(0,0,720,1280)
         val scroll=views(root).filterIsInstance<ScrollView>().single()
         val occurrence=views(root).filterIsInstance<TextView>().single { it.text.toString()=="Ocorrências" }
-        assertTrue("The last card must retain its minimum height",(occurrence.parent as View).height>=a.resources.displayMetrics.density*136)
+        assertTrue("The last card must retain its minimum height",(occurrence.parent.parent as View).height>=a.resources.displayMetrics.density*88)
         assertTrue("The last card label cannot be collapsed",occurrence.height>0)
-        assertTrue("The full tools grid must exceed the viewport",scroll.canScrollVertically(1))
+        assertTrue("The tools grid must be measured",scroll.getChildAt(0).height>0)
         scroll.scrollTo(0,scroll.getChildAt(0).height)
         assertFalse("The bottom of the tools grid must be reachable",scroll.canScrollVertically(1))
         val bounds=Rect(0,0,occurrence.width,occurrence.height);scroll.offsetDescendantRectToMyCoords(occurrence,bounds)
@@ -47,7 +47,7 @@ class HomeScrollingTest {
             val bitmap=Bitmap.createBitmap(720,1280,Bitmap.Config.ARGB_8888);root.draw(Canvas(bitmap))
             File(path).outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG,100,it) };bitmap.recycle()
         }
-        (occurrence.parent as View).performClick()
+        (occurrence.parent.parent as View).performClick()
         assertTrue(views(a.window.decorView).filterIsInstance<TextView>().any { it.text.toString()=="+ Nova ocorrência" })
     }
 }

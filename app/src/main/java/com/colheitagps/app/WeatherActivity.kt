@@ -20,7 +20,7 @@ class WeatherActivity : Activity() {
         render()
     }
     private fun chooseCity() {
-        val field = EditText(this).apply { hint = "Nome do município"; setSingleLine(true) }
+        val field = EditText(this).apply {AppTheme.field(this);hint = "Nome do município"; setSingleLine(true) }
         AlertDialog.Builder(this).setTitle("Município da previsão").setView(field).setNegativeButton("Cancelar", null)
             .setPositiveButton("Buscar") { _, _ ->
                 val query = AccessPolicy.normalized(field.text.toString())

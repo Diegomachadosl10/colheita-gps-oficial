@@ -44,6 +44,9 @@ class MainActivity : Activity() {
     private val syncUiHandler = Handler(Looper.getMainLooper())
     private var refreshPending = false
     private var relatorioAtual: (() -> FieldReport?)? = null
+    private var buscaEstoque=""
+    private var buscaEquipamento=""
+    private var buscaMapas=""
 
     override fun getSharedPreferences(name: String, mode: Int): SharedPreferences =
         if (name in setOf("mapas", "pinturas") && teamStore != null && teamAccess?.manages == false)
@@ -65,6 +68,7 @@ class MainActivity : Activity() {
             .setNegativeButton("Voltar") { _, _ -> moveTaskToBack(true) }.show()
     }
     private fun openTeam(access: TeamAccess, id: String) {
+        if(teamStore?.team!=id||teamAccess?.uid!=access.uid) {buscaEstoque="";buscaEquipamento="";buscaMapas=""}
         mapa?.salvar(); mapa = null; chaveAtual = ""
         teamSync?.stop()
         profileWatch?.remove()
@@ -166,8 +170,11 @@ class MainActivity : Activity() {
         })
     }
 
-    private val verde = Color.rgb(20,139,81)
-    private val escuro = Color.rgb(18,26,22)
+    private val palette get()=AppTheme.colors(this)
+    private val verde get()=palette.primary
+    private val escuro get()=palette.header
+    private var themeScreen:()->Unit={inicio()}
+    private var renderedNight:Boolean?=null
     private var raiz: FrameLayout? = null
     private var mapa: MapaView? = null
     private var chaveAtual = ""
@@ -280,7 +287,8 @@ class MainActivity : Activity() {
                 retorno()
             }.show()
     }
-    private fun campo(hintTexto: String, valor: String = "") = EditText(this).apply {
+    private fun campo(hintTexto: String, valor: String = "") = EditText(this).apply {AppTheme.field(this)
+
         hint = hintTexto
         setText(valor)
         setSingleLine(false)
@@ -552,7 +560,7 @@ class MainActivity : Activity() {
 
     private fun dp(n: Int) = (n * resources.displayMetrics.density).toInt()
 
-    private fun texto(s: String, size: Float = 15f, color: Int = Color.WHITE) =
+    private fun texto(s: String, size: Float = 15f, color:Int=palette.text) =
         TextView(this).apply {
             text = s
             textSize = size
@@ -563,10 +571,9 @@ class MainActivity : Activity() {
     private fun botao(s: String, acao: () -> Unit) =
         Button(this).apply {
             text = s
-            textSize = 12f
-            isAllCaps = false
-            setTextColor(Color.WHITE)
-            backgroundTintList = ColorStateList.valueOf(verde)
+            textSize=15f;minimumHeight=dp(48);isAllCaps=false
+            setTextColor(Color.WHITE);backgroundTintList=null
+            background=GradientDrawable().apply {setColor(verde);cornerRadius=dp(14).toFloat()}
             setOnClickListener { acao() }
         }
 
@@ -618,8 +625,8 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.statusBarColor = escuro
-        window.navigationBarColor = Color.BLACK
+        AppTheme.apply(this)
+        renderedNight=AppTheme.night(this)
         if (Build.VERSION.SDK_INT >= 30) {
             window.setDecorFitsSystemWindows(false)
         }
@@ -629,13 +636,14 @@ class MainActivity : Activity() {
         super.onResume()
         StartupUpdates.resume(this)
         if(acessoConfirmado&&teamStore!=null) {
+            if(renderedNight!=AppTheme.night(this)) {AppTheme.apply(this);renderedNight=AppTheme.night(this);themeScreen();return}
             if(telaAtual=="inicio") inicio() else if(telaAtual=="caminhoes") caminhoes()
         }
     }
 
     private fun tela(): FrameLayout =
         FrameLayout(this).apply {
-            setBackgroundColor(0xFF121A16.toInt())
+            setBackgroundColor(palette.background)
             setOnApplyWindowInsetsListener { v, ins ->
                 if (Build.VERSION.SDK_INT >= 30) {
                     val b = ins.getInsets(
@@ -673,18 +681,36 @@ class MainActivity : Activity() {
     private fun nome(id: String) =
         prefs().getString(id, "Mapa PDF") ?: "Mapa PDF"
 
+    private fun escolherTema() {
+        AppTheme.choose(this) {renderedNight=AppTheme.night(this);themeScreen()}
+    }
+
+    private fun campoBusca(hintText:String,value:String,onChange:(String)->Unit):EditText = EditText(this).apply {AppTheme.field(this)
+
+        hint=hintText;contentDescription=hintText;setSingleLine(true);textSize=16f
+        setTextColor(palette.text);setHintTextColor(palette.muted);setPadding(dp(14),dp(12),dp(14),dp(12));minimumHeight=dp(48)
+        background=GradientDrawable().apply {setColor(palette.surface);cornerRadius=dp(12).toFloat();setStroke(dp(1),palette.border)}
+        inputType=android.text.InputType.TYPE_CLASS_TEXT;imeOptions=android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH
+        setText(value)
+        addTextChangedListener(object:android.text.TextWatcher {
+            override fun beforeTextChanged(text:CharSequence?,start:Int,count:Int,after:Int) {}
+            override fun afterTextChanged(text:android.text.Editable?) {}
+            override fun onTextChanged(text:CharSequence?,start:Int,before:Int,count:Int) {onChange(text.toString())}
+        })
+    }
+
     private fun cartao(titulo: String, subtitulo: String, acao: () -> Unit): View {
         val caixa = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(18), dp(18), dp(18), dp(18))
             background = GradientDrawable().apply {
-                setColor(0xFF223029.toInt())
+                setColor(palette.surface)
                 cornerRadius = dp(16).toFloat()
             }
             setOnClickListener { acao() }
         }
-        caixa.addView(texto(titulo, 19f, Color.WHITE))
-        caixa.addView(texto(subtitulo, 13f, 0xFFB6C9BD.toInt()))
+        caixa.addView(texto(titulo,19f,palette.text))
+        caixa.addView(texto(subtitulo, 13f, palette.muted))
         return caixa
     }
 
@@ -720,10 +746,12 @@ class MainActivity : Activity() {
         return when(title) {
             "Pendências de manutenção" -> {
                 val catalog=maintenanceCatalog()
-                val summary=MaintenanceRecords.summaries(catalog).map {listOf(it.number,it.open.toString(),it.completed.toString())}
+                val visible=MaintenanceRecords.search(catalog,buscaEquipamento)
+                val numbers=visible.map {it.number}.toSet()
+                val summary=visible.map {listOf(it.number,it.open.toString(),it.completed.toString())}
                 FieldReport(title,TeamPolicy.label(teamStore!!.team),sections=listOf(
                     ReportSection("Equipamentos",listOf("Equipamento","Pendências abertas","Concluídas"),summary),
-                    FieldReports.group("Pendências abertas","pendencias",FieldReports.rows(dados("pendencias")).filter {!RecordArchive.archived(it)&&!it.optBoolean("concluida")})))
+                    FieldReports.group("Pendências abertas","pendencias",FieldReports.rows(dados("pendencias")).filter {!RecordArchive.archived(it)&&!it.optBoolean("concluida")&&MaintenanceRecords.number(it.optString("equipamento")) in numbers})))
             }
             "Histórico de pendências" -> group("pendencias") {RecordArchive.archived(it)||it.optBoolean("concluida")}
             "Peças a pedir" -> relatorioGrupo(title,"pendencias",FieldReports.rows(dadosPecas()).filter {!PartsRecords.historical(it)})
@@ -742,6 +770,8 @@ class MainActivity : Activity() {
 
     private fun pagina(titulo: String, parent: () -> Unit = { inicio() }): LinearLayout {
         syncUiHandler.removeCallbacks(atualizarTurnoCaminhoes)
+        renderedNight=AppTheme.night(this)
+        themeScreen={inicio()}
         relatorioAtual = {relatorioPadrao(titulo)}
         if(titulo=="DM AGRO") relatorioAtual=null
         returnToParent = if (titulo == "DM AGRO") null else parent
@@ -762,8 +792,9 @@ class MainActivity : Activity() {
             setPadding(dp(16), dp(12), dp(16), dp(16))
         }
         val topo = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
+            orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL
+            setPadding(dp(12),dp(8),dp(8),dp(8))
+            background=GradientDrawable().apply {setColor(palette.header);cornerRadius=dp(16).toFloat()}
         }
         if (telaAtual != "inicio") topo.addView(
             botaoVoltar { voltarTela() },
@@ -782,6 +813,9 @@ class MainActivity : Activity() {
                 menu.add("Sair da conta").setOnMenuItemClickListener {
                     sairDaConta()
                     true
+                }
+                menu.add("Tema do aplicativo").setOnMenuItemClickListener {
+                    escolherTema();true
                 }
                 menu.add("Verificar atualização").setOnMenuItemClickListener { startActivity(Intent(this@MainActivity, UpdateActivity::class.java)); true }
                 menu.add("Sincronização").setOnMenuItemClickListener { syncDetails(); true }
@@ -819,13 +853,13 @@ class MainActivity : Activity() {
         val store = teamStore ?: return
         val ui = DashboardUi(this)
         val coluna = pagina("DM AGRO")
-        raiz?.background = GradientDrawable(GradientDrawable.Orientation.TL_BR,
-            intArrayOf(0xFF06351F.toInt(), 0xFF071F16.toInt()))
+        themeScreen={inicio()}
+        raiz?.setBackgroundColor(palette.background)
         coluna.addView(ui.text("Olá, ${DashboardUi.name(access, sessionName)}", 28f, bold = true).apply {
             setPadding(0, dp(26), 0, dp(3))
         })
-        coluna.addView(ui.text("Bom trabalho no campo", 17f, ui.mint))
-        val teamPanel = ui.panel().apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+
+        val teamPanel=LinearLayout(this).apply {orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL;setPadding(0,dp(8),0,dp(8))}
         val teamInfo = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         teamInfo.addView(ui.text(TeamPolicy.label(store.team), 16f, bold = true))
         syncLabel = ui.text("● ${DashboardUi.status(syncMessage)}", 13f, ui.mint).also {
@@ -836,15 +870,27 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER; minHeight = dp(48); setPadding(dp(12), 0, 0, 0)
             contentDescription = "Trocar equipe"; setOnClickListener { chooseTeam(access) }
         })
-        coluna.addView(teamPanel, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(22) })
+        coluna.addView(teamPanel, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
         if (access.primary && access.profile["nome"]?.toString().isNullOrBlank()) coluna.addView(botao("Definir meu nome") { definirNome() })
-        coluna.addView(WeatherActivity.homeCard(this, store.team), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(14) })
         val verse=DailyVerse.forDate()
-        coluna.addView(ui.panel().apply {
+        val overview=LinearLayout(this).apply {orientation=if(resources.configuration.fontScale>=1.45f||resources.configuration.screenWidthDp<360) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL;isBaselineAligned=false}
+        val weather=WeatherActivity.homeCard(this,store.team)
+        val reading=ui.panel {
+            AlertDialog.Builder(this).setTitle("Versículo do dia • ${verse.reference}").setMessage(verse.text).setPositiveButton("Fechar",null).show()
+        }.apply {
             orientation=LinearLayout.VERTICAL
-            addView(ui.text("Versículo do dia • ${verse.reference}",12f,ui.mint,true))
-            addView(ui.text(verse.text,15f).apply { setPadding(0,dp(6),0,0) })
-        },LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(12) })
+            addView(ui.text("Versículo do dia",12f,palette.accent,true))
+            addView(ui.text(verse.text,14f).apply {setPadding(0,dp(6),0,dp(4));maxLines=4;ellipsize=android.text.TextUtils.TruncateAt.END})
+            addView(ui.text(verse.reference,12f,ui.mint))
+        }
+        if(overview.orientation==LinearLayout.HORIZONTAL) {
+            overview.addView(weather,LinearLayout.LayoutParams(0,-1,1f))
+            overview.addView(reading,LinearLayout.LayoutParams(0,-1,1f).apply {marginStart=dp(10)})
+        } else {
+            overview.addView(weather,LinearLayout.LayoutParams(-1,-2))
+            overview.addView(reading,LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(10)})
+        }
+        coluna.addView(overview,LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(12)})
         coluna.addView(ui.text("Ferramentas", 23f, bold = true).apply { setPadding(0, dp(24), 0, dp(3)) })
         val open = MaintenanceRecords.summaries(maintenanceCatalog()).sumOf { it.open }
         val tiles = mutableListOf(
@@ -899,6 +945,7 @@ class MainActivity : Activity() {
     private fun paginaOrdens() {
         if (!exigirGestor()) return
         val coluna = pagina("Ordens de serviço")
+        themeScreen={paginaOrdens()}
         coluna.addView(texto("Selecione um mapa para consultar ou editar suas O.S.", 14f).apply {
             setPadding(0, dp(16), 0, dp(8))
         })
@@ -947,21 +994,30 @@ class MainActivity : Activity() {
     }
     private fun estoque() {
         if (!exigirGestor()) return
-        val coluna = pagina("Estoque de cana")
-        coluna.addView(botao("📅 Abrir calendário") { calendario(parent = { estoque() }) })
-        coluna.addView(botao("+ Novo estoque") { editarProgressoColheita(true) })
-        coluna.addView(botao("+ Cadastrar vários lotes") { cadastrarLotes() })
-        coluna.addView(botao("Compartilhar vários estoques") { selecionarEstoques() })
-        coluna.addView(texto("ESTOQUES SALVOS", 15f))
-        val arr = listaEstoques()
-        if (arr.length() == 0) coluna.addView(texto("Nenhum estoque cadastrado ainda.", 14f))
-        for (i in arr.length() - 1 downTo 0) {
-            val item = arr.optJSONObject(i) ?: continue
-            val lote = item.optString("os").ifBlank { "Sem lote" }
-            val detalhe = "Talhões: ${item.optString("talhoes")} • Área: ${item.optString("areaRestante")} ha • Produtividade: ${item.optString("produtividade")} t/ha"
-            coluna.addView(cartao(lote, detalhe) { abrirEstoqueSalvo(item) },
-                LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
+        val coluna=pagina("Estoque de cana")
+        themeScreen={estoque()}
+        coluna.addView(botao("📅 Abrir calendário") {calendario(parent={estoque()})})
+        coluna.addView(botao("+ Novo estoque") {editarProgressoColheita(true)})
+        coluna.addView(botao("+ Cadastrar vários lotes") {cadastrarLotes()})
+        coluna.addView(botao("Compartilhar vários estoques") {selecionarEstoques()})
+        coluna.addView(texto("ESTOQUES SALVOS",15f))
+        val results=LinearLayout(this).apply {orientation=LinearLayout.VERTICAL;tag="resultadosEstoque"}
+        fun render() {
+            results.removeAllViews()
+            val all=listaEstoques()
+            val rows=(all.length()-1 downTo 0).mapNotNull {all.optJSONObject(it)}.filter {
+                QuickFind.matches(buscaEstoque,it.optString("os"),it.optString("talhoes"))
+            }
+            for(item in rows) {
+                val lote=item.optString("os").ifBlank {"Sem lote"}
+                val detalhe="Talhões: ${item.optString("talhoes")} • Área: ${item.optString("areaRestante")} ha • Produtividade: ${item.optString("produtividade")} t/ha"
+                results.addView(cartao(lote,detalhe) {abrirEstoqueSalvo(item)},LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(10)})
+            }
+            if(rows.isEmpty()) results.addView(texto(if(all.length()==0) "Nenhum estoque cadastrado ainda." else "Nenhum lote encontrado. Altere ou apague a busca.",14f))
         }
+        coluna.addView(campoBusca("Buscar lote ou talhão",buscaEstoque) {buscaEstoque=it;render()},LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(10)})
+        coluna.addView(results)
+        refreshList={render()};render()
     }
 
     private var mapaEstoqueSelecionado: File? = null
@@ -971,7 +1027,7 @@ class MainActivity : Activity() {
         val ui=AccessUi(this,attach=false)
         val content=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(16),dp(8),dp(16),dp(16)) }
         val rows=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
-        content.addView(texto("Preencha um cartão por lote. Até 20 lotes por cadastro.",14f,Color.DKGRAY));content.addView(rows)
+        content.addView(texto("Preencha um cartão por lote. Até 20 lotes por cadastro.",14f,palette.text));content.addView(rows)
         val inputs=mutableListOf<Pair<LinearLayout,List<EditText>>>()
         fun addLot() {
             if(inputs.size>=20) { Toast.makeText(this,"Salve estes lotes antes de adicionar outros.",Toast.LENGTH_LONG).show();return }
@@ -1172,6 +1228,7 @@ class MainActivity : Activity() {
 
     private fun historicoEstoque() {
         val coluna = pagina("Histórico do estoque")
+        themeScreen={historicoEstoque()}
         val arr = dados("historico_estoque")
         if (arr.length() == 0) coluna.addView(texto("Nenhum registro salvo ainda."))
         for (i in arr.length() - 1 downTo 0) {
@@ -1264,12 +1321,15 @@ class MainActivity : Activity() {
         }
         turno.setSelection(TeamPolicy.shifts.indexOf(teamStore!!.team.substringAfterLast('_')))
         turno.isEnabled = false
-        val quantidade = EditText(this).apply {
+        val quantidade = EditText(this).apply {AppTheme.field(this)
+
             hint = "Quantidade em toneladas"
             inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
         }
-        val os = EditText(this).apply { hint = "Número da O.S. (opcional)" }
-        val obs = EditText(this).apply { hint = "Talhão / observação" }
+        val os = EditText(this).apply {AppTheme.field(this)
+ hint = "Número da O.S. (opcional)" }
+        val obs = EditText(this).apply {AppTheme.field(this)
+ hint = "Talhão / observação" }
         corpo.addView(TextView(this).apply { text = "Tipo de movimentação" })
         corpo.addView(tipo)
         corpo.addView(TextView(this).apply { text = "Turno" })
@@ -1316,6 +1376,7 @@ class MainActivity : Activity() {
     private fun calendario(dataInicial: String = dataHoje(), parent: () -> Unit = { inicio() }) {
         if (!exigirGestor()) return
         val coluna = pagina("Calendário", parent)
+        themeScreen={calendario(dataInicial,parent)}
         refreshList = { calendario(dataInicial, parent) }
         coluna.addView(botao("📅 Escolher data: $dataInicial") {
             val partes = dataInicial.split("/")
@@ -1327,10 +1388,10 @@ class MainActivity : Activity() {
                 calendario(String.format(Locale("pt", "BR"), "%02d/%02d/%04d", d, m + 1, a), parent)
             }, ano, mes, dia).show()
         })
-        coluna.addView(texto("Registros de $dataInicial", 18f, Color.WHITE))
+        coluna.addView(texto("Registros de $dataInicial",18f,palette.text))
         val estoques = listaEstoques()
         var encontrados = 0
-        coluna.addView(texto("ESTOQUES", 16f, 0xFF80DDAA.toInt()))
+        coluna.addView(texto("ESTOQUES", 16f, palette.accent))
         for (i in estoques.length() - 1 downTo 0) {
             val item = estoques.optJSONObject(i) ?: continue
             if (dataRegistro(item) != dataInicial) continue
@@ -1340,7 +1401,7 @@ class MainActivity : Activity() {
                 abrirEstoqueSalvo(item)
             }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
         }
-        coluna.addView(texto("PENDÊNCIAS", 16f, 0xFF80DDAA.toInt()))
+        coluna.addView(texto("PENDÊNCIAS", 16f, palette.accent))
         val pend = dados("pendencias")
         for (i in pend.length() - 1 downTo 0) {
             val item = pend.optJSONObject(i) ?: continue
@@ -1351,7 +1412,7 @@ class MainActivity : Activity() {
                 comRegistroAtual("pendencias", item.optString("id")) { opcoesPendencia(it) }
             }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
         }
-        coluna.addView(texto("OCORRÊNCIAS DE CAMPO", 16f, 0xFF80DDAA.toInt()))
+        coluna.addView(texto("OCORRÊNCIAS DE CAMPO", 16f, palette.accent))
         val ocorrencias = dados("ocorrencias_campo")
         for (i in ocorrencias.length() - 1 downTo 0) {
             val item = ocorrencias.optJSONObject(i) ?: continue
@@ -1362,7 +1423,7 @@ class MainActivity : Activity() {
             coluna.addView(cartao(item.optString("tipo"), item.optString("localizacao")) { comRegistroAtual("ocorrencias_campo", item.optString("id")) { opcoesOcorrencia(it) } },
                 LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
         }
-        coluna.addView(texto("CHUVA DO TURNO", 16f, 0xFF80DDAA.toInt()))
+        coluna.addView(texto("CHUVA DO TURNO", 16f, palette.accent))
         for (item in RainRecords.readings(ocorrencias).filter { it.optString("dataCadastro") == dataInicial }) {
             encontrados++
             coluna.addView(cartao("Chuva • ${RainRecords.label(item)}", item.optString("observacaoChuva")) {
@@ -1374,7 +1435,7 @@ class MainActivity : Activity() {
         val day=RainRecords.date(dataInicial)
         val calendarTrucks=if(day==null) dados("caminhoes") else TruckRecords.until(dados("caminhoes"),java.time.LocalDateTime.of(day,java.time.LocalTime.MAX))
         val trucks=if(day==null) emptyList() else TruckRecords.rows(calendarTrucks,day)
-        coluna.addView(texto("CAMINHÕES",16f,0xFF80DDAA.toInt()))
+        coluna.addView(texto("CAMINHÕES",16f,palette.accent))
         for(item in trucks) {
             encontrados++
             coluna.addView(cartao("Caminhão ${item.optString("numero")}",TruckRecords.details(item)) {
@@ -1455,6 +1516,7 @@ class MainActivity : Activity() {
     private fun registrosExcluidos() {
         if(!exigirGestor()) return
         val column=pagina("Registros excluídos")
+        themeScreen={registrosExcluidos()}
         refreshList={registrosExcluidos()}
         column.addView(texto("${TeamPolicy.label(teamStore!!.team)}\nRestaure um item para voltar a editá-lo. Dados e fotos locais permanecem preservados.",14f))
         var count=0
@@ -1580,6 +1642,7 @@ class MainActivity : Activity() {
 
     private fun historicoEquipamentos() {
         val coluna = pagina("Equipamentos excluídos", parent = { pendencias() })
+        themeScreen={historicoEquipamentos()}
         refreshList = { historicoEquipamentos() }
         val equipment = MaintenanceRecords.archivedEquipment(maintenanceCatalog())
         for (number in equipment) coluna.addView(cartao("Equipamento $number", if(podeGerenciar()) "Excluído • consultar ou restaurar" else "Excluído • toque para consultar o histórico") {
@@ -1609,24 +1672,33 @@ class MainActivity : Activity() {
             }.show()
     }
     private fun pendencias() {
-        val coluna = pagina("Pendências de manutenção")
-        coluna.addView(botao("+ Cadastrar equipamento") { cadastrarEquipamento() })
-        coluna.addView(botao("+ Nova pendência") { editarPendencia(-1) })
-        val equipment = MaintenanceRecords.summaries(maintenanceCatalog())
-        coluna.addView(texto("EQUIPAMENTOS DA EQUIPE", 16f, Color.WHITE))
-        for (item in equipment) {
-            val description = if (item.open == 0) "Sem pendências abertas • ${item.completed} concluídas" else "${item.open} em aberto • ${item.completed} concluídas"
-            val card=cartao("Equipamento ${item.number}", "$description\nToque para abrir opções") { opcoesEquipamento(item.number) } as LinearLayout
-            card.addView(TextView(this).apply {
-                text=if(item.open>0) "● ${item.open} pendência(s) aberta(s)" else "✓ Sem pendências abertas"
-                contentDescription=if(item.open>0) "Alerta: equipamento ${item.number} tem ${item.open} pendências abertas" else "Equipamento ${item.number} sem pendências abertas"
-                textSize=14f;setTypeface(null,Typeface.BOLD);setTextColor(if(item.open>0) 0xFFFF7777.toInt() else 0xFF8DE2A5.toInt());setPadding(0,dp(10),0,0)
-            },0)
-            coluna.addView(card,LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(10)})
+        val coluna=pagina("Pendências de manutenção")
+        themeScreen={pendencias()}
+        coluna.addView(botao("+ Cadastrar equipamento") {cadastrarEquipamento()})
+        coluna.addView(botao("+ Nova pendência") {editarPendencia(-1)})
+        coluna.addView(texto("EQUIPAMENTOS DA EQUIPE",16f,palette.text))
+        val results=LinearLayout(this).apply {orientation=LinearLayout.VERTICAL;tag="resultadosEquipamentos"}
+        fun render() {
+            results.removeAllViews()
+            val all=maintenanceCatalog()
+            val equipment=MaintenanceRecords.search(all,buscaEquipamento)
+            for(item in equipment) {
+                val description=if(item.open==0) "Sem pendências abertas • ${item.completed} concluídas" else "${item.open} em aberto • ${item.completed} concluídas"
+                val card=cartao("Equipamento ${item.number}","$description\nToque para abrir opções") {opcoesEquipamento(item.number)} as LinearLayout
+                card.addView(TextView(this).apply {
+                    text=if(item.urgent>0) "● URGENTE • ${item.urgent} pendência(s)" else if(item.open>0) "● ${item.open} pendência(s) aberta(s)" else "✓ Sem pendências abertas"
+                    contentDescription=if(item.urgent>0) "Alerta: equipamento ${item.number} tem ${item.urgent} pendências urgentes" else if(item.open>0) "Alerta: equipamento ${item.number} tem ${item.open} pendências abertas" else "Equipamento ${item.number} sem pendências abertas"
+                    textSize=14f;setTypeface(null,Typeface.BOLD);setTextColor(if(item.open>0) palette.danger else palette.accent);setPadding(0,dp(10),0,0)
+                },0)
+                results.addView(card,LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(10)})
+            }
+            if(equipment.isEmpty()) results.addView(texto(if(MaintenanceRecords.summaries(all).isEmpty()) "Cadastre um equipamento para acompanhar as pendências desta equipe." else "Nenhum equipamento encontrado. Altere ou apague a busca.",14f))
         }
-        if (equipment.isEmpty()) coluna.addView(texto("Cadastre um equipamento para acompanhar as pendências desta equipe.", 14f))
-        coluna.addView(botao("✓ Histórico de concluídas e excluídas") { historicoPendencias() })
-        coluna.addView(botao("Equipamentos excluídos") { historicoEquipamentos() })
+        coluna.addView(campoBusca("Buscar equipamento, pendência ou O.S.",buscaEquipamento) {buscaEquipamento=it;render()},LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(10)})
+        coluna.addView(results)
+        coluna.addView(botao("✓ Histórico de concluídas e excluídas") {historicoPendencias()})
+        coluna.addView(botao("Equipamentos excluídos") {historicoEquipamentos()})
+        refreshList={render()};render()
     }
     private fun pendenciasEquipamento(equipamento: String, concluidas: Boolean = false) {
         val number = MaintenanceRecords.number(equipamento)
@@ -1635,24 +1707,25 @@ class MainActivity : Activity() {
             .any { MaintenanceRecords.isEquipment(it) && MaintenanceRecords.number(it.optString("equipamento")) == number && MaintenanceRecords.isArchived(it) }
         val coluna = pagina(if (concluidas) "Histórico $number" else "Equipamento $number",
             parent = { if (concluidas && archivedEquipment) historicoEquipamentos() else if (concluidas) pendenciasEquipamento(number) else pendencias() })
+        themeScreen={pendenciasEquipamento(number,concluidas)}
         refreshList = { pendenciasEquipamento(number, concluidas) }
         relatorioAtual={relatorioGrupo(if(concluidas) "Histórico do equipamento $number" else "Pendências do equipamento $number","pendencias",FieldReports.rows(dados("pendencias")).filter {
             MaintenanceRecords.number(it.optString("equipamento"))==number&&(if(concluidas) RecordArchive.archived(it)||it.optBoolean("concluida") else !RecordArchive.archived(it)&&!it.optBoolean("concluida"))
         })}
-        if (archivedEquipment) coluna.addView(texto("Equipamento excluído • registros preservados no histórico", 15f, 0xFFB6C9BD.toInt()))
+        if (archivedEquipment) coluna.addView(texto("Equipamento excluído • registros preservados no histórico", 15f, palette.muted))
         if(archivedEquipment&&podeGerenciar()) coluna.addView(botao("Restaurar equipamento") {restaurarEquipamento(number)})
         if (!concluidas && !archivedEquipment) coluna.addView(botao("+ Adicionar pendência") {
             editarPendencia(-1,equipamentoInicial=number)
         })
         val arr = dados("pendencias")
         var total = 0
-        for (i in arr.length() - 1 downTo 0) {
-            val obj = arr.optJSONObject(i) ?: continue
+        val ordered=(arr.length()-1 downTo 0).mapNotNull {arr.optJSONObject(it)}.sortedByDescending {MaintenanceRecords.urgent(it)}
+        for (obj in ordered) {
             val archived = MaintenanceRecords.isArchived(obj)
             if ((if (concluidas) !obj.optBoolean("concluida", false) && !archived else obj.optBoolean("concluida", false) || archived) ||
                 MaintenanceRecords.number(obj.optString("equipamento")) != number) continue
             total++
-            coluna.addView(cartao("• " + obj.optString("descricao").ifBlank { "Sem descrição" },
+            coluna.addView(cartao((if(MaintenanceRecords.urgent(obj)) "🔴 URGENTE • " else "• ") + obj.optString("descricao").ifBlank { "Sem descrição" },
                 if (archived) "Excluída • toque para consultar" else if (concluidas) "Toque para consultar ou reabrir" else "Toque para ver opções") {
                 comRegistroAtual("pendencias", obj.optString("id")) { opcoesPendencia(it) }
             }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
@@ -1665,6 +1738,7 @@ class MainActivity : Activity() {
     }
     private fun historicoPendencias() {
         val coluna = pagina("Histórico de pendências", parent = { pendencias() })
+        themeScreen={historicoPendencias()}
         refreshList = { historicoPendencias() }
         val arr = dados("pendencias")
         var total = 0
@@ -1770,13 +1844,14 @@ class MainActivity : Activity() {
     } } catch(_:Exception) { null }
     private fun pecas(historico:Boolean=false) {
         val coluna=pagina(if(historico) "Histórico de peças" else "Peças a pedir",parent={if(historico) pecas() else inicio()})
+        themeScreen={pecas(historico)}
         refreshList={pecas(historico)}
-        coluna.addView(texto(TeamPolicy.label(teamStore!!.team),16f,0xFFB7E9AF.toInt()))
+        coluna.addView(texto(TeamPolicy.label(teamStore!!.team),16f,palette.accent))
         if(!historico) {
             coluna.addView(botao("+ Cadastrar peça a pedir") { editarPeca() })
             if(lerRascunhoPeca()!=null) coluna.addView(botao("Continuar rascunho de peça") { editarPeca(retomar=true) })
         }
-        coluna.addView(texto("Códigos e pedidos são compartilhados com a equipe. As fotos ficam no celular e podem ser enviadas pelo botão Compartilhar.",14f,0xFFB6C9BD.toInt()))
+        coluna.addView(texto("Códigos e pedidos são compartilhados com a equipe. As fotos ficam no celular e podem ser enviadas pelo botão Compartilhar.",14f,palette.muted))
         val all=dadosPecas(); var count=0
         for(i in all.length()-1 downTo 0) {
             val item=all.optJSONObject(i) ?: continue
@@ -1946,8 +2021,9 @@ class MainActivity : Activity() {
     private fun chuvas() {
         val store = teamStore ?: return
         val coluna = pagina("Registro de chuva")
+        themeScreen={chuvas()}
         refreshList = { chuvas() }
-        coluna.addView(texto(TeamPolicy.label(store.team), 17f, 0xFF80DDAA.toInt()).apply {
+        coluna.addView(texto(TeamPolicy.label(store.team), 17f, palette.accent).apply {
             setPadding(0, dp(16), 0, dp(8))
         })
         val leituras = RainRecords.readings(dados(RainRecords.GROUP))
@@ -1965,8 +2041,8 @@ class MainActivity : Activity() {
             }.show()
         })
         coluna.addView(texto("Um acumulado por dia e turno. Informe 0 quando não chover. Ao corrigir, substitua pelo acumulado completo do turno.",
-            14f, 0xFFB6C9BD.toInt()).apply { setPadding(0, dp(8), 0, dp(16)) })
-        coluna.addView(texto("HISTÓRICO DO TURNO", 17f, 0xFF80DDAA.toInt()))
+            14f, palette.muted).apply { setPadding(0, dp(8), 0, dp(16)) })
+        coluna.addView(texto("HISTÓRICO DO TURNO", 17f, palette.accent))
         if (leituras.isEmpty()) coluna.addView(texto("Nenhum registro de chuva nesta equipe.", 15f))
         for (leitura in leituras) {
             coluna.addView(cartao("${leitura.optString("dataCadastro")} • ${RainRecords.label(leitura)}",
@@ -2022,11 +2098,11 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(22), dp(8), dp(22), dp(12))
         }
-        corpo.addView(texto("${TeamPolicy.label(store.team)}\nData: $data", 16f, 0xFF80DDAA.toInt()))
+        corpo.addView(texto("${TeamPolicy.label(store.team)}\nData: $data", 16f, palette.accent))
         corpo.addView(texto("Chuva acumulada do turno (mm)", 16f).apply { setPadding(0, dp(18), 0, dp(4)) })
         val volume = campo("Ex.: 12,5 ou 0", atual?.optString("chuvaMm")?.replace('.', ',') ?: "").apply {
-            setTextColor(Color.WHITE); setHintTextColor(0xFFB6C9BD.toInt())
-            backgroundTintList = ColorStateList.valueOf(verde)
+            setTextColor(palette.text);setHintTextColor(palette.muted)
+            backgroundTintList=null
             setSingleLine(true)
             inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
             filters = arrayOf(android.text.InputFilter.LengthFilter(7))
@@ -2034,13 +2110,13 @@ class MainActivity : Activity() {
         corpo.addView(volume)
         corpo.addView(texto("Observação (opcional)", 16f).apply { setPadding(0, dp(14), 0, dp(4)) })
         val observacao = campo("Ex.: chuva durante a madrugada", atual?.optString("observacaoChuva") ?: "").apply {
-            setTextColor(Color.WHITE); setHintTextColor(0xFFB6C9BD.toInt())
-            backgroundTintList = ColorStateList.valueOf(verde)
+            setTextColor(palette.text);setHintTextColor(palette.muted)
+            backgroundTintList=null
             filters = arrayOf(android.text.InputFilter.LengthFilter(1000))
         }
         corpo.addView(observacao)
         corpo.addView(texto("Registre o total deste turno. Não some novamente o que já foi informado.", 14f,
-            0xFFB6C9BD.toInt()).apply { setPadding(0, dp(14), 0, 0) })
+            palette.muted).apply { setPadding(0, dp(14), 0, 0) })
         val dialogo = AlertDialog.Builder(this)
             .setCustomTitle(texto(if (atual == null) "Registrar chuva" else "Corrigir chuva", 22f).apply {
                 setPadding(dp(22), dp(22), dp(22), dp(12)); setTypeface(null, Typeface.BOLD)
@@ -2049,11 +2125,11 @@ class MainActivity : Activity() {
             .setNegativeButton("Cancelar", null).setPositiveButton("Salvar", null).create()
         dialogo.setOnShowListener {
             dialogo.window?.setBackgroundDrawable(GradientDrawable().apply {
-                setColor(0xFF223029.toInt()); cornerRadius = dp(22).toFloat()
+                setColor(palette.surface); cornerRadius = dp(22).toFloat()
             })
-            dialogo.getButton(AlertDialog.BUTTON_NEGATIVE).setTextColor(0xFFB6C9BD.toInt())
+            dialogo.getButton(AlertDialog.BUTTON_NEGATIVE).setTextColor(palette.muted)
             dialogo.getButton(AlertDialog.BUTTON_POSITIVE).apply {
-                setTextColor(0xFF80DDAA.toInt())
+                setTextColor(palette.accent)
                 setOnClickListener {
                     if (RainRecords.amount(volume.text.toString()) == null) {
                         volume.error = "Informe de 0 a 9999,99 mm, com até duas casas decimais."
@@ -2080,6 +2156,7 @@ class MainActivity : Activity() {
 
     private fun ocorrenciasCampo(concluidas: Boolean = false) {
         val coluna = pagina(if (concluidas) "Histórico de ocorrências" else "Ocorrências de campo", parent = { if (concluidas) ocorrenciasCampo() else inicio() })
+        themeScreen={ocorrenciasCampo(concluidas)}
         refreshList = { ocorrenciasCampo(concluidas) }
         if (!concluidas) coluna.addView(botao("+ Nova ocorrência") {editarOcorrencia(-1)})
         val arr = dados("ocorrencias_campo")
@@ -2255,6 +2332,8 @@ class MainActivity : Activity() {
         val descricao=campo("Defeito e localização",atual?.optString("descricao")?:"")
         val osPendencia=campo("O.S. da pendência (ex.: 12345)",atual?.optString("osPendencia")?:"")
         corpo.addView(equipamento);corpo.addView(osPendencia);corpo.addView(descricao)
+        val urgency=CheckBox(this).apply {text="Marcar como urgente";isChecked=atual?.optBoolean("urgente")==true;minHeight=dp(48);setTextColor(palette.text)}
+        corpo.addView(urgency)
         fotosFormulario=mutableListOf<String>().apply {
             atual?.optJSONArray("fotos")?.let {arr->for(i in 0 until arr.length()) add(arr.optString(i))}
             if(isEmpty()) atual?.optString("foto")?.takeIf {it.isNotBlank()}?.let {add(it)}
@@ -2285,7 +2364,7 @@ class MainActivity : Activity() {
                 }
                 val arr=dados(key)
                 val obj=atual?:JSONObject().put("id",System.currentTimeMillis().toString())
-                obj.put("equipamento",number).put("descricao",descricao.text.toString()).put("osPendencia",osPendencia.text.toString())
+                obj.put("equipamento",number).put("descricao",descricao.text.toString()).put("osPendencia",osPendencia.text.toString()).put("urgente",urgency.isChecked)
                 val photos=JSONArray();fotosFormulario.filter {File(it).exists()}.forEach {photos.put(it)}
                 obj.put("fotos",photos).put("foto",if(photos.length()>0) photos.optString(0) else "")
                 if(obj.optString("dataCadastro").isBlank()) obj.put("dataCadastro",dataHoje())
@@ -2328,6 +2407,7 @@ class MainActivity : Activity() {
     private fun caminhoes() {
         if(!exigirGestor()) return
         val column=pagina("Controle de caminhões")
+        themeScreen={caminhoes()}
         telaAtual="caminhoes";refreshList={caminhoes()}
         val now=java.time.LocalDateTime.now(relogioCaminhoes)
         val shift=teamStore!!.team.substringAfterLast('_')
@@ -2341,7 +2421,7 @@ class MainActivity : Activity() {
         val period=if(diaCaminhoes=="todos") "Histórico • todos os registros" else interval?.let {
             (if(live) "Turno atual\n" else "Histórico\n")+it.label()+cutoff?.let {end->"\nAté ${end.format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"))}"}.orEmpty()
         }?:"Turno $shift • ${TruckShift.hours(shift)}\nFora do horário deste turno • lista ativa vazia"
-        column.addView(texto(TeamPolicy.label(teamStore!!.team),17f,0xFFB7E9AF.toInt()))
+        column.addView(texto(TeamPolicy.label(teamStore!!.team),17f,palette.accent))
         column.addView(texto(period,16f))
         val filters=LinearLayout(this).apply {orientation=LinearLayout.HORIZONTAL}
         filters.addView(botao("Turno atual") {abrirCaminhoes()},LinearLayout.LayoutParams(0,-2,1f))
@@ -2444,6 +2524,7 @@ class MainActivity : Activity() {
     private fun noticeCaminhao(message:String) {Toast.makeText(this,message,Toast.LENGTH_LONG).show()}
 
     private fun biblioteca() {
+        themeScreen={biblioteca()}
         refreshList = { biblioteca() }
         telaAtual = "biblioteca"
         returnToParent = { inicio() }
@@ -2463,22 +2544,27 @@ class MainActivity : Activity() {
             setBackgroundColor(escuro)
             setPadding(dp(20), dp(20), dp(20), dp(18))
         }
-        cab.addView(texto("COLHEITA GPS 2.0", 23f, Color.WHITE))
+        cab.addView(texto("Mapas",23f,Color.WHITE))
         cab.addView(botao("←") { inicio() })
         cab.addView(
-            texto("Seus mapas neste aparelho. Importe o mapa PDF pelo botão + ou encontre o arquivo no Drive abaixo.", 14f, 0xFFB6DCC6.toInt())
+            texto("Seus mapas neste aparelho. Importe o mapa PDF pelo botão + ou encontre o arquivo no Drive abaixo.",14f,0xFFD1E8D3.toInt())
         )
         coluna.addView(cab)
 
         val lista = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
+            orientation = LinearLayout.VERTICAL;tag="resultadosMapas"
             setPadding(dp(15), dp(12), dp(15), dp(100))
         }
 
-        val todos = arquivos()
+        val favorites=teamStore?.let {store->teamAccess?.uid?.let {uid->MapFavorites(applicationContext,store.team,uid)}}
+        fun renderMaps() {
+        lista.removeAllViews()
+        val stars=favorites?.ids().orEmpty()
+        val todos=arquivos().filter {QuickFind.matches(buscaMapas,nome(it.nameWithoutExtension))}
+            .sortedWith(compareBy<File> {it.nameWithoutExtension !in stars}.thenBy(String.CASE_INSENSITIVE_ORDER) {nome(it.nameWithoutExtension)})
         if (todos.isEmpty()) {
             lista.addView(
-                texto("Toque em + para importar seu mapa PDF.", 16f).apply {
+                texto(if(buscaMapas.isBlank()) "Toque em + para importar seu mapa PDF." else "Nenhum mapa encontrado. Altere ou apague a busca.", 16f).apply {
                     setPadding(dp(10), dp(50), dp(10), dp(20))
                 }
             )
@@ -2491,14 +2577,20 @@ class MainActivity : Activity() {
                 gravity = Gravity.CENTER_VERTICAL
                 setPadding(dp(14), dp(12), dp(10), dp(12))
                 background = GradientDrawable().apply {
-                    setColor(0xFF223029.toInt())
+                    setColor(palette.surface)
                     cornerRadius = dp(14).toFloat()
                 }
                 elevation = dp(2).toFloat()
             }
 
             item.addView(
-                texto("PDF", 17f, verde),
+                texto(if(id in stars) "★" else "☆",26f,if(id in stars) palette.favorite else palette.muted).apply {
+                    gravity=Gravity.CENTER;isFocusable=true
+                    contentDescription=if(id in stars) "Remover ${nome(id)} dos favoritos" else "Marcar ${nome(id)} como favorito"
+                    setOnClickListener {
+                        try {favorites?.toggle(id);renderMaps()} catch(_:Exception) {Toast.makeText(this@MainActivity,"Não foi possível salvar o favorito. Tente novamente.",Toast.LENGTH_LONG).show()}
+                    }
+                },
                 LinearLayout.LayoutParams(dp(48), dp(58))
             )
 
@@ -2506,7 +2598,7 @@ class MainActivity : Activity() {
                 orientation = LinearLayout.VERTICAL
             }
             info.addView(texto(nome(id), 16f).apply { maxLines = 2 })
-            info.addView(texto("Toque para abrir, compartilhar ou excluir", 12f, 0xFFB6C9BD.toInt()))
+            info.addView(texto("Toque para abrir, compartilhar ou excluir", 12f, palette.muted))
 
             item.addView(info, LinearLayout.LayoutParams(0, -2, 1f))
 
@@ -2528,6 +2620,10 @@ class MainActivity : Activity() {
             )
         }
 
+        }
+        cab.addView(campoBusca("Buscar mapa ou lote",buscaMapas) {buscaMapas=it;renderMaps()},LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(12)})
+        refreshList={renderMaps()};renderMaps()
+
         val scroll = ScrollView(this).apply {
             addView(lista)
         }
@@ -2536,7 +2632,7 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             // Reserve the right side for the existing floating + button.
             setPadding(dp(15), dp(6), dp(92), dp(18))
-            addView(texto("Não tem o PDF neste celular?", 13f, 0xFFB6DCC6.toInt()))
+            addView(texto("Não tem o PDF neste celular?", 13f, palette.muted))
             addView(botao("Buscar mapas no Google Drive") {
                 try {
                     startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://drive.google.com/drive/folders/1goZtocxdT1tgmjcNzpy3CoQHkeN4WLX4"))
@@ -2621,7 +2717,8 @@ class MainActivity : Activity() {
     private fun renomear(id: String) {
         pausarSincronizacao()
         if (teamAccess?.manages == true && teamSync?.canEditMap(id) == false) { teamSync?.available(hasWindowFocus() && mapa == null); Toast.makeText(this, "Somente o responsável pelo mapa ou o supervisor pode renomeá-lo.", Toast.LENGTH_LONG).show(); return }
-        val entrada = EditText(this).apply {
+        val entrada = EditText(this).apply {AppTheme.field(this)
+
             setText(nome(id))
             setSingleLine(true)
         }
@@ -2700,7 +2797,8 @@ class MainActivity : Activity() {
                 if(pos==dados.size+1) {historicoOrdensEncerradas(id);return@setItems}
                 val novo = pos == dados.size
 
-                val campo = EditText(this).apply {
+                val campo = EditText(this).apply {AppTheme.field(this)
+
                     inputType = android.text.InputType.TYPE_CLASS_TEXT
                     setSingleLine(true)
                     if (!novo) setText(dados[pos])
@@ -2711,7 +2809,8 @@ class MainActivity : Activity() {
                     orientation = LinearLayout.VERTICAL
                     setPadding(dp(18), dp(8), dp(18), dp(8))
                 }
-                val talhoesOs = EditText(this).apply {
+                val talhoesOs = EditText(this).apply {AppTheme.field(this)
+
                     hint = "Talhões (ex.: 1 ao 10, 1 a 10, 1,2,3,4,5)"
                     setSingleLine(false)
                     minLines = 2
@@ -2799,10 +2898,11 @@ class MainActivity : Activity() {
     private fun historicoOrdensEncerradas(mapId:String?=null) {
         if(!exigirGestor()) return
         val column=pagina("O.S. encerradas",parent={if(mapId==null) paginaOrdens() else ordens(mapId)})
+        themeScreen={historicoOrdensEncerradas(mapId)}
         refreshList={historicoOrdensEncerradas(mapId)}
         val records=FieldReports.rows(dados(OrderRecords.GROUP)).filter {OrderRecords.historical(it)&&(mapId==null||it.optString("mapaId")==mapId)}.sortedByDescending {it.optLong("encerradaTimestamp")}
         relatorioAtual={relatorioGrupo("Histórico de O.S. encerradas",OrderRecords.GROUP,records)}
-        column.addView(texto(TeamPolicy.label(teamStore!!.team),16f,0xFFB7E9AF.toInt()))
+        column.addView(texto(TeamPolicy.label(teamStore!!.team),16f,palette.accent))
         for(item in records) column.addView(cartao("O.S. ${item.optString("numeroOs")} • "+if(OrderRecords.closed(item)) "Encerrada" else "Reaberta",
             "${item.optString("nomeMapa")}\nTalhões: ${item.optString("talhoes")}\nEncerrada em: ${item.optString("encerradaEm")}\nPor: ${item.optString("encerradaPorNome")}") {
                 val actions=mutableListOf<Pair<String,()->Unit>>()

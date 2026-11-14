@@ -19,8 +19,9 @@ internal class ProfileChoice(context:Context):LinearLayout(context) {
         OPERATOR("Operador","operador","Registrar atividades no campo",FieldIcon.EQUIPMENT),
         SUPERVISOR("Supervisor","supervisor","Acompanhar a própria equipe",FieldIcon.PEOPLE)
     }
-    private val green=0xFF187447.toInt()
-    private val dark=0xFF153F28.toInt()
+    private val palette=AppTheme.colors(context)
+    private val green=palette.accent
+    private val dark=palette.text
     private val cards=mutableListOf<LinearLayout>()
     private val radios=mutableListOf<RadioButton>()
     var selectedProfile=Profile.OPERATOR
@@ -47,11 +48,11 @@ internal class ProfileChoice(context:Context):LinearLayout(context) {
                 orientation=VERTICAL; setPadding(dp(12),0,dp(5),0)
                 importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
                 addView(TextView(context).apply { text=profile.label; textSize=17f; setTextColor(dark); setTypeface(null,Typeface.BOLD) })
-                addView(TextView(context).apply { text=profile.description; textSize=13f; setTextColor(0xFF52665B.toInt()); setPadding(0,dp(4),0,0) })
+                addView(TextView(context).apply { text=profile.description; textSize=13f; setTextColor(palette.muted); setPadding(0,dp(4),0,0) })
             },LayoutParams(0,-2,1f))
             val radio=RadioButton(context).apply {
                 isClickable=false; isFocusable=false; importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO
-                buttonTintList=ColorStateList(arrayOf(intArrayOf(android.R.attr.state_checked),intArrayOf()),intArrayOf(green,0xFF6D8073.toInt()))
+                buttonTintList=ColorStateList(arrayOf(intArrayOf(android.R.attr.state_checked),intArrayOf()),intArrayOf(green,palette.muted))
             }
             row.addView(radio,LayoutParams(dp(40),dp(48)))
             cards.add(row); radios.add(radio)
@@ -66,8 +67,8 @@ internal class ProfileChoice(context:Context):LinearLayout(context) {
             val selected=Profile.entries[index]==profile
             card.isSelected=selected; radios[index].isChecked=selected
             val shape=GradientDrawable().apply {
-                setColor(if(selected) 0xFFE8F6EA.toInt() else Color.WHITE); cornerRadius=dp(16).toFloat()
-                setStroke(dp(if(selected) 2 else 1),if(selected) green else 0xFFCEDCD1.toInt())
+                setColor(if(selected) palette.alternate else palette.surface); cornerRadius=dp(16).toFloat()
+                setStroke(dp(if(selected) 2 else 1),if(selected) green else palette.border)
             }
             card.background=RippleDrawable(ColorStateList.valueOf(0x22187447),shape,null)
             card.invalidate()

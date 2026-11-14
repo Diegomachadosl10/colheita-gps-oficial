@@ -64,7 +64,7 @@ class TruckScreenTest {
         a.getSharedPreferences("registros_v3",0).edit().putString("pendencias",catalog.toString()).commit();call(a,"pendencias")
         val labels=views(a.window.decorView).filterIsInstance<TextView>()
         val alert=labels.single {it.contentDescription?.toString()?.startsWith("Alerta: equipamento 21569")==true}
-        assertEquals(0xFFFF7777.toInt(),alert.currentTextColor);assertTrue(alert.text.startsWith("●"));assertTrue(alert.text.contains("1"))
+        assertEquals(AppTheme.colors(a).danger,alert.currentTextColor);assertTrue(alert.text.startsWith("●"));assertTrue(alert.text.contains("1"))
         assertTrue(labels.any {it.contentDescription?.toString()=="Equipamento 21570 sem pendências abertas"&&it.text.startsWith("✓")})
         System.getenv("DM_AGRO_PENDING_PREVIEW")?.let {path->
             val root=a.window.decorView

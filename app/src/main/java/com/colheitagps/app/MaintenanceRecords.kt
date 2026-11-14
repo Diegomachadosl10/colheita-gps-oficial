@@ -77,22 +77,33 @@ internal object MaintenanceRecords {
             .filterNot { isEquipment(it) || isArchived(it)||PartsRecords.isPart(it) }.map { it.optString("equipamento") }.filter { it.isNotBlank() }
         equipment.forEach { ensureEquipment(this, it) }
     }
-    data class Summary(val number: String, val open: Int, val completed: Int)
+    fun urgent(record:JSONObject):Boolean = !isEquipment(record)&&!PartsRecords.isPart(record)&&!isArchived(record)&&!record.optBoolean("concluida")&&record.optBoolean("urgente")
+    data class Summary(val number: String, val open: Int, val completed: Int, val urgent:Int=0)
     fun summaries(all: JSONArray): List<Summary> {
         val counts = linkedMapOf<String, Pair<Int, Int>>()
+        val urgencies=mutableMapOf<String,Int>()
         for (i in 0 until all.length()) {
             val record = all.optJSONObject(i) ?: continue
             if (isArchived(record)||PartsRecords.isPart(record)) continue
             val number = number(record.optString("equipamento"))
             if (number.isBlank()) continue
             val current = counts[number] ?: (0 to 0)
+            if(urgent(record)) urgencies[number]=(urgencies[number]?:0)+1
             counts[number] = when {
                 isEquipment(record) -> current
                 record.optBoolean("concluida") -> current.first to current.second + 1
                 else -> current.first + 1 to current.second
             }
         }
-        return counts.map { Summary(it.key, it.value.first, it.value.second) }
-            .sortedWith(compareBy<Summary> { it.open == 0 }.thenBy(String.CASE_INSENSITIVE_ORDER) { it.number })
+        return counts.map { Summary(it.key, it.value.first, it.value.second,urgencies[it.key]?:0) }
+            .sortedWith(compareBy<Summary> { it.urgent==0 }.thenBy {it.open==0}.thenBy(String.CASE_INSENSITIVE_ORDER) { it.number })
     }
+    fun search(all:JSONArray,query:String):List<Summary> {
+        val active=(0 until all.length()).mapNotNull {all.optJSONObject(it)}.filter {!isArchived(it)&&!PartsRecords.isPart(it)}
+            .groupBy {number(it.optString("equipamento"))}
+        return summaries(all).filter {item->
+            QuickFind.matches(query,item.number,active[item.number].orEmpty().joinToString(" ") {it.optString("descricao")+" "+it.optString("osPendencia")})
+        }
+    }
+
 }
