@@ -24,9 +24,7 @@ internal object StockSharing {
         val selected=records.map {JSONObject(it.toString())}
         if(selected.isEmpty()||selected.any {!StockBatch.complete(it)||RecordArchive.archived(it)}) {failure(activity);return}
         val date=SimpleDateFormat("dd/MM/yyyy HH:mm",Locale("pt","BR")).format(Date())
-        val attached=selected.filter {StockShareFiles.photo(store.files,it)!=null}
-        val message=(text?:StockBatch.text(selected,TeamPolicy.label(store.team),date))+
-            if(attached.isEmpty()) "" else "\n\nFotos/mapas anexados dos lotes: "+attached.joinToString {it.optString("os")}
+        val message=text?:StockBatch.text(selected,TeamPolicy.label(store.team),date)
         Toast.makeText(activity,"Preparando mensagem e fotos…",Toast.LENGTH_SHORT).show()
         worker.execute {
             try {

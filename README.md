@@ -2,15 +2,15 @@
 
 Android, ramificação de trabalho **dm-agro-login**. A `main` permanece intacta.
 
-## Versão 1.8.2
+## Versão 1.8.3
 
-Veja [o retorno do estoque ao envio por mensagem e fotos](docs/ESTOQUE-WHATSAPP-1.8.2.md). A [correção do fechamento ao compartilhar](docs/CORRECAO-COMPARTILHAMENTO-1.8.1.md) foi preservada. A configuração dos supervisores permanece descrita na [versão 1.8.0](docs/ATUALIZACAO-1.8.0.md). O download dentro do aplicativo depende de publicar os releases no GitHub com a assinatura permanente. Histórico: [versão 1.2.0](ATUALIZACOES-1.2.0.md).
+Veja [a simplificação da versão 1.8.3](docs/SIMPLIFICACAO-1.8.3.md). O [envio de estoque por mensagem e fotos](docs/ESTOQUE-WHATSAPP-1.8.2.md) continua disponível. A [correção do fechamento ao compartilhar](docs/CORRECAO-COMPARTILHAMENTO-1.8.1.md) foi preservada. A configuração dos supervisores permanece descrita na [versão 1.8.0](docs/ATUALIZACAO-1.8.0.md). O download dentro do aplicativo depende de publicar os releases no GitHub com a assinatura permanente. Histórico: [versão 1.2.0](ATUALIZACOES-1.2.0.md).
 
 ## Equipes por frente e turno
 
 - O UID principal possui acesso geral e gerencia todos os usuários. Supervisores entram ao concluir o cadastro, sem aprovação do principal; operadores e tratoristas continuam pendentes até a aprovação de um gestor da equipe.
 - Supervisores usam as ferramentas dentro de sua equipe e aprovam somente operadores/tratoristas da mesma frente e turno.
-- Registros de manutenção, estoque, relatórios e caminhões são armazenados por equipe. Os mapas novos dos operadores e tratoristas e suas pinturas ficam privados no aparelho. Equipamentos permanecem cadastrados mesmo sem pendências abertas. Registros de texto usam Firestore com cache e fila local. **Plano Spark gratuito: anexos permanecem locais; o estoque é enviado por mensagem com fotos/mapas anexados, e os relatórios das demais ferramentas usam imagens**, sem ativar Storage nem faturamento.
+- Registros de manutenção, estoque e caminhões são armazenados por equipe. Os mapas novos dos operadores e tratoristas e suas pinturas ficam privados no aparelho. Equipamentos permanecem cadastrados mesmo sem pendências abertas. Registros de texto usam Firestore com cache e fila local. **Plano Spark gratuito: anexos permanecem locais; o estoque é enviado por mensagem com fotos/mapas anexados, e os relatórios das demais ferramentas usam imagens**, sem ativar Storage nem faturamento.
 - As revisões detectam alterações simultâneas; cópias conflitantes são preservadas. O painel **Sincronização** informa o estado do envio.
 - Dados antigos não são apagados nem atribuídos automaticamente a uma equipe. A importação de dados sem equipe é exclusiva do principal.
 - Matrícula e senha não exigem e-mail pessoal. Os endereços técnicos continuam `matricula.<matricula>@acesso.dm-agro.app`.

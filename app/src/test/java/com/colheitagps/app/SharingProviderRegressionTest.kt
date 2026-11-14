@@ -134,6 +134,7 @@ class SharingProviderRegressionTest {
         assertEquals(Intent.ACTION_SEND,share.action)
         assertEquals(1,share.clipData!!.itemCount)
         val message=share.getStringExtra(Intent.EXTRA_TEXT)!!
+        assertFalse(message.contains("Fotos/mapas"));assertFalse(message.contains("anexados dos lotes"))
         assertTrue(message.contains("Lote: A"));assertTrue(message.contains("Lote: B"));assertTrue(message.contains("Talhões: 1 a 3"))
         assertArrayEquals(painted.readBytes(),readable(share.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)!!))
         assertEquals(rows.toString(),store.prefs("registros_v3").getString("estoques_salvos","[]"))
@@ -146,6 +147,7 @@ class SharingProviderRegressionTest {
         val share=awaitShare(a,"image/*")
         assertEquals(Intent.ACTION_SEND,share.action)
         assertTrue(share.getStringExtra(Intent.EXTRA_TEXT)!!.startsWith("ESTOQUE DE CANA - COLHEITA GPS"))
+        assertFalse(share.getStringExtra(Intent.EXTRA_TEXT)!!.contains("Fotos/mapas"))
         assertTrue(share.getStringExtra(Intent.EXTRA_TEXT)!!.contains("Lote: K/05"))
         assertTrue(share.getStringExtra(Intent.EXTRA_TEXT)!!.contains("Talhões: 1 a 3"))
         assertArrayEquals(painted.readBytes(),readable(share.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)!!))
@@ -169,6 +171,7 @@ class SharingProviderRegressionTest {
         assertEquals(2,uris.size);assertEquals(2,share.clipData!!.itemCount)
         assertArrayEquals(red.readBytes(),readable(uris[0]));assertArrayEquals(blue.readBytes(),readable(uris[1]))
         val message=share.getStringExtra(Intent.EXTRA_TEXT)!!
+        assertFalse(message.contains("Fotos/mapas"));assertFalse(message.contains("anexados dos lotes"))
         for(lot in listOf("A","B","C")) assertTrue(message.contains("Lote: $lot"))
         assertTrue(message.contains("Área: 10 ha"));assertTrue(message.contains("Produtividade: 80 t/ha"))
         assertTrue(share.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION!=0)

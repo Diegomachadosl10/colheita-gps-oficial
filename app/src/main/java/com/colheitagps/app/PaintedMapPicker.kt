@@ -16,11 +16,14 @@ internal object PaintedMapPicker {
         val label get()="$title\nAtualizado: $updated"
     }
     fun items(store:TeamStore):List<Item> {
+        val catalog=store.prefs("mapas")
+        val entries=catalog.all
         val files=store.files.listFiles().orEmpty().filter {
             it.isFile&&it.name.startsWith("mapa_relatorio_")&&it.extension.equals("png",true)&&
-                it.canonicalPath.startsWith(store.files.canonicalPath+File.separator)
+                it.canonicalPath.startsWith(store.files.canonicalPath+File.separator) &&
+                entries[it.nameWithoutExtension.removePrefix("mapa_relatorio_")] is String &&
+                File(store.files,"mapas/${it.nameWithoutExtension.removePrefix("mapa_relatorio_")}.pdf").isFile
         }.sortedWith(compareByDescending<File> {it.lastModified()}.thenBy {it.name})
-        val catalog=store.prefs("mapas")
         val names=files.map { file->
             val id=file.nameWithoutExtension.removePrefix("mapa_relatorio_")
             catalog.getString(id,null).orEmpty().trim().replace(Regex("(?i)\\.(pdf|png)$"),"").takeUnless {

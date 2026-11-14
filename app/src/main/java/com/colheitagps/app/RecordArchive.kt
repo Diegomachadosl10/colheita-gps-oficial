@@ -6,7 +6,7 @@ import org.json.JSONObject
 /** Operational records retain their ID, author, local media and lifecycle history. */
 internal object RecordArchive {
     val labels=linkedMapOf("pendencias" to "Pendências e equipamentos","ocorrencias_campo" to "Ocorrências e chuva",
-        "estoques_salvos" to "Estoques","historico_estoque" to "Histórico de estoque","relatorios_turno" to "Relatórios",
+        "estoques_salvos" to "Estoques","historico_estoque" to "Histórico de estoque",
         "caminhoes" to "Caminhões","movimentos" to "Movimentações","historico_os" to "Ordens de serviço")
     fun archived(record:JSONObject)=record.optBoolean("__arquivado")
     fun withState(record:JSONObject,deleted:Boolean)=JSONObject(record.toString()).apply {

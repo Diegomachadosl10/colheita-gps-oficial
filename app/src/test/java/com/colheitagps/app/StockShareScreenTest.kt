@@ -85,6 +85,7 @@ class StockShareScreenTest {
         val a=prepare();val s=store(a);val id="a".repeat(64)
         val map=photo(a).copyTo(File(s.files,"mapa_relatorio_$id.png"))
         s.prefs("mapas").edit().putString(id,"Fazenda Santo Inácio - K05.pdf").commit()
+        File(s.files,"mapas/$id.pdf").apply {parentFile!!.mkdirs();writeText("fixture") }
         ReflectionHelpers.callInstanceMethod<Unit>(a,"choosePhoto",ClassParameter.from(String::class.java,"B"))
         val source=ShadowAlertDialog.getLatestAlertDialog()
         source.listView.performItemClick(source.listView.getChildAt(1),1,1);shadowOf(Looper.getMainLooper()).idle()
@@ -103,13 +104,13 @@ class StockShareScreenTest {
         val rows=JSONArray(s.prefs("registros_v3").getString("estoques_salvos","[]"))
         assertEquals(map.path,rows.getJSONObject(1).getString("fotoEstoque"));assertFalse(rows.getJSONObject(0).has("fotoEstoque"))
     }
-    @Test fun unnamedOlderMapsRemainDistinctWithoutDisplayingStorageIdsOrOtherTeamsNames() {
+    @Test fun orphanPaintedImagesNeverAppearAsUnnamedMapsFromOtherTeams() {
         val a=prepare();val s=store(a)
         for(letter in listOf("a","b")) photo(a).copyTo(File(s.files,"mapa_relatorio_${letter.repeat(64)}.png"))
         TeamStore(a.applicationContext,"colorado_C").prefs("mapas").edit().putString("a".repeat(64),"Nome de outra frente.pdf").commit()
         val maps=PaintedMapPicker.items(s)
-        assertEquals(2,maps.map {it.title}.toSet().size)
-        assertTrue(maps.all {it.title.startsWith("Mapa pintado ")&&!it.label.contains("outra frente")&&!it.label.contains("mapa_relatorio_")})
+        assertTrue(maps.isEmpty())
+        assertEquals(2,s.files.listFiles().orEmpty().count {it.name.startsWith("mapa_relatorio_")})
     }
     @Test fun mixedLotsKeepTheirTextAndOnlyTheChosenPhotosWithoutChangingStoredAttachments() {
         val a=prepare();attach(a,"A",photo(a));attach(a,"B",photo(a))

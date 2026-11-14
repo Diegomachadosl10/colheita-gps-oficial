@@ -35,12 +35,12 @@ class DashboardTest {
     }
     @Test fun supervisorDashboardPreservesEveryManagerToolWithoutTheOwnerTeamSwitcher() {
         val labels=texts(home("supervisor").window.decorView)
-        for(title in listOf("Estoque","Ordens de serviço","Relatórios","Caminhões","Calendário","Aprovar minha equipe")) assertTrue(title,labels.contains(title))
-        assertFalse(labels.contains("Trocar"))
+        for(title in listOf("Estoque","Ordens de serviço","Caminhões","Calendário","Aprovar minha equipe")) assertTrue(title,labels.contains(title))
+        assertFalse(labels.contains("Trocar"));assertFalse(labels.contains("Relatórios"))
     }
     @Test fun ownerDashboardHasTeamSwitcherAndTheNameNeverDefaultsToUsuario() {
         val labels=texts(home("administrador").window.decorView)
-        assertTrue(labels.contains("Trocar")); assertTrue(labels.contains("Gerenciar usuários"))
+        assertTrue(labels.contains("Trocar")); assertTrue(labels.contains("Gerenciar usuários"));assertFalse(labels.contains("Relatórios"))
         assertEquals("Administrador",DashboardUi.name(TeamAccess(TeamPolicy.PRIMARY_ADMIN_UID,emptyMap())))
         assertEquals("Diego",DashboardUi.name(TeamAccess(TeamPolicy.PRIMARY_ADMIN_UID,emptyMap()),"Diego"))
     }
