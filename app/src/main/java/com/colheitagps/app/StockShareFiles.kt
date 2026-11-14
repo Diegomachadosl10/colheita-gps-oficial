@@ -53,7 +53,7 @@ internal object StockShareFiles {
             cache.mkdirs()
             for(file in photos) {
                 val copy=File(cache,"estoque_${UUID.randomUUID()}.${file.extension.ifBlank { "jpg" }}")
-                file.copyTo(copy);uris.add(FileProvider.getUriForFile(context,"${context.packageName}.files",copy))
+                file.copyTo(copy);uris.add(FileProvider.getUriForFile(context.applicationContext,"${context.packageName}.files",copy))
             }
             return Intent(if(uris.size>1) Intent.ACTION_SEND_MULTIPLE else Intent.ACTION_SEND).apply {
                 type=if(uris.isEmpty()) "text/plain" else "image/*"

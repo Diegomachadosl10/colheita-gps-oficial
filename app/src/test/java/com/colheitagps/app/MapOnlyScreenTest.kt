@@ -39,7 +39,7 @@ class MapOnlyScreenTest {
             ReflectionHelpers.callInstanceMethod<Unit>(a,"menu")
             val options=choices()
             assertFalse(options.any {it.contains("O.S.")||it.contains("PDF")})
-            assertTrue(options.contains("GPS"));assertTrue(options.contains("Salvar mapa pintado"));assertTrue(options.contains("Como girar o mapa"))
+            assertTrue(options.contains("GPS"));assertTrue(options.contains("Compartilhar mapa pintado"));assertTrue(options.contains("Salvar mapa pintado"));assertTrue(options.contains("Como girar o mapa"))
             assertTrue(options.contains("Pintar talhão"));assertTrue(options.contains("Medir área"))
         }
     }

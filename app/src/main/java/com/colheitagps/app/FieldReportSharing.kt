@@ -8,8 +8,11 @@ import android.widget.Toast
 import androidx.core.content.FileProvider
 import java.io.File
 import java.util.UUID
+import java.util.concurrent.Executors
 
 internal object FieldReportSharing {
+    // Limit bitmap work to one job, including painted maps, when sharing is tapped repeatedly.
+    private val worker=Executors.newSingleThreadExecutor {work->Thread(work,"dm-agro-images").apply {isDaemon=true}}
     fun imageIntent(activity:Activity,report:FieldReport,uris:ArrayList<Uri>):Intent {
         require(uris.isNotEmpty())
         return Intent(if(uris.size>1) Intent.ACTION_SEND_MULTIPLE else Intent.ACTION_SEND).apply {
@@ -19,19 +22,46 @@ internal object FieldReportSharing {
             clipData=ClipData.newUri(activity.contentResolver,report.title,uris.first()).apply {uris.drop(1).forEach {addItem(ClipData.Item(it))}}
         }
     }
-    fun share(activity:Activity,report:FieldReport,cache:File,allowed:()->Boolean={true}) {
-        if(!allowed()) return
+    /** All provider and chooser operations run inside the UI callback's own exception boundary. */
+    fun deliverImages(activity:Activity,report:FieldReport,files:List<File>,allowed:()->Boolean={true}):Boolean {
+        return try {
+            if(activity.isDestroyed||activity.isFinishing||!allowed()) return false
+            require(files.isNotEmpty())
+            // MainActivity overrides filesDir/cacheDir to point at a team. Provider XML roots
+            // belong to the application, so initializing the provider with that Activity nests
+            // equipes/ twice and fails. Keep the existing, restricted production XML paths.
+            val app=activity.applicationContext
+            val uris=ArrayList(files.map {file->
+                require(file.isFile&&file.length()>0)
+                FileProvider.getUriForFile(app,"${app.packageName}.files",file)
+            })
+            activity.startActivity(Intent.createChooser(imageIntent(activity,report,uris),"Compartilhar imagem DM AGRO"))
+            true
+        } catch(_:Exception) {
+            failure(activity,"Não foi possível compartilhar a imagem. Tente novamente.")
+            false
+        }
+    }
+    private fun failure(activity:Activity,message:String) {
+        if(!activity.isDestroyed&&!activity.isFinishing) Toast.makeText(activity,message,Toast.LENGTH_LONG).show()
+    }
+    fun prepareImages(activity:Activity,report:FieldReport,allowed:()->Boolean={true},prepare:()->List<File>) {
+        if(activity.isDestroyed||activity.isFinishing||!allowed()) return
         Toast.makeText(activity,"Preparando imagem…",Toast.LENGTH_SHORT).show()
-        Thread {
+        worker.execute {
             try {
-                val files=FieldReportRenderer.render(report,File(cache,"relatorios/${UUID.randomUUID()}"),false)
-                activity.runOnUiThread {
-                    if(activity.isDestroyed||activity.isFinishing||!allowed()) return@runOnUiThread
-                    val uris=ArrayList(files.map {FileProvider.getUriForFile(activity,"${activity.packageName}.files",it)})
-                    val intent=imageIntent(activity,report,uris)
-                    try {activity.startActivity(Intent.createChooser(intent,"Compartilhar relatório DM AGRO"))} catch(_:Exception) {Toast.makeText(activity,"Não foi possível abrir o compartilhamento.",Toast.LENGTH_LONG).show()}
-                }
-            } catch(_:Exception) {activity.runOnUiThread {if(!activity.isDestroyed) Toast.makeText(activity,"Não foi possível preparar o relatório. Tente novamente.",Toast.LENGTH_LONG).show()}}
-        }.start()
+                val files=prepare()
+                activity.runOnUiThread {deliverImages(activity,report,files,allowed)}
+            } catch(_:OutOfMemoryError) {
+                activity.runOnUiThread {failure(activity,"Memória insuficiente para preparar as imagens. Tente compartilhar menos itens por vez.")}
+            } catch(_:Exception) {
+                activity.runOnUiThread {failure(activity,"Não foi possível preparar a imagem. Tente novamente.")}
+            }
+        }
+    }
+    fun share(activity:Activity,report:FieldReport,cache:File,allowed:()->Boolean={true}) {
+        prepareImages(activity,report,allowed) {
+            FieldReportRenderer.render(report,File(cache,"relatorios/${UUID.randomUUID()}"),false)
+        }
     }
 }

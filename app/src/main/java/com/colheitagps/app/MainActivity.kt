@@ -1239,7 +1239,7 @@ class MainActivity : Activity() {
     }
 
     private fun salvarImagemMapa() {
-        val arquivo = arquivoMapaAtual()
+        val arquivo = if(chaveAtual.isNotBlank()) File(filesDir,"mapa_relatorio_$chaveAtual.png").takeIf {it.isFile} else arquivoMapaAtual()
         if (arquivo == null) { Toast.makeText(this, "Abra e pinte um mapa primeiro", Toast.LENGTH_LONG).show(); return }
         imagemPendente = arquivo
         startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
@@ -2722,37 +2722,37 @@ class MainActivity : Activity() {
 
     private fun compartilharImagemMapa(id:String) {
         val store=teamStore?:return;val uid=teamAccess?.uid?:return
+        if(!acessoConfirmado||!prefs().contains(id)) return
+        if(mapa!=null&&chaveAtual==id&&mapa!!.pinturaEmAndamento()) {
+            Toast.makeText(this,"Conclua ou cancele a pintura em edição antes de compartilhar.",Toast.LENGTH_LONG).show()
+            return
+        }
+        if(mapa!=null&&chaveAtual==id&&!mapa!!.salvar()) {
+            Toast.makeText(this,"Não foi possível preparar o mapa pintado. Suas pinturas continuam salvas. Tente novamente.",Toast.LENGTH_LONG).show()
+            return
+        }
         val original=File(pasta(),"$id.pdf")
-        if(!original.isFile||!prefs().contains(id)) return
         val name=nome(id)
-        // Use the existing painted preview when available; otherwise render every PDF page.
         val painted=File(filesDir,"mapa_relatorio_$id.png").takeIf {it.isFile}
-        Toast.makeText(this,"Preparando imagem do mapa…",Toast.LENGTH_SHORT).show()
-        Thread {
-            try {
-                val images=mutableListOf<File>();val folder=File(store.cache,"relatorios/${java.util.UUID.randomUUID()}").apply {mkdirs()}
-                if(painted!=null) {val copy=File(folder,"Mapa-pintado.png");painted.copyTo(copy);images.add(copy)}
-                else ParcelFileDescriptor.open(original,ParcelFileDescriptor.MODE_READ_ONLY).use {descriptor->PdfRenderer(descriptor).use {renderer->
-                    for(index in 0 until renderer.pageCount) renderer.openPage(index).use {page->
-                        val scale=minOf(1600f/page.width,2200f/page.height)
-                        val bitmap=Bitmap.createBitmap(maxOf(1,(page.width*scale).toInt()),maxOf(1,(page.height*scale).toInt()),Bitmap.Config.ARGB_8888)
-                        try {bitmap.eraseColor(Color.WHITE);page.render(bitmap,null,null,PdfRenderer.Page.RENDER_MODE_FOR_PRINT)
-                            val file=File(folder,"Mapa-pagina-${index+1}.png");file.outputStream().use {check(bitmap.compress(Bitmap.CompressFormat.PNG,100,it))};images.add(file)
-                        } finally {bitmap.recycle()}
-                    }
-                }}
-                runOnUiThread {
-                    if(isFinishing||isDestroyed||!acessoConfirmado||teamStore?.team!=store.team||teamAccess?.uid!=uid) return@runOnUiThread
-                    val uris=ArrayList(images.map {androidx.core.content.FileProvider.getUriForFile(this,"$packageName.files",it)})
-                    if(uris.isEmpty()) return@runOnUiThread
-                    startActivity(Intent.createChooser(Intent(if(uris.size==1) Intent.ACTION_SEND else Intent.ACTION_SEND_MULTIPLE).apply {
-                        type="image/png";putExtra(Intent.EXTRA_TEXT,name);addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                        if(uris.size==1) putExtra(Intent.EXTRA_STREAM,uris.first()) else putParcelableArrayListExtra(Intent.EXTRA_STREAM,uris)
-                        clipData=ClipData.newUri(contentResolver,name,uris.first()).apply {uris.drop(1).forEach {addItem(ClipData.Item(it))}}
-                    },"Compartilhar imagem do mapa"))
+        if(painted==null&&!original.isFile) return
+        val report=FieldReport(name,TeamPolicy.label(store.team),sections=emptyList())
+        FieldReportSharing.prepareImages(this,report,
+            {acessoConfirmado&&teamStore?.team==store.team&&teamAccess?.uid==uid&&prefs().contains(id)}) {
+            val images=mutableListOf<File>();val folder=File(store.cache,"relatorios/${java.util.UUID.randomUUID()}").apply {mkdirs()}
+            if(painted!=null) {
+                val copy=File(folder,"Mapa-pintado.png");painted.copyTo(copy);images.add(copy)
+            } else ParcelFileDescriptor.open(original,ParcelFileDescriptor.MODE_READ_ONLY).use {descriptor->PdfRenderer(descriptor).use {renderer->
+                for(index in 0 until renderer.pageCount) renderer.openPage(index).use {page->
+                    val scale=minOf(1600f/page.width,2200f/page.height)
+                    val bitmap=Bitmap.createBitmap(maxOf(1,(page.width*scale).toInt()),maxOf(1,(page.height*scale).toInt()),Bitmap.Config.ARGB_8888)
+                    try {
+                        bitmap.eraseColor(Color.WHITE);page.render(bitmap,null,null,PdfRenderer.Page.RENDER_MODE_FOR_PRINT)
+                        val file=File(folder,"Mapa-pagina-${index+1}.png");file.outputStream().use {check(bitmap.compress(Bitmap.CompressFormat.PNG,100,it))};images.add(file)
+                    } finally {bitmap.recycle()}
                 }
-            } catch(_:Exception) {runOnUiThread {if(!isDestroyed) Toast.makeText(this,"Não foi possível preparar a imagem do mapa.",Toast.LENGTH_LONG).show()}}
-        }.start()
+            }}
+            images
+        }
     }
     private fun renomear(id: String) {
         pausarSincronizacao()
@@ -3325,13 +3325,14 @@ class MainActivity : Activity() {
             "Borracha", "Desfazer", "Excluir última pintura",
             "GPS", "Salvar mapa pintado", "Voltar aos mapas"
         )
-        val navigation=arrayOf("Repor orientação original (0°)","Como girar o mapa")
+        val navigation=arrayOf("Compartilhar mapa pintado","Repor orientação original (0°)","Como girar o mapa")
         AlertDialog.Builder(this).setTitle("Ferramentas")
             .setItems(opcoes+navigation) { _, i ->
                 if(i>=opcoes.size) {
                     when(i-opcoes.size) {
-                        0->v.reporOrientacao()
-                        1->AlertDialog.Builder(this).setTitle("Girar, aproximar e mover").setMessage("Coloque dois dedos no mapa e gire livremente. Afaste ou aproxime os dedos para mudar o zoom. Arraste com dois dedos para mover. O botão 0° repõe a orientação original do PDF; o GPS, as pinturas e as medidas acompanham o mapa.").setPositiveButton("Entendi",null).show()
+                        0->compartilharImagemMapa(chaveAtual)
+                        1->v.reporOrientacao()
+                        2->AlertDialog.Builder(this).setTitle("Girar, aproximar e mover").setMessage("Coloque dois dedos no mapa e gire livremente. Afaste ou aproxime os dedos para mudar o zoom. Arraste com dois dedos para mover. O botão 0° repõe a orientação original do PDF; o GPS, as pinturas e as medidas acompanham o mapa.").setPositiveButton("Entendi",null).show()
                     }
                     return@setItems
                 }
@@ -4219,19 +4220,22 @@ class MapaView(context: Context) : View(context) {
         else -> null
     }
 
-    private fun atualizarResumoMapa() {
-        if (id.isEmpty()) return
+    private fun atualizarResumoMapa():Boolean {
+        if (id.isEmpty()) return false
         val pref = context.getSharedPreferences("controle_colheita", 0).edit()
         val ha = hectaresPintados()
         if (ha != null) pref.putFloat("ultima_area_pintada_ha", ha.toFloat())
         else pref.remove("ultima_area_pintada_ha")
         pref.putString("ultimo_mapa", id).apply()
-        val b = imagem ?: return
-        try {
+        val b = imagem ?: return false
+        var saida:Bitmap?=null
+        val destination=File(context.filesDir,"mapa_relatorio_$id.png")
+        val draft=File(context.filesDir,"mapa_relatorio_$id.tmp")
+        return try {
             val escalaImagem = minOf(1f, 2400f / maxOf(b.width, b.height))
             val w = maxOf(1, (b.width * escalaImagem).toInt())
             val h = maxOf(1, (b.height * escalaImagem).toInt())
-            val saida = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+            saida = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
             val c = Canvas(saida)
             c.scale(w.toFloat() / b.width, h.toFloat() / b.height)
             c.drawBitmap(b, 0f, 0f, null)
@@ -4241,13 +4245,18 @@ class MapaView(context: Context) : View(context) {
             for (i in linhas.indices) {
                 c.drawPath(caminho(linhas[i], false), Paint(3).apply { color = coresLinhas.getOrElse(i) { 0x66FACC15 }; style = Paint.Style.STROKE; strokeWidth = 17f; strokeCap = Paint.Cap.ROUND })
             }
-            File(context.filesDir, "mapa_relatorio_$id.png").outputStream().use { saida.compress(Bitmap.CompressFormat.PNG, 95, it) }
-            saida.recycle()
-        } catch (_: Exception) { /* A pintura permanece salva mesmo se a imagem falhar */ }
+            draft.outputStream().use {check(saida.compress(Bitmap.CompressFormat.PNG,100,it))}
+            check(draft.renameTo(destination))
+            true
+        } catch (_: OutOfMemoryError) {false}
+        catch (_: Exception) {false}
+        finally {saida?.recycle();draft.delete()}
     }
 
-    fun salvar() {
-        if (id.isEmpty()) return
+    fun pinturaEmAndamento():Boolean = areaEmEdicao>=0||(modo==7&&pontos.isNotEmpty())
+
+    fun salvar():Boolean {
+        if (id.isEmpty()) return false
 
         fun converter(v: List<List<PointF>>): JSONArray {
             val a = JSONArray()
@@ -4276,8 +4285,9 @@ class MapaView(context: Context) : View(context) {
             .edit()
             .putString(id, j.toString())
             .apply()
-        atualizarResumoMapa()
+        val exported=atualizarResumoMapa()
         aoAtualizarArea?.invoke()
+        return exported
     }
 
     private fun restaurar() {

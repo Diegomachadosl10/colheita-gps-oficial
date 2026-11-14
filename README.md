@@ -2,9 +2,9 @@
 
 Android, ramificação de trabalho **dm-agro-login**. A `main` permanece intacta.
 
-## Versão 1.8.0
+## Versão 1.8.1
 
-Veja [as mudanças e a configuração de supervisores pelo celular](docs/ATUALIZACAO-1.8.0.md). O download dentro do aplicativo depende de publicar os releases no GitHub com a assinatura permanente. Histórico: [versão 1.2.0](ATUALIZACOES-1.2.0.md).
+Veja [a correção do compartilhamento e os testes pelo celular](docs/CORRECAO-COMPARTILHAMENTO-1.8.1.md). A configuração dos supervisores permanece descrita na [versão 1.8.0](docs/ATUALIZACAO-1.8.0.md). O download dentro do aplicativo depende de publicar os releases no GitHub com a assinatura permanente. Histórico: [versão 1.2.0](ATUALIZACOES-1.2.0.md).
 
 ## Equipes por frente e turno
 

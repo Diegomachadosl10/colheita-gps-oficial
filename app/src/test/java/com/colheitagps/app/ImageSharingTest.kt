@@ -4,6 +4,8 @@ import android.app.Activity
 import android.app.Application
 import android.content.Intent
 import android.net.Uri
+import androidx.core.content.FileProvider
+import java.io.File
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -17,8 +19,9 @@ class ImageSharingTest {
     @Test fun oneOrManyPagesShareAsImagesWithGrantsForEveryPageOnOldAndCurrentAndroid() {
         val a=Robolectric.buildActivity(Activity::class.java).get()
         val report=FieldReport("Estoque","Santo Inácio • Turno C",sections=emptyList())
-        val one=Uri.parse("content://com.colheitagps.app.files/relatorios/pagina1.png")
-        val two=Uri.parse("content://com.colheitagps.app.files/relatorios/pagina2.png")
+        val store=TeamStore(a.applicationContext,"santo_inacio_C")
+        val one=FileProvider.getUriForFile(a.applicationContext,"${a.packageName}.files",File(store.cache,"pagina1.png"))
+        val two=FileProvider.getUriForFile(a.applicationContext,"${a.packageName}.files",File(store.cache,"pagina2.png"))
         for(uris in listOf(arrayListOf(one),arrayListOf(one,two))) {
             val share=FieldReportSharing.imageIntent(a,report,uris)
             assertEquals("image/png",share.type)
