@@ -62,7 +62,7 @@ class SharingProviderRegressionTest {
         file.parentFile?.mkdirs();file.outputStream().use {check(bitmap.compress(Bitmap.CompressFormat.PNG,100,it))};bitmap.recycle()
         return file
     }
-    private fun awaitShare(a:Activity):Intent {
+    private fun awaitShare(a:Activity,mime:String="image/png"):Intent {
         var chooser:Intent?=null
         val deadline=System.nanoTime()+Duration.ofSeconds(15).toNanos()
         while(chooser==null&&System.nanoTime()<deadline) {
@@ -71,7 +71,7 @@ class SharingProviderRegressionTest {
         }
         assertNotNull("O compartilhamento precisa abrir sem encerrar o aplicativo",chooser)
         assertEquals(Intent.ACTION_CHOOSER,chooser!!.action)
-        return chooser.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)!!.also {assertEquals("image/png",it.type)}
+        return chooser.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)!!.also {assertEquals(mime,it.type)}
     }
     private fun readable(uri:Uri):ByteArray {
         assertTrue(uri.path!!.startsWith("/compartilhamento_equipes/"))
@@ -129,18 +129,67 @@ class SharingProviderRegressionTest {
         val a=Robolectric.buildActivity(StockShareActivity::class.java,input).create().get()
         ReflectionHelpers.setField(a,"store",store)
         ReflectionHelpers.setField(a,"access",TeamAccess("sup",mapOf("papel" to "supervisor","status" to "aprovado","frenteId" to "santo_inacio","turno" to "C")))
-        ReflectionHelpers.callInstanceMethod<Unit>(a,"sendReport")
-        val share=awaitShare(a)
-        assertEquals(Intent.ACTION_SEND_MULTIPLE,share.action)
+        ReflectionHelpers.callInstanceMethod<Unit>(a,"sendStock")
+        val share=awaitShare(a,"image/*")
+        assertEquals(Intent.ACTION_SEND,share.action)
+        assertEquals(1,share.clipData!!.itemCount)
+        val message=share.getStringExtra(Intent.EXTRA_TEXT)!!
+        assertTrue(message.contains("Lote: A"));assertTrue(message.contains("Lote: B"));assertTrue(message.contains("Talhões: 1 a 3"))
+        assertArrayEquals(painted.readBytes(),readable(share.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)!!))
+        assertEquals(rows.toString(),store.prefs("registros_v3").getString("estoques_salvos","[]"))
+    }
+    @Test fun theSingleActiveStockSharesItsOriginalPaintedMapAndTheOriginalTextMessage() {
+        val a=activity();val painted=image(File(store.files,"mapa_relatorio_${"d".repeat(64)}.png"),Color.RED)
+        val row=JSONObject().put("id","one").put("os","K/05").put("talhoes","1 a 3").put("areaRestante","10").put("produtividade","80").put("fotoEstoque",painted.path)
+        a.getSharedPreferences("controle_colheita",0).edit().putString("progresso",row.toString()).commit()
+        ReflectionHelpers.callInstanceMethod<Unit>(a,"escolherCompartilhamentoEstoque")
+        val share=awaitShare(a,"image/*")
+        assertEquals(Intent.ACTION_SEND,share.action)
+        assertTrue(share.getStringExtra(Intent.EXTRA_TEXT)!!.startsWith("ESTOQUE DE CANA - COLHEITA GPS"))
+        assertTrue(share.getStringExtra(Intent.EXTRA_TEXT)!!.contains("Lote: K/05"))
+        assertTrue(share.getStringExtra(Intent.EXTRA_TEXT)!!.contains("Talhões: 1 a 3"))
+        assertArrayEquals(painted.readBytes(),readable(share.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)!!))
+        assertEquals(row.toString(),a.getSharedPreferences("controle_colheita",0).getString("progresso","{}"))
+    }
+    @Test fun severalLotsKeepBothOriginalMapsAndAllTheirDataInTheTextMessage() {
+        val red=image(File(store.files,"mapa_relatorio_${"e".repeat(64)}.png"),Color.RED)
+        val blue=image(File(store.files,"mapa_relatorio_${"f".repeat(64)}.png"),Color.BLUE)
+        val rows=JSONArray()
+        for(id in listOf("A","B","C")) rows.put(JSONObject().put("id",id).put("os",id).put("talhoes","1 a 3").put("areaRestante","10").put("produtividade","80").apply {
+            when(id) {"A"->put("fotoEstoque",red.path);"B"->put("fotoEstoque",blue.path)}
+        })
+        store.prefs("registros_v3").edit().putString("estoques_salvos",rows.toString()).commit()
+        val input=Intent().putExtra("team",store.team).putStringArrayListExtra("ids",arrayListOf("A","B","C"))
+        val a=Robolectric.buildActivity(StockShareActivity::class.java,input).create().get()
+        ReflectionHelpers.setField(a,"store",store)
+        ReflectionHelpers.setField(a,"access",TeamAccess("sup",mapOf("papel" to "supervisor","status" to "aprovado","frenteId" to "santo_inacio","turno" to "C")))
+        ReflectionHelpers.callInstanceMethod<Unit>(a,"sendStock")
+        val share=awaitShare(a,"image/*");assertEquals(Intent.ACTION_SEND_MULTIPLE,share.action)
         val uris=share.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM)!!
         assertEquals(2,uris.size);assertEquals(2,share.clipData!!.itemCount)
-        uris.forEach {readable(it)}
-        val bytes=readable(uris.last());val output=BitmapFactory.decodeByteArray(bytes,0,bytes.size)
-        var red=0
-        for(y in 0 until output.height step 16) for(x in 0 until output.width step 16) if(output.getPixel(x,y)==Color.RED) red++
-        assertTrue("A imagem do mapa pintado precisa acompanhar os lotes",red>100)
-        output.recycle();assertEquals(rows.toString(),store.prefs("registros_v3").getString("estoques_salvos","[]"))
+        assertArrayEquals(red.readBytes(),readable(uris[0]));assertArrayEquals(blue.readBytes(),readable(uris[1]))
+        val message=share.getStringExtra(Intent.EXTRA_TEXT)!!
+        for(lot in listOf("A","B","C")) assertTrue(message.contains("Lote: $lot"))
+        assertTrue(message.contains("Área: 10 ha"));assertTrue(message.contains("Produtividade: 80 t/ha"))
+        assertTrue(share.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION!=0)
     }
+    @Test fun aStockWithoutALocalMapSendsItsMessageAsTextWithoutGeneratingAnImageReport() {
+        val a=activity()
+        val row=JSONObject().put("id","one").put("os","V/01").put("talhoes","4 a 8").put("areaRestante","15").put("produtividade","75")
+        a.getSharedPreferences("controle_colheita",0).edit().putString("progresso",row.toString()).commit()
+        ReflectionHelpers.callInstanceMethod<Unit>(a,"escolherCompartilhamentoEstoque")
+        val share=awaitShare(a,"text/plain")
+        assertEquals(Intent.ACTION_SEND,share.action);assertFalse(share.hasExtra(Intent.EXTRA_STREAM))
+        assertTrue(share.getStringExtra(Intent.EXTRA_TEXT)!!.contains("Lote: V/01"))
+        assertFalse(File(store.cache,"relatorios").exists())
+    }
+    @Test fun aChangedSessionCannotDispatchAStockMessageOrItsPhotos() {
+        val a=activity()
+        val message=Intent(Intent.ACTION_SEND).apply {type="text/plain";putExtra(Intent.EXTRA_TEXT,"Estoque")}
+        assertFalse(StockSharing.deliver(a,message) {false})
+        assertNull(shadowOf(a).nextStartedActivity)
+    }
+
     @Test fun anUnshareableFileShowsAnErrorWithoutCrashingOrOpeningAnEmptyChooser() {
         val a=activity();val privateFile=image(File(app.filesDir,"fora-das-pastas-compartilhadas.png"))
         assertFalse(FieldReportSharing.deliverImages(a,report,listOf(privateFile)))

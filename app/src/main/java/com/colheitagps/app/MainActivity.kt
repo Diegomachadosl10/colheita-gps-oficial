@@ -780,7 +780,7 @@ class MainActivity : Activity() {
             setPadding(dp(12), 0, dp(8), 0)
             contentDescription = "Mais opções"; minWidth = dp(48); minHeight = dp(48); gravity = Gravity.CENTER
             setOnClickListener { v -> PopupMenu(this@MainActivity, v).apply {
-                if(relatorioAtual!=null) menu.add("Compartilhar imagem").setOnMenuItemClickListener {relatorioAtual?.invoke()?.let(::compartilharRelatorio);true}
+                if(relatorioAtual!=null&&titulo!="Estoque de cana") menu.add("Compartilhar imagem").setOnMenuItemClickListener {relatorioAtual?.invoke()?.let(::compartilharRelatorio);true}
                 menu.add("Sair da conta").setOnMenuItemClickListener {
                     sairDaConta()
                     true
@@ -1064,20 +1064,20 @@ class MainActivity : Activity() {
         val foto = fotoEstoque()
         if (foto != null) {
             mapaEstoqueSelecionado = foto
-            compartilharEstoqueImagem()
+            compartilharEstoqueMensagem()
             return
         }
         val mapas = mapasDisponiveisEstoque()
         if (mapas.isEmpty()) {
             mapaEstoqueSelecionado = null
-            compartilharEstoqueImagem()
+            compartilharEstoqueMensagem()
             return
         }
         val nomes = mapas.map { nomeOriginalMapaEstoque(it) } + "Sem foto do mapa"
         AlertDialog.Builder(this).setTitle("Foto para o estoque")
             .setItems(nomes.toTypedArray()) { _, indice ->
                 mapaEstoqueSelecionado = mapas.getOrNull(indice)
-                compartilharEstoqueImagem()
+                compartilharEstoqueMensagem()
             }.setNegativeButton("Cancelar", null).show()
     }
 
@@ -1232,10 +1232,16 @@ class MainActivity : Activity() {
         } else arquivo?.nameWithoutExtension ?: "Mapa"
     }
 
-    private fun compartilharEstoqueImagem() {
-        val report=relatorioGrupo("Estoque de cana","estoques_salvos",listOf(progresso()))
-        val pictures=mapaEstoqueSelecionado?.takeIf {it.isFile}?.let {listOf(ReportPicture(it,"Mapa: ${nomeOriginalMapaEstoque(it)}"))}?:report.pictures
-        compartilharRelatorio(report.copy(pictures=pictures))
+    private fun compartilharEstoqueMensagem() {
+        if(!exigirGestor()) return
+        val store=teamStore?:return;val uid=teamAccess?.uid?:return
+        val record=JSONObject(progresso().toString()).apply {
+            remove("fotoEstoque")
+            mapaEstoqueSelecionado?.takeIf {it.isFile}?.let {put("fotoEstoque",it.path)}
+        }
+        StockSharing.share(this,store,listOf(record),textoEstoque()) {
+            acessoConfirmado&&podeGerenciar()&&teamStore?.team==store.team&&teamAccess?.uid==uid
+        }
     }
 
     private fun salvarImagemMapa() {

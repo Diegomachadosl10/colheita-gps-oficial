@@ -13,8 +13,8 @@ android {
         applicationId = "com.colheitagps.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 22
-        versionName = "1.8.1"
+        versionCode = 23
+        versionName = "1.8.2"
     }
 
     testOptions { unitTests.isIncludeAndroidResources = true }

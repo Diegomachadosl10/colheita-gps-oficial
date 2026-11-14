@@ -62,7 +62,7 @@ class StockShareActivity:Activity() {
     private fun render() {
         val a=access?:return;val s=store?:return
         val records=records()
-        val body=ui.page("Preparar envio de estoques","${TeamPolicy.label(s.team)}\nEscolha em quais lotes deseja enviar foto. Os demais serão enviados em imagem somente com os dados.")
+        val body=ui.page("Preparar envio de estoques","${TeamPolicy.label(s.team)}\nEscolha em quais lotes deseja enviar foto. Os dados seguem na mensagem; fotos e mapas escolhidos vão anexados.")
         if(records.size!=ids.size) ui.add(body,ui.text("Algum estoque selecionado foi removido. Volte e confira a seleção.",15f,ui.green,true))
         for(record in records) {
             val id=record.optString("id");val photo=StockShareFiles.photo(s.files,record)
@@ -78,11 +78,11 @@ class StockShareActivity:Activity() {
                     buttonTintList=android.content.res.ColorStateList.valueOf(ui.green)
                     setOnCheckedChangeListener { _,checked->if(checked) omitted.remove(id) else omitted.add(id) }
                 },4)
-            } else ui.add(card,ui.text(if(record.optBoolean("anexosManuais")) "A foto não está neste celular. Você pode escolher outra ou enviar sem foto." else "Sem foto • a imagem terá somente os dados",13f),8)
+            } else ui.add(card,ui.text(if(record.optBoolean("anexosManuais")) "A foto não está neste celular. Você pode escolher outra ou enviar sem foto." else "Sem foto • os dados seguem na mensagem",13f),8)
             ui.button(card,if(photo==null) "Adicionar foto a este lote" else "Trocar foto deste lote",true) { choosePhoto(id) }
         }
         val enabled=records.isNotEmpty()&&records.size==ids.size&&a.manages
-        ui.button(body,"Compartilhar estoques por imagem") {sendReport()}.isEnabled=enabled
+        ui.button(body,"Enviar mensagem e fotos") {sendStock()}.isEnabled=enabled
         ui.button(body,"Voltar",true){finish()}
     }
     private fun choosePhoto(id:String) {
@@ -135,18 +135,16 @@ class StockShareActivity:Activity() {
             if(access!=null) receivePhoto()
         } else {pendingLot=null;pendingUri=null;if(access!=null) render()}
     }
-    private fun preparedReport():FieldReport {
-        val s=store?:error("Equipe indisponível")
+    private fun selectedForSharing():List<JSONObject> {
         val selected=records().map {JSONObject(it.toString()).apply {if(optString("id") in omitted) remove("fotoEstoque")}}
         require(selected.isNotEmpty()&&selected.size==ids.size&&selected.all {StockBatch.complete(it)}) {"Confira os lotes selecionados antes de enviar."}
-        return FieldReport("Estoques selecionados",TeamPolicy.label(s.team),sections=listOf(FieldReports.group("Lotes","estoques_salvos",selected)),
-            pictures=selected.mapNotNull {record->StockShareFiles.photo(s.files,record)?.let {ReportPicture(it,"Lote ${record.optString("os")} • Talhões: ${record.optString("talhoes")}")}})
+        return selected
     }
-    private fun sendReport() {
+    private fun sendStock() {
         val a=access?:return;val s=store?:return
         if(!a.manages) return
-        val report=try {preparedReport()} catch(error:Exception) {notice(error.message?:"Confira os lotes selecionados antes de enviar.");return}
-        FieldReportSharing.share(this,report,s.cache) {access?.uid==a.uid&&access?.manages==true&&store?.team==s.team}
+        val selected=try {selectedForSharing()} catch(error:Exception) {notice(error.message?:"Confira os lotes selecionados antes de enviar.");return}
+        StockSharing.share(this,s,selected) {access?.uid==a.uid&&access?.manages==true&&store?.team==s.team}
     }
     companion object {private const val PHOTO=8810}
 }
