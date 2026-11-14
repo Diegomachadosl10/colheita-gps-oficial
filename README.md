@@ -2,9 +2,9 @@
 
 Android, ramificação de trabalho **dm-agro-login**. A `main` permanece intacta.
 
-## Versão 1.9.0
+## Versão 1.9.1
 
-Veja [busca, favoritos, urgência e temas claro/noturno](docs/MELHORIAS-1.9.0.md). A [simplificação da versão 1.8.3](docs/SIMPLIFICACAO-1.8.3.md) foi preservada. O [envio de estoque por mensagem e fotos](docs/ESTOQUE-WHATSAPP-1.8.2.md) continua disponível. A [correção do fechamento ao compartilhar](docs/CORRECAO-COMPARTILHAMENTO-1.8.1.md) foi preservada. A configuração dos supervisores permanece descrita na [versão 1.8.0](docs/ATUALIZACAO-1.8.0.md). O download dentro do aplicativo depende de publicar os releases no GitHub com a assinatura permanente. Histórico: [versão 1.2.0](ATUALIZACOES-1.2.0.md).
+Veja [a organização das telas e o menu simplificado](docs/VISUAL-1.9.1.md). Mantidos [busca, favoritos, urgência e temas claro/noturno](docs/MELHORIAS-1.9.0.md). A [simplificação da versão 1.8.3](docs/SIMPLIFICACAO-1.8.3.md) foi preservada. O [envio de estoque por mensagem e fotos](docs/ESTOQUE-WHATSAPP-1.8.2.md) continua disponível. A [correção do fechamento ao compartilhar](docs/CORRECAO-COMPARTILHAMENTO-1.8.1.md) foi preservada. A configuração dos supervisores permanece descrita na [versão 1.8.0](docs/ATUALIZACAO-1.8.0.md). O download dentro do aplicativo depende de publicar os releases no GitHub com a assinatura permanente. Histórico: [versão 1.2.0](ATUALIZACOES-1.2.0.md).
 
 ## Equipes por frente e turno
 

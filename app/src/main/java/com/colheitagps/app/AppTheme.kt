@@ -5,8 +5,13 @@ import android.app.AlertDialog
 import android.content.Context
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.RippleDrawable
+import android.content.res.ColorStateList
+import android.graphics.Typeface
 import android.view.View
+import android.widget.Button
 import android.widget.EditText
+import android.widget.LinearLayout
 
 internal object AppTheme {
     data class Colors(val background:Int,val surface:Int,val alternate:Int,val text:Int,val muted:Int,val accent:Int,val border:Int,val danger:Int,val favorite:Int) {
@@ -39,6 +44,22 @@ internal object AppTheme {
         view.setPadding((14*density).toInt(),(12*density).toInt(),(14*density).toInt(),(12*density).toInt())
         view.backgroundTintList=null
         view.background=GradientDrawable().apply {setColor(p.alternate);cornerRadius=12*density;setStroke(maxOf(1,density.toInt()),p.border)}
+        view.layoutParams=LinearLayout.LayoutParams(-1,-2).apply {topMargin=(8*density).toInt();bottomMargin=(4*density).toInt()}
+    }
+    /** Shared action hierarchy for tool pages, access screens and forms. */
+    fun action(view:Button,primary:Boolean=false) {
+        val p=colors(view.context);val density=view.resources.displayMetrics.density
+        view.isAllCaps=false;view.textSize=15f;view.setTypeface(null,Typeface.BOLD)
+        view.minHeight=(52*density).toInt();view.minimumHeight=(52*density).toInt()
+        view.setPadding((14*density).toInt(),(12*density).toInt(),(14*density).toInt(),(12*density).toInt())
+        view.backgroundTintList=null;view.stateListAnimator=null
+        view.setTextColor(ColorStateList(arrayOf(intArrayOf(-android.R.attr.state_enabled),intArrayOf()),intArrayOf(p.muted,if(primary) Color.WHITE else p.accent)))
+        view.background=RippleDrawable(ColorStateList.valueOf(0x22187447),GradientDrawable().apply {
+            setColor(if(primary) p.primary else p.surface);cornerRadius=12*density
+            if(!primary) setStroke(maxOf(1,density.toInt()),p.border)
+        },null)
+        view.layoutParams=LinearLayout.LayoutParams(-1,-2).apply {topMargin=(10*density).toInt();bottomMargin=(2*density).toInt()}
+        view.tag=if(primary) "acaoPrincipal" else "acaoSecundaria"
     }
     fun surface(context:Context,color:Int):Int = if(night(context)&&color in setOf(Color.WHITE,0xFFF1F6F1.toInt(),0xFFEEF5EF.toInt(),0xFFE2F4D9.toInt(),0xFFE8F6EA.toInt())) colors(context).alternate else color
 }

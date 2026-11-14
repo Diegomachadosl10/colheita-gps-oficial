@@ -566,16 +566,47 @@ class MainActivity : Activity() {
             textSize = size
             setTextColor(color)
             gravity = Gravity.CENTER_VERTICAL
+            setLineSpacing(dp(2).toFloat(),1f)
         }
 
-    private fun botao(s: String, acao: () -> Unit) =
+    private fun botao(s: String, primary:Boolean=false, acao: () -> Unit) =
         Button(this).apply {
-            text = s
-            textSize=15f;minimumHeight=dp(48);isAllCaps=false
-            setTextColor(Color.WHITE);backgroundTintList=null
-            background=GradientDrawable().apply {setColor(verde);cornerRadius=dp(14).toFloat()}
+            text=s;AppTheme.action(this,primary)
             setOnClickListener { acao() }
         }
+
+    /** Secondary actions wrap into a vertical list on narrow screens or larger text. */
+    private fun acoes(coluna:LinearLayout,vararg actions:Pair<String,()->Unit>) {
+        val stack=resources.configuration.screenWidthDp<360||resources.configuration.fontScale>=1.3f
+        for(chunk in actions.toList().chunked(if(stack) 1 else 2)) {
+            val row=LinearLayout(this).apply {orientation=LinearLayout.HORIZONTAL;isBaselineAligned=false;tag="acoesFerramenta"}
+            chunk.forEachIndexed {index,action->
+                row.addView(botao(action.first,acao=action.second),LinearLayout.LayoutParams(0,-1,1f).apply {if(index>0) marginStart=dp(10)})
+            }
+            coluna.addView(row,LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(10);bottomMargin=dp(2)})
+        }
+    }
+
+    private fun atalhos(coluna:LinearLayout,vararg actions:Triple<String,FieldIcon,()->Unit>) {
+        val stack=resources.configuration.screenWidthDp<360||resources.configuration.fontScale>=1.3f
+        for(chunk in actions.toList().chunked(if(stack) 1 else 2)) {
+            val row=LinearLayout(this).apply {orientation=LinearLayout.HORIZONTAL;isBaselineAligned=false;tag="atalhosFerramenta"}
+            chunk.forEachIndexed {index,action->
+                val button=botao(action.first,acao=action.third).apply {
+                    minHeight=dp(88);minimumHeight=dp(88)
+                    setCompoundDrawables(null,FieldIconDrawable(this@MainActivity,action.second,palette.accent).apply {setBounds(0,0,dp(28),dp(28))},null,null)
+                    compoundDrawablePadding=dp(8)
+                }
+                row.addView(button,LinearLayout.LayoutParams(0,-1,1f).apply {if(index>0) marginStart=dp(10)})
+            }
+            if(chunk.size==1&&!stack) row.addView(View(this),LinearLayout.LayoutParams(0,-1,1f).apply {marginStart=dp(10)})
+            coluna.addView(row,LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(10)})
+        }
+    }
+
+    private fun secao(titulo:String)=texto(titulo,14f,palette.muted).apply {
+        setTypeface(null,Typeface.BOLD);setPadding(0,dp(20),0,dp(4))
+    }
 
     private fun botaoVoltar(acao: () -> Unit): View =
         TextView(this).apply {
@@ -702,15 +733,17 @@ class MainActivity : Activity() {
     private fun cartao(titulo: String, subtitulo: String, acao: () -> Unit): View {
         val caixa = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), dp(18), dp(18), dp(18))
+            setPadding(dp(16), dp(14), dp(16), dp(14))
             background = GradientDrawable().apply {
                 setColor(palette.surface)
-                cornerRadius = dp(16).toFloat()
+                cornerRadius = dp(14).toFloat()
+                setStroke(dp(1).coerceAtLeast(1),palette.border)
             }
+            isFocusable=true;minimumHeight=dp(72)
             setOnClickListener { acao() }
         }
-        caixa.addView(texto(titulo,19f,palette.text))
-        caixa.addView(texto(subtitulo, 13f, palette.muted))
+        caixa.addView(texto(titulo,17f,palette.text).apply {setTypeface(null,Typeface.BOLD)})
+        caixa.addView(texto(subtitulo,14f,palette.muted).apply {setPadding(0,dp(5),0,0)})
         return caixa
     }
 
@@ -802,49 +835,45 @@ class MainActivity : Activity() {
         )
         if (telaAtual == "inicio") topo.addView(DashboardUi(this).brand(), LinearLayout.LayoutParams(0, -2, 1f))
         else topo.addView(texto(titulo, 22f, Color.WHITE).apply {
-            setPadding(dp(12), 0, 0, 0)
+            setPadding(dp(10), 0, 0, 0)
+            setTypeface(null,Typeface.BOLD);textSize=20f
         }, LinearLayout.LayoutParams(0, -2, 1f))
         topo.addView(TextView(this).apply {
             text = "⋮"; textSize = 26f; setTextColor(Color.WHITE)
             setPadding(dp(12), 0, dp(8), 0)
             contentDescription = "Mais opções"; minWidth = dp(48); minHeight = dp(48); gravity = Gravity.CENTER
             setOnClickListener { v -> PopupMenu(this@MainActivity, v).apply {
-                if(relatorioAtual!=null&&titulo!="Estoque de cana") menu.add("Compartilhar imagem").setOnMenuItemClickListener {relatorioAtual?.invoke()?.let(::compartilharRelatorio);true}
-                menu.add("Sair da conta").setOnMenuItemClickListener {
-                    sairDaConta()
-                    true
-                }
-                menu.add("Tema do aplicativo").setOnMenuItemClickListener {
-                    escolherTema();true
-                }
-                menu.add("Verificar atualização").setOnMenuItemClickListener { startActivity(Intent(this@MainActivity, UpdateActivity::class.java)); true }
-                menu.add("Sincronização").setOnMenuItemClickListener { syncDetails(); true }
-                if(podeGerenciar()) menu.add("Registros excluídos").setOnMenuItemClickListener {registrosExcluidos();true}
-                if (podeGerenciar()) menu.add("Notificações").setOnMenuItemClickListener { startActivity(Intent(this@MainActivity, NotificationSettingsActivity::class.java)); true }
-                if (teamAccess?.primary == true) menu.add("Trocar equipe").setOnMenuItemClickListener { chooseTeam(teamAccess!!); true }
-                menu.add("Início").setOnMenuItemClickListener { inicio(); true }
-                menu.add("Mapas").setOnMenuItemClickListener { biblioteca(); true }
-                menu.add("Pendências").setOnMenuItemClickListener { pendencias(); true }
-                menu.add("Peças a pedir").setOnMenuItemClickListener { pecas(); true }
-                menu.add("Ocorrências de campo").setOnMenuItemClickListener { ocorrenciasCampo(); true }
-                menu.add("Registro de chuva").setOnMenuItemClickListener { chuvas(); true }
-                if (podeGerenciar()) menu.add("Calendário").setOnMenuItemClickListener { calendario(); true }
-                if (podeGerenciar()) menu.add("Caminhões").setOnMenuItemClickListener { abrirCaminhoes(); true }
-                if (podeGerenciar() && titulo == "Estoque de cana") {
-                    menu.add("Compartilhar estoque").setOnMenuItemClickListener { escolherCompartilhamentoEstoque(); true }
-                    
-                }
-                if (podeGerenciar()) menu.add("Exportar cópia de segurança").setOnMenuItemClickListener { exportarBackup(); true }
-                if (podeGerenciar()) menu.add("Restaurar cópia de segurança").setOnMenuItemClickListener { solicitarRestauracaoBackup(); true }
+                if(relatorioAtual!=null&&titulo!="Estoque de cana") menu.add(0,4,0,"Compartilhar imagem").setOnMenuItemClickListener {relatorioAtual?.invoke()?.let(::compartilharRelatorio);true}
+                menu.add(0,1,1,"Tema do aplicativo").setOnMenuItemClickListener {escolherTema();true}
+                menu.add(0,2,2,"Configurações").setOnMenuItemClickListener {configuracoes();true}
+                menu.add(0,3,3,"Sair da conta").setOnMenuItemClickListener {sairDaConta();true}
                 show()
             } }
         })
-        coluna.addView(topo)
+        coluna.addView(topo,LinearLayout.LayoutParams(-1,-2).apply {bottomMargin=dp(8)})
         val rolagem = ScrollView(this).apply { addView(coluna) }
         base.addView(rolagem, FrameLayout.LayoutParams(-1, -1))
         setContentView(base)
         base.requestApplyInsets()
         return coluna
+    }
+
+    private fun configuracoes() {
+        val coluna=pagina("Configurações")
+        themeScreen={configuracoes()};relatorioAtual=null
+        coluna.addView(secao("Aplicativo"))
+        coluna.addView(botao("Verificar atualização") {startActivity(Intent(this,UpdateActivity::class.java))})
+        if(podeGerenciar()) coluna.addView(botao("Notificações") {startActivity(Intent(this,NotificationSettingsActivity::class.java))})
+        if(podeGerenciar()) {
+            coluna.addView(secao("Registros"))
+            coluna.addView(botao("Registros excluídos") {registrosExcluidos()})
+        }
+        coluna.addView(botao("Sincronização") {syncDetails()})
+        if(podeGerenciar()) coluna.addView(botao("Cópia de segurança") {
+            AlertDialog.Builder(this).setTitle("Cópia de segurança").setItems(arrayOf("Exportar cópia de segurança","Restaurar cópia de segurança")) {_,index->
+                if(index==0) exportarBackup() else solicitarRestauracaoBackup()
+            }.setNegativeButton("Cancelar",null).show()
+        })
     }
 
     private fun inicio() {
@@ -996,11 +1025,12 @@ class MainActivity : Activity() {
         if (!exigirGestor()) return
         val coluna=pagina("Estoque de cana")
         themeScreen={estoque()}
-        coluna.addView(botao("📅 Abrir calendário") {calendario(parent={estoque()})})
-        coluna.addView(botao("+ Novo estoque") {editarProgressoColheita(true)})
-        coluna.addView(botao("+ Cadastrar vários lotes") {cadastrarLotes()})
-        coluna.addView(botao("Compartilhar vários estoques") {selecionarEstoques()})
-        coluna.addView(texto("ESTOQUES SALVOS",15f))
+        atalhos(coluna,
+            Triple("Novo estoque",FieldIcon.ADD,{editarProgressoColheita(true)}),
+            Triple("Vários lotes",FieldIcon.STOCK,{cadastrarLotes()}),
+            Triple("Compartilhar",FieldIcon.SHARE,{selecionarEstoques()}),
+            Triple("Calendário",FieldIcon.CALENDAR,{calendario(parent={estoque()})}))
+        coluna.addView(secao("Estoques salvos"))
         val results=LinearLayout(this).apply {orientation=LinearLayout.VERTICAL;tag="resultadosEstoque"}
         fun render() {
             results.removeAllViews()
@@ -1010,7 +1040,7 @@ class MainActivity : Activity() {
             }
             for(item in rows) {
                 val lote=item.optString("os").ifBlank {"Sem lote"}
-                val detalhe="Talhões: ${item.optString("talhoes")} • Área: ${item.optString("areaRestante")} ha • Produtividade: ${item.optString("produtividade")} t/ha"
+                val detalhe="Talhões: ${item.optString("talhoes")}\n${item.optString("areaRestante")} ha • ${item.optString("produtividade")} t/ha"
                 results.addView(cartao(lote,detalhe) {abrirEstoqueSalvo(item)},LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(10)})
             }
             if(rows.isEmpty()) results.addView(texto(if(all.length()==0) "Nenhum estoque cadastrado ainda." else "Nenhum lote encontrado. Altere ou apague a busca.",14f))
@@ -1674,30 +1704,44 @@ class MainActivity : Activity() {
     private fun pendencias() {
         val coluna=pagina("Pendências de manutenção")
         themeScreen={pendencias()}
-        coluna.addView(botao("+ Cadastrar equipamento") {cadastrarEquipamento()})
-        coluna.addView(botao("+ Nova pendência") {editarPendencia(-1)})
-        coluna.addView(texto("EQUIPAMENTOS DA EQUIPE",16f,palette.text))
+        atalhos(coluna,
+            Triple("Nova pendência",FieldIcon.PENDING,{editarPendencia(-1)}),
+            Triple("Cadastrar equipamento",FieldIcon.EQUIPMENT,{cadastrarEquipamento()}))
+        coluna.addView(secao("Equipamentos da equipe"))
         val results=LinearLayout(this).apply {orientation=LinearLayout.VERTICAL;tag="resultadosEquipamentos"}
         fun render() {
             results.removeAllViews()
             val all=maintenanceCatalog()
             val equipment=MaintenanceRecords.search(all,buscaEquipamento)
             for(item in equipment) {
-                val description=if(item.open==0) "Sem pendências abertas • ${item.completed} concluídas" else "${item.open} em aberto • ${item.completed} concluídas"
-                val card=cartao("Equipamento ${item.number}","$description\nToque para abrir opções") {opcoesEquipamento(item.number)} as LinearLayout
+                val card=LinearLayout(this).apply {
+                    orientation=if(resources.configuration.fontScale>=1.3f||resources.configuration.screenWidthDp<360) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
+                    gravity=Gravity.CENTER_VERTICAL;minimumHeight=dp(76);setPadding(dp(16),dp(14),dp(16),dp(14));isFocusable=true
+                    background=GradientDrawable().apply {setColor(palette.surface);cornerRadius=dp(14).toFloat();setStroke(dp(1).coerceAtLeast(1),palette.border)}
+                    setOnClickListener {opcoesEquipamento(item.number)}
+                }
+                val info=LinearLayout(this).apply {
+                    orientation=LinearLayout.VERTICAL
+                    addView(texto("Equipamento ${item.number}",17f).apply {setTypeface(null,Typeface.BOLD)})
+                    addView(texto("${item.completed} concluída${if(item.completed==1) "" else "s"} • Opções ›",13f,palette.muted).apply {setPadding(0,dp(5),0,0)})
+                }
+                card.addView(info,if(card.orientation==LinearLayout.HORIZONTAL) LinearLayout.LayoutParams(0,-2,1f) else LinearLayout.LayoutParams(-1,-2))
                 card.addView(TextView(this).apply {
-                    text=if(item.urgent>0) "● URGENTE • ${item.urgent} pendência(s)" else if(item.open>0) "● ${item.open} pendência(s) aberta(s)" else "✓ Sem pendências abertas"
+                    val abertas="${item.open} aberta${if(item.open==1) "" else "s"}"
+                    text=if(item.urgent>0) "● $abertas\nURGENTE: ${item.urgent}" else if(item.open>0) "● $abertas" else "✓ Em dia"
                     contentDescription=if(item.urgent>0) "Alerta: equipamento ${item.number} tem ${item.urgent} pendências urgentes" else if(item.open>0) "Alerta: equipamento ${item.number} tem ${item.open} pendências abertas" else "Equipamento ${item.number} sem pendências abertas"
-                    textSize=14f;setTypeface(null,Typeface.BOLD);setTextColor(if(item.open>0) palette.danger else palette.accent);setPadding(0,dp(10),0,0)
-                },0)
+                    textSize=13f;setTypeface(null,Typeface.BOLD);setTextColor(if(item.open>0) palette.danger else palette.accent)
+                    gravity=Gravity.CENTER;setPadding(dp(8),dp(6),dp(8),dp(6))
+                    background=GradientDrawable().apply {setColor(palette.alternate);cornerRadius=dp(8).toFloat()}
+                },LinearLayout.LayoutParams(-2,-2).apply {if(card.orientation==LinearLayout.HORIZONTAL) marginStart=dp(8) else topMargin=dp(8)})
                 results.addView(card,LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(10)})
             }
             if(equipment.isEmpty()) results.addView(texto(if(MaintenanceRecords.summaries(all).isEmpty()) "Cadastre um equipamento para acompanhar as pendências desta equipe." else "Nenhum equipamento encontrado. Altere ou apague a busca.",14f))
         }
         coluna.addView(campoBusca("Buscar equipamento, pendência ou O.S.",buscaEquipamento) {buscaEquipamento=it;render()},LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(10)})
         coluna.addView(results)
-        coluna.addView(botao("✓ Histórico de concluídas e excluídas") {historicoPendencias()})
-        coluna.addView(botao("Equipamentos excluídos") {historicoEquipamentos()})
+        coluna.addView(secao("Histórico"))
+        acoes(coluna,"✓ Histórico de concluídas e excluídas" to {historicoPendencias()},"Equipamentos excluídos" to {historicoEquipamentos()})
         refreshList={render()};render()
     }
     private fun pendenciasEquipamento(equipamento: String, concluidas: Boolean = false) {
@@ -1714,7 +1758,7 @@ class MainActivity : Activity() {
         })}
         if (archivedEquipment) coluna.addView(texto("Equipamento excluído • registros preservados no histórico", 15f, palette.muted))
         if(archivedEquipment&&podeGerenciar()) coluna.addView(botao("Restaurar equipamento") {restaurarEquipamento(number)})
-        if (!concluidas && !archivedEquipment) coluna.addView(botao("+ Adicionar pendência") {
+        if (!concluidas && !archivedEquipment) coluna.addView(botao("+ Adicionar pendência",true) {
             editarPendencia(-1,equipamentoInicial=number)
         })
         val arr = dados("pendencias")
@@ -1848,7 +1892,7 @@ class MainActivity : Activity() {
         refreshList={pecas(historico)}
         coluna.addView(texto(TeamPolicy.label(teamStore!!.team),16f,palette.accent))
         if(!historico) {
-            coluna.addView(botao("+ Cadastrar peça a pedir") { editarPeca() })
+            coluna.addView(botao("+ Cadastrar peça a pedir",true) { editarPeca() })
             if(lerRascunhoPeca()!=null) coluna.addView(botao("Continuar rascunho de peça") { editarPeca(retomar=true) })
         }
         coluna.addView(texto("Códigos e pedidos são compartilhados com a equipe. As fotos ficam no celular e podem ser enviadas pelo botão Compartilhar.",14f,palette.muted))
@@ -1906,10 +1950,10 @@ class MainActivity : Activity() {
         pecaRascunho=draft
         val body=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(dp(20),dp(8),dp(20),dp(10)) }
         fun input(label:String,value:String,multi:Boolean=false):EditText {
-            body.addView(texto(label,14f,0xFF153F28.toInt()).apply { setPadding(0,dp(10),0,dp(4)) })
+            body.addView(texto(label,14f,palette.text).apply { setPadding(0,dp(10),0,dp(4)) })
             return campo(label,value).apply {
-                setSingleLine(!multi); setTextColor(0xFF153F28.toInt()); setHintTextColor(0xFF64756B.toInt()); textSize=16f
-                backgroundTintList=ColorStateList.valueOf(verde)
+                setSingleLine(!multi); setTextColor(palette.text); setHintTextColor(palette.muted); textSize=16f
+                backgroundTintList=null
                 body.addView(this)
             }
         }
@@ -1920,9 +1964,9 @@ class MainActivity : Activity() {
         val state=if(podeGerenciar()) Spinner(this).apply {
             adapter=ArrayAdapter(this@MainActivity,android.R.layout.simple_spinner_dropdown_item,PartsRecords.states.values.toList())
             setSelection(PartsRecords.states.keys.indexOf(draft.optString("situacaoPeca","a_pedir")).coerceAtLeast(0))
-            body.addView(texto("Situação do pedido",14f,0xFF153F28.toInt())); body.addView(this)
+            body.addView(texto("Situação do pedido",14f,palette.text)); body.addView(this)
         } else null
-        val photoCount=texto("",14f,0xFF153F28.toInt()); body.addView(photoCount)
+        val photoCount=texto("",14f,palette.text); body.addView(photoCount)
         fun capture() {
             draft.put("codigoPeca",code.text.toString()).put("nomePeca",description.text.toString()).put("descricao",description.text.toString()).put("quantidadePeca",quantity.text.toString()).put("equipamentoReferencia",reference.text.toString())
                 .put("situacaoPeca",state?.let { PartsRecords.states.keys.elementAt(it.selectedItemPosition) } ?: draft.optString("situacaoPeca","a_pedir"))
@@ -2031,7 +2075,7 @@ class MainActivity : Activity() {
         coluna.addView(cartao("HOJE • ${dataHoje()}", hoje?.let(RainRecords::label) ?: "Chuva ainda não registrada") {
             formularioChuva(dataHoje())
         }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
-        coluna.addView(botao("+ Registrar chuva por data") {
+        coluna.addView(botao("+ Registrar chuva por data",true) {
             val hojeData = java.util.Calendar.getInstance()
             DatePickerDialog(this, { _, ano, mes, dia ->
                 formularioChuva(String.format(Locale.ROOT, "%02d/%02d/%04d", dia, mes + 1, ano))
@@ -2042,7 +2086,7 @@ class MainActivity : Activity() {
         })
         coluna.addView(texto("Um acumulado por dia e turno. Informe 0 quando não chover. Ao corrigir, substitua pelo acumulado completo do turno.",
             14f, palette.muted).apply { setPadding(0, dp(8), 0, dp(16)) })
-        coluna.addView(texto("HISTÓRICO DO TURNO", 17f, palette.accent))
+        coluna.addView(secao("Histórico do turno"))
         if (leituras.isEmpty()) coluna.addView(texto("Nenhum registro de chuva nesta equipe.", 15f))
         for (leitura in leituras) {
             coluna.addView(cartao("${leitura.optString("dataCadastro")} • ${RainRecords.label(leitura)}",
@@ -2158,7 +2202,7 @@ class MainActivity : Activity() {
         val coluna = pagina(if (concluidas) "Histórico de ocorrências" else "Ocorrências de campo", parent = { if (concluidas) ocorrenciasCampo() else inicio() })
         themeScreen={ocorrenciasCampo(concluidas)}
         refreshList = { ocorrenciasCampo(concluidas) }
-        if (!concluidas) coluna.addView(botao("+ Nova ocorrência") {editarOcorrencia(-1)})
+        if (!concluidas) coluna.addView(botao("+ Nova ocorrência",true) {editarOcorrencia(-1)})
         val arr = dados("ocorrencias_campo")
         var quantidade = 0
         for (i in arr.length() - 1 downTo 0) {
@@ -2349,7 +2393,7 @@ class MainActivity : Activity() {
                 .setItems(fotosFormulario.mapIndexed {i,_->"Foto ${i+1}"}.toTypedArray()) {_,pos->fotosFormulario.removeAt(pos);atualizarFotosFormulario?.invoke()}.show()
         })
         AlertDialog.Builder(this).setTitle(if(idx<0) "Novo registro" else "Editar registro")
-            .setView(corpo).setNegativeButton("Cancelar",null).setPositiveButton("Salvar") {_,_->
+            .setView(ScrollView(this).apply {addView(corpo)}).setNegativeButton("Cancelar",null).setPositiveButton("Salvar") {_,_->
                 val number=MaintenanceRecords.number(equipamento.text.toString())
                 if(number.isBlank()||equipamento.text.length>80||descricao.text.isBlank()) {
                     Toast.makeText(this,"Informe o equipamento (até 80 caracteres) e descreva a pendência.",Toast.LENGTH_LONG).show();return@setPositiveButton
@@ -2423,10 +2467,7 @@ class MainActivity : Activity() {
         }?:"Turno $shift • ${TruckShift.hours(shift)}\nFora do horário deste turno • lista ativa vazia"
         column.addView(texto(TeamPolicy.label(teamStore!!.team),17f,palette.accent))
         column.addView(texto(period,16f))
-        val filters=LinearLayout(this).apply {orientation=LinearLayout.HORIZONTAL}
-        filters.addView(botao("Turno atual") {abrirCaminhoes()},LinearLayout.LayoutParams(0,-2,1f))
-        filters.addView(botao("Histórico") {historicoCaminhoes()},LinearLayout.LayoutParams(0,-2,1f))
-        column.addView(filters)
+        acoes(column,"Turno atual" to {abrirCaminhoes()},"Histórico" to {historicoCaminhoes()})
         if(interval!=null) column.addView(botao("Até que horas: ${corteCaminhoes?.toString()?:if(live) "agora" else "fim do turno"}") {
             val initial=corteCaminhoes?:if(live) now.toLocalTime() else interval.end.toLocalTime()
             TimePickerDialog(this,{_,hour,minute->
@@ -2436,7 +2477,7 @@ class MainActivity : Activity() {
             },initial.hour,initial.minute,true).show()
         })
         if(corteCaminhoes!=null) column.addView(botao("Remover horário de corte") {corteCaminhoes=null;caminhoes()})
-        column.addView(botao("+ Registrar entrada") {editarCaminhao(-1)})
+        column.addView(botao("+ Registrar entrada",true) {editarCaminhao(-1)})
         val original=dados("caminhoes")
         val snapshot=if(diaCaminhoes=="todos") TruckShift.Snapshot(TruckRecords.rows(original,null),TruckRecords.summary(original,null))
             else TruckShift.snapshot(original,interval,cutoff)
@@ -2541,14 +2582,16 @@ class MainActivity : Activity() {
 
         val cab = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(escuro)
-            setPadding(dp(20), dp(20), dp(20), dp(18))
+            setPadding(dp(16),dp(12),dp(16),dp(6))
         }
-        cab.addView(texto("Mapas",23f,Color.WHITE))
-        cab.addView(botao("←") { inicio() })
-        cab.addView(
-            texto("Seus mapas neste aparelho. Importe o mapa PDF pelo botão + ou encontre o arquivo no Drive abaixo.",14f,0xFFD1E8D3.toInt())
-        )
+        val mapHeader=LinearLayout(this).apply {
+            orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL;setPadding(dp(12),dp(8),dp(12),dp(8))
+            background=GradientDrawable().apply {setColor(palette.header);cornerRadius=dp(16).toFloat()}
+        }
+        mapHeader.addView(botaoVoltar {inicio()},LinearLayout.LayoutParams(dp(48),dp(48)))
+        mapHeader.addView(texto("Mapas",20f,Color.WHITE).apply {setTypeface(null,Typeface.BOLD);setPadding(dp(12),0,0,0)})
+        cab.addView(mapHeader)
+        cab.addView(texto("Importe seu mapa pelo botão +. Se precisar, busque o arquivo no Drive.",14f,palette.muted).apply {setPadding(0,dp(12),0,0)})
         coluna.addView(cab)
 
         val lista = LinearLayout(this).apply {
@@ -2580,7 +2623,7 @@ class MainActivity : Activity() {
                     setColor(palette.surface)
                     cornerRadius = dp(14).toFloat()
                 }
-                elevation = dp(2).toFloat()
+                elevation = 0f
             }
 
             item.addView(
@@ -2598,7 +2641,7 @@ class MainActivity : Activity() {
                 orientation = LinearLayout.VERTICAL
             }
             info.addView(texto(nome(id), 16f).apply { maxLines = 2 })
-            info.addView(texto("Toque para abrir, compartilhar ou excluir", 12f, palette.muted))
+            info.addView(texto("Abrir mapa e opções ›", 13f, palette.muted))
 
             item.addView(info, LinearLayout.LayoutParams(0, -2, 1f))
 
@@ -3235,7 +3278,7 @@ class MainActivity : Activity() {
             visibility = View.GONE
         }
         fun controle(nome: String, acao: () -> Unit) {
-            controles.addView(botao(nome, acao), LinearLayout.LayoutParams(0, dp(48), 1f).apply {
+            controles.addView(botao(nome, acao=acao), LinearLayout.LayoutParams(0, dp(48), 1f).apply {
                 marginStart = dp(3); marginEnd = dp(3)
             })
         }

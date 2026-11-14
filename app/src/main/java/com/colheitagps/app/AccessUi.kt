@@ -21,7 +21,7 @@ internal class AccessUi(private val activity: Activity,attach:Boolean=true) {
     private val pale=palette.alternate
     private val root = LinearLayout(activity).apply {
         orientation = LinearLayout.VERTICAL
-        setPadding(dp(24), dp(28), dp(24), dp(28))
+        setPadding(dp(16), dp(20), dp(16), dp(24))
         setBackgroundColor(palette.background)
     }
     init {
@@ -56,17 +56,17 @@ internal class AccessUi(private val activity: Activity,attach:Boolean=true) {
         }
         add(root,brand,0)
         val card = card()
-        add(root, card, 26)
-        add(card, text(title, 24f, dark, true), 0)
+        add(root, card, 16)
+        add(card, text(title, 22f, dark, true), 0)
         add(card, text(description), 6)
         add(root, text("Criado por Diego Machado",12f,muted).apply { gravity = Gravity.CENTER }, 24)
         return card
     }
     fun card() = LinearLayout(activity).apply {
         orientation = LinearLayout.VERTICAL
-        setPadding(dp(20), dp(22), dp(20), dp(22))
-        background = background(palette.surface,22)
-        elevation = dp(3).toFloat()
+        setPadding(dp(16), dp(18), dp(16), dp(18))
+        background = background(palette.surface,16).apply {setStroke(dp(1).coerceAtLeast(1),palette.border)}
+        elevation = 0f
     }
     fun field(container: LinearLayout, label: String, password: Boolean = false): EditText {
         add(container, text(label, 13f, dark, true), 16)
@@ -149,14 +149,7 @@ internal class AccessUi(private val activity: Activity,attach:Boolean=true) {
     }
     fun button(container: LinearLayout, label: String, secondary: Boolean = false, action: () -> Unit): Button =
         Button(activity).apply {
-            text = label; isAllCaps = false; textSize = 15f
-            setTypeface(null, Typeface.BOLD)
-            minHeight = dp(54); minimumHeight = dp(54)
-            setPadding(dp(12), dp(12), dp(12), dp(12))
-            backgroundTintList = null
-            background = background(if(secondary) pale else palette.primary,14)
-            setTextColor(ColorStateList(arrayOf(intArrayOf(-android.R.attr.state_enabled), intArrayOf()),
-                intArrayOf(0xFF637A6B.toInt(), if (secondary) dark else Color.WHITE)))
+            text=label;AppTheme.action(this,!secondary)
             setOnClickListener { action() }
             add(container, this, 14)
         }

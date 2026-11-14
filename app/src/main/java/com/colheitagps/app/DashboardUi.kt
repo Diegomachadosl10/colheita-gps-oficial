@@ -9,7 +9,7 @@ import android.view.Gravity
 import android.view.View
 import android.widget.*
 
-internal enum class FieldIcon { BRAND, MAP, PENDING, EQUIPMENT, PART, RAIN, STOCK, ORDER, REPORT, OCCURRENCE, TRUCK, CALENDAR, PEOPLE, WEATHER, BELL }
+internal enum class FieldIcon { BRAND, MAP, PENDING, EQUIPMENT, PART, RAIN, STOCK, ORDER, REPORT, OCCURRENCE, TRUCK, CALENDAR, PEOPLE, WEATHER, BELL, ADD, SHARE, HISTORY }
 
 /** Native vector icons stay sharp at every Android font/display size. */
 internal class FieldIconView(context: android.content.Context, private val icon: FieldIcon, private val iconColor:Int=AppTheme.colors(context).accent) : View(context) {
@@ -22,6 +22,9 @@ internal class FieldIconView(context: android.content.Context, private val icon:
         fun rect(l: Float, t: Float, r: Float, b: Float) { canvas.drawRoundRect(l, t, r, b, 2f, 2f, ink) }
         fun circle(x: Float, y: Float, r: Float) { canvas.drawCircle(x, y, r, ink) }
         when (icon) {
+            FieldIcon.ADD -> {line(24f,9f,24f,39f);line(9f,24f,39f,24f)}
+            FieldIcon.SHARE -> {circle(12f,24f,6f);circle(36f,10f,6f);circle(36f,38f,6f);line(17f,21f,31f,13f);line(17f,27f,31f,35f)}
+            FieldIcon.HISTORY -> {canvas.drawArc(7f,7f,43f,43f,-145f,295f,false,ink);line(6f,5f,6f,17f,18f,17f);line(25f,14f,25f,26f,33f,30f)}
             FieldIcon.BRAND -> {
                 ink.style = Paint.Style.FILL
                 val leaf = Path().apply { moveTo(22f, 22f); cubicTo(5f, 22f, 5f, 9f, 5f, 8f); cubicTo(19f, 7f, 25f, 13f, 22f, 22f); moveTo(25f, 21f); cubicTo(22f, 6f, 34f, 4f, 43f, 5f); cubicTo(43f, 14f, 37f, 23f, 25f, 21f) }
@@ -44,6 +47,17 @@ internal class FieldIconView(context: android.content.Context, private val icon:
         }
         canvas.restore()
     }
+}
+
+internal class FieldIconDrawable(context:android.content.Context,icon:FieldIcon,color:Int):android.graphics.drawable.Drawable() {
+    private val view=FieldIconView(context,icon,color)
+    override fun draw(canvas:Canvas) {
+        canvas.save();canvas.translate(bounds.left.toFloat(),bounds.top.toFloat())
+        view.layout(0,0,bounds.width(),bounds.height());view.draw(canvas);canvas.restore()
+    }
+    override fun setAlpha(alpha:Int) {view.alpha=alpha/255f}
+    override fun setColorFilter(filter:ColorFilter?) {}
+    @Suppress("DEPRECATION") override fun getOpacity()=PixelFormat.TRANSLUCENT
 }
 
 internal class DashboardUi(private val activity: Activity) {
