@@ -176,8 +176,8 @@ class LoginActivity : Activity() {
         }
     }
     private fun register(existing: Boolean = false) {
-        val card = page(if (existing) "Concluir solicitação" else "Solicitar acesso",
-            "Escolha sua frente e turno. Seu supervisor aprova os operadores e tratoristas da equipe. Supervisores são aprovados pelo administrador principal.")
+        val card = page(if (existing) "Concluir cadastro" else "Criar conta",
+            "Escolha sua frente e turno. Supervisores entram após concluir o cadastro. Operadores e tratoristas aguardam a aprovação do supervisor da própria equipe.")
         val matricula = ui.field(card, "Número de matrícula").apply { inputType = InputType.TYPE_CLASS_NUMBER }
         if (existing) {
             matricula.setText(auth.currentUser?.email?.substringBefore("@")?.removePrefix("matricula."))
@@ -189,7 +189,7 @@ class LoginActivity : Activity() {
         val role = ui.profileChoice(card)
         val password = if (!existing) ui.field(card, "Criar senha (mínimo 8 caracteres)", true) else null
         val confirmation = if (!existing) ui.field(card, "Confirmar senha", true) else null
-        val submit = ui.button(card, "Enviar solicitação") {}
+        val submit = ui.button(card, "Concluir cadastro") {}
         submit.setOnClickListener {
             if (busy) return@setOnClickListener
             val m = matricula.text.toString().trim()
@@ -203,10 +203,8 @@ class LoginActivity : Activity() {
             val data = hashMapOf<String, Any>(
                 "nome" to n, "matricula" to m, "frenteId" to ids[front.selectedItemPosition],
                 "turno" to shift.selectedItem.toString(), "funcao" to role.selectedProfile.label,
-                "papel" to "operador", "perfil" to "operador",
-                "solicitacaoPerfil" to role.selectedProfile.requested,
-                "status" to "pendente", "criadoEm" to FieldValue.serverTimestamp()
-            )
+                "criadoEm" to FieldValue.serverTimestamp()
+            ).apply {putAll(EnrollmentPolicy.initial(role.selectedProfile.requested))}
             busy = true; submit.isEnabled = false; submit.text = "Enviando…"; role.setSelectable(false)
             fun saveRequest() {
                 val user = auth.currentUser ?: run { busy = false; login(); return }
@@ -218,9 +216,9 @@ class LoginActivity : Activity() {
                 }.addOnCompleteListener {
                     if (isDestroyed) return@addOnCompleteListener
                     busy = false
-                    if (it.isSuccessful) { AgroNotifications.event(applicationContext,"user"); verify() } else {
+                    if (it.isSuccessful) { if(data["status"]=="pendente") AgroNotifications.event(applicationContext,"user"); verify() } else {
                         register(true)
-                        notice("Sua conta de acesso foi criada, mas a solicitação não foi salva. Confira a internet e toque em Enviar solicitação. Se sair, entre novamente com a mesma matrícula e senha para concluir.")
+                        notice("Sua conta de acesso foi criada, mas o cadastro não foi salvo. Confira a internet e tente novamente. No cadastro de supervisor, o administrador também precisa ter publicado as regras da versão 1.8.0. Se sair, entre com a mesma matrícula e senha para concluir.")
                     }
                 }
             }
@@ -228,7 +226,7 @@ class LoginActivity : Activity() {
                 .addOnCompleteListener {
                     if (isDestroyed) return@addOnCompleteListener
                     if (it.isSuccessful) saveRequest() else {
-                        busy = false; submit.isEnabled = true; submit.text = "Enviar solicitação"; role.setSelectable(true)
+                        busy = false; submit.isEnabled = true; submit.text = "Concluir cadastro"; role.setSelectable(true)
                         notice(errorMessage(it.exception ?: Exception(), true))
                     }
                 }
@@ -259,7 +257,7 @@ class LoginActivity : Activity() {
                 AccessPolicy.normalized(data["status"]) == "bloqueado" -> status("Acesso bloqueado", "Procure o administrador principal para revisar seu acesso.")
                 AccessPolicy.normalized(data["status"]) == "aprovado" -> status("Perfil precisa de revisão", "Sua conta foi aprovada, mas o perfil está ausente ou inválido. Peça ao administrador para conferir o cadastro.")
                 else -> {
-                    status("Aguardando aprovação", "Sua solicitação foi enviada. O supervisor da sua frente e turno pode aprovar operadores e tratoristas. Supervisores dependem do administrador principal. Esta tela acompanha a aprovação quando há conexão.")
+                    status("Aguardando aprovação", "Sua solicitação foi enviada. O supervisor da sua frente e turno pode aprovar operadores e tratoristas. Esta tela acompanha a aprovação quando há conexão.")
                     waiting = true; watchApproval()
                 }
             }

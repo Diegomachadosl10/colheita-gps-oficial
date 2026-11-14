@@ -74,14 +74,14 @@ class WeatherActivity : Activity() {
         val updated = json.optJSONObject("properties")?.optJSONObject("meta")?.optString("updated_at").orEmpty().ifBlank { "não informada" }
         val formatted = try { java.time.Instant.parse(updated).atZone(zone).format(DateTimeFormatter.ofPattern("dd/MM HH:mm")) } catch (_: Exception) { updated }
         ui.add(body, ui.text("Modelo atualizado em $formatted${if (cached) " · dados guardados" else ""}.\nFaixas calculadas a partir dos horários disponíveis."))
-        ui.button(body,"Compartilhar previsão em PDF / imagem",true) {
+        ui.button(body,"Compartilhar previsão por imagem",true) {
             val rows=byDay.entries.take(5).map {(date,values)->listOf(date.format(DateTimeFormatter.ofPattern("dd/MM/yyyy")),
                 "${WeatherData.degrees(values.minOf {it.temperature})} a ${WeatherData.degrees(values.maxOf {it.temperature})}",WeatherData.description(values[values.size/2].symbol))}
             val report=FieldReport("Previsão do tempo",city.label,"Modelo atualizado em $formatted${if(cached) " • dados guardados" else ""}",listOf(
                 ReportSection("Previsão por dia",listOf("Dia","Temperatura","Condição prevista"),rows),
                 ReportSection("Fonte e observações",listOf("Informação"),listOf(listOf("MET Norway • ${WeatherData.SOURCE} • Licença CC BY 4.0: https://api.met.no/doc/License"),
                     listOf("Faixas calculadas a partir dos horários disponíveis. Previsão do modelo; não é medição do campo.")))))
-            FieldReportSharing.choose(this,report,TeamStore(applicationContext,team).cache)
+            FieldReportSharing.share(this,report,TeamStore(applicationContext,team).cache)
         }
         ui.button(body, "Fonte e licença CC BY 4.0", true) {
             startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://api.met.no/doc/License")))

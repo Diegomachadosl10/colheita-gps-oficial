@@ -30,8 +30,26 @@ service cloud.firestore {
         && request.resource.data.matricula is string && request.resource.data.matricula.matches('^[0-9]{1,20}$')
         && request.auth.token.email == 'matricula.' + request.resource.data.matricula + '@acesso.dm-agro.app'
         && frenteValida(request.resource.data.frenteId) && turnoValido(request.resource.data.turno)
-        && request.resource.data.papel == 'operador' && request.resource.data.perfil == 'operador'
-        && request.resource.data.solicitacaoPerfil in ['operador','tratorista','supervisor'] && request.resource.data.status == 'pendente';
+        && (
+          (request.resource.data.solicitacaoPerfil == 'supervisor'
+            && request.resource.data.papel == 'supervisor' && request.resource.data.perfil == 'supervisor'
+            && request.resource.data.status == 'aprovado')
+          || (request.resource.data.papel == 'operador' && request.resource.data.perfil == 'operador'
+            && request.resource.data.solicitacaoPerfil in ['operador','tratorista','supervisor']
+            && request.resource.data.status == 'pendente')
+        );
+      // Existing supervisor requests may activate only their own pending profile.
+      // No team change, operator promotion, or unblock/delete bypass is allowed.
+      allow update: if logado() && request.auth.uid == uid && !principal()
+        && !exists(/databases/$(database)/documents/contasEncerradas/$(uid))
+        && resource.data.status == 'pendente' && resource.data.solicitacaoPerfil == 'supervisor'
+        && resource.data.papel == 'operador' && resource.data.perfil == 'operador'
+        && resource.data.matricula is string && resource.data.matricula.matches('^[0-9]{1,20}$')
+        && request.auth.token.email == 'matricula.' + resource.data.matricula + '@acesso.dm-agro.app'
+        && frenteValida(resource.data.frenteId) && turnoValido(resource.data.turno)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['papel','perfil','status'])
+        && request.resource.data.papel == 'supervisor' && request.resource.data.perfil == 'supervisor'
+        && request.resource.data.status == 'aprovado';
       allow get: if logado() && (uid == request.auth.uid || principal() || supervisorDoUsuario(resource.data));
       allow list: if principal() || supervisorDoUsuario(resource.data);
       allow update: if uid != 'Z8zjZP3iWjRSD6imwiDO4VLboOY2' && uid != request.auth.uid && (

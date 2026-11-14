@@ -180,7 +180,6 @@ class MainActivity : Activity() {
     private var fotoPendente: String? = null
     private var fotosFormulario = mutableListOf<String>()
     private var atualizarFotosFormulario: (() -> Unit)? = null
-    private var pdfPendente: File? = null
     private var imagemPendente: File? = null
     private var pecaRascunho: JSONObject? = null
     private var atualizarFotosPeca: (() -> Unit)? = null
@@ -308,16 +307,6 @@ class MainActivity : Activity() {
                 Toast.makeText(this, "Imagem salva e pronta para compartilhar", Toast.LENGTH_LONG).show()
             } catch (_: Exception) { Toast.makeText(this, "Erro ao salvar imagem", Toast.LENGTH_LONG).show() }
             imagemPendente = null
-            return
-        }
-        if (requestCode == 303) {
-            val destino = data?.data ?: return
-            val origem = pdfPendente ?: return
-            try {
-                contentResolver.openOutputStream(destino)?.use { out -> origem.inputStream().use { it.copyTo(out) } }
-                Toast.makeText(this, "PDF salvo. Abra o arquivo para compartilhar.", Toast.LENGTH_LONG).show()
-            } catch (e: Exception) { Toast.makeText(this, "Falha ao salvar PDF", Toast.LENGTH_LONG).show() }
-            pdfPendente = null
             return
         }
         if (requestCode == 302) {
@@ -701,37 +690,9 @@ class MainActivity : Activity() {
 
     private fun compartilharRelatorio(report:FieldReport) {
         val store=teamStore?:return;val uid=teamAccess?.uid?:return
-        FieldReportSharing.choose(this,report,store.cache) {
+        FieldReportSharing.share(this,report,store.cache) {
             acessoConfirmado&&teamStore?.team==store.team&&teamAccess?.uid==uid
         }
-    }
-    private fun compartilharFormatos(report:FieldReport,message:String,savePdf:(()->Unit)?=null) {
-        val store=teamStore?:return;val uid=teamAccess?.uid?:return
-        val options=listOf("Mensagem","PDF","Imagem")+if(savePdf!=null) listOf("Salvar PDF no celular") else emptyList()
-        AlertDialog.Builder(this).setTitle("Compartilhar ${report.title}").setItems(options.toTypedArray()) {_,selected->
-            if(!acessoConfirmado||teamAccess?.uid!=uid||teamStore?.team!=store.team) return@setItems
-            when(selected) {
-                0->startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {type="text/plain";putExtra(Intent.EXTRA_TEXT,message)},"Compartilhar"))
-                1,2->FieldReportSharing.share(this,report,store.cache,selected==1) {acessoConfirmado&&teamAccess?.uid==uid&&teamStore?.team==store.team}
-                3->savePdf?.invoke()
-            }
-        }.setNegativeButton("Cancelar",null).show()
-    }
-    private fun salvarRelatorioPdf(report:FieldReport,name:String) {
-        val store=teamStore?:return;val uid=teamAccess?.uid?:return
-        Toast.makeText(this,"Preparando PDF…",Toast.LENGTH_SHORT).show()
-        Thread {
-            try {
-                val file=FieldReportRenderer.render(report,File(store.cache,"relatorios/${java.util.UUID.randomUUID()}"),true).single()
-                runOnUiThread {
-                    if(isDestroyed||isFinishing||!acessoConfirmado||teamStore?.team!=store.team||teamAccess?.uid!=uid) return@runOnUiThread
-                    pdfPendente=file
-                    try {startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
-                        addCategory(Intent.CATEGORY_OPENABLE);type="application/pdf";putExtra(Intent.EXTRA_TITLE,name)
-                    },303)} catch(_:Exception) {Toast.makeText(this,"Não foi possível abrir a escolha de pasta.",Toast.LENGTH_LONG).show()}
-                }
-            } catch(_:Exception) {runOnUiThread {if(!isDestroyed) Toast.makeText(this,"Não foi possível gerar o PDF. Tente novamente.",Toast.LENGTH_LONG).show()}}
-        }.start()
     }
     private fun relatorioGrupo(title:String,group:String,records:List<JSONObject>,period:String=""):FieldReport {
         val root=filesDir.canonicalPath+File.separator
@@ -819,7 +780,7 @@ class MainActivity : Activity() {
             setPadding(dp(12), 0, dp(8), 0)
             contentDescription = "Mais opções"; minWidth = dp(48); minHeight = dp(48); gravity = Gravity.CENTER
             setOnClickListener { v -> PopupMenu(this@MainActivity, v).apply {
-                if(relatorioAtual!=null) menu.add("Compartilhar PDF / imagem").setOnMenuItemClickListener {relatorioAtual?.invoke()?.let(::compartilharRelatorio);true}
+                if(relatorioAtual!=null) menu.add("Compartilhar imagem").setOnMenuItemClickListener {relatorioAtual?.invoke()?.let(::compartilharRelatorio);true}
                 menu.add("Sair da conta").setOnMenuItemClickListener {
                     sairDaConta()
                     true
@@ -1103,30 +1064,20 @@ class MainActivity : Activity() {
         val foto = fotoEstoque()
         if (foto != null) {
             mapaEstoqueSelecionado = foto
-            AlertDialog.Builder(this).setTitle("Compartilhar estoque")
-                .setItems(arrayOf("Mensagem com foto (WhatsApp)", "PDF com foto")) { _, op ->
-                    if (op == 0) compartilharEstoqueComMapa() else gerarPdfEstoque()
-                }.show()
+            compartilharEstoqueImagem()
             return
         }
         val mapas = mapasDisponiveisEstoque()
         if (mapas.isEmpty()) {
-            AlertDialog.Builder(this).setTitle("Compartilhar estoque")
-                .setItems(arrayOf("Mensagem sem mapa", "PDF sem mapa")) { _, op ->
-                    mapaEstoqueSelecionado = null
-                    if (op == 0) compartilharTextoEstoque() else gerarPdfEstoque()
-                }.show()
+            mapaEstoqueSelecionado = null
+            compartilharEstoqueImagem()
             return
         }
-        val nomes = mapas.map { nomeOriginalMapaEstoque(it) }.toTypedArray()
-        AlertDialog.Builder(this).setTitle("Selecione o mapa pintado")
-            .setSingleChoiceItems(nomes, -1) { dialogo, indice ->
-                mapaEstoqueSelecionado = mapas[indice]
-                dialogo.dismiss()
-                AlertDialog.Builder(this).setTitle("Compartilhar estoque")
-                    .setItems(arrayOf("Mensagem e foto (WhatsApp)", "PDF com mapa")) { _, op ->
-                        if (op == 0) compartilharEstoqueComMapa() else gerarPdfEstoque()
-                    }.show()
+        val nomes = mapas.map { nomeOriginalMapaEstoque(it) } + "Sem foto do mapa"
+        AlertDialog.Builder(this).setTitle("Foto para o estoque")
+            .setItems(nomes.toTypedArray()) { _, indice ->
+                mapaEstoqueSelecionado = mapas.getOrNull(indice)
+                compartilharEstoqueImagem()
             }.setNegativeButton("Cancelar", null).show()
     }
 
@@ -1266,13 +1217,6 @@ class MainActivity : Activity() {
         return sb.toString()
     }
 
-    private fun compartilharTextoEstoque() {
-        startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
-            type = "text/plain"; putExtra(Intent.EXTRA_TEXT, textoEstoque())
-        }, "Compartilhar estoque"))
-    }
-
-
     private fun nomeOriginalMapaEstoque(arquivo: File?): String {
         val selecionado = arquivo?.name?.takeIf {
             it.startsWith("mapa_relatorio_") && it.endsWith(".png")
@@ -1288,53 +1232,10 @@ class MainActivity : Activity() {
         } else arquivo?.nameWithoutExtension ?: "Mapa"
     }
 
-    private fun compartilharEstoqueComMapa() {
-        val imagem = arquivoMapaAtual()
-        if (imagem == null) {
-            compartilharTextoEstoque()
-            Toast.makeText(this, "Mapa pintado indisponível; enviando apenas texto", Toast.LENGTH_LONG).show()
-            return
-        }
-        try {
-            val original = nomeOriginalMapaEstoque(imagem)
-            val extensao = if (imagem.extension.equals("png", true)) ".png" else ".jpg"
-            val nome = original.replace(Regex("[^\\p{L}\\p{N} ._-]"), "_") + extensao
-            val valores = android.content.ContentValues().apply {
-                put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, nome)
-                put(android.provider.MediaStore.Images.Media.MIME_TYPE,
-                    if (extensao == ".png") "image/png" else "image/jpeg")
-                if (Build.VERSION.SDK_INT >= 29) {
-                    put(android.provider.MediaStore.Images.Media.RELATIVE_PATH,
-                        android.os.Environment.DIRECTORY_PICTURES + "/ColheitaGPS")
-                }
-            }
-            if (Build.VERSION.SDK_INT < 29) {
-                Toast.makeText(this, "Use o PDF para compartilhar mapa neste Android", Toast.LENGTH_LONG).show()
-                gerarPdfEstoque()
-                return
-            }
-            val uri = contentResolver.insert(
-                android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, valores
-            ) ?: throw IOException("Não foi possível criar a imagem")
-            contentResolver.openOutputStream(uri)?.use { saida ->
-                imagem.inputStream().use { it.copyTo(saida) }
-            } ?: throw IOException("Não foi possível copiar o mapa")
-            startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
-                type = if (extensao == ".png") "image/png" else "image/jpeg"
-                putExtra(Intent.EXTRA_STREAM, uri)
-                putExtra(Intent.EXTRA_TEXT, textoEstoque())
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                clipData = ClipData.newUri(contentResolver, "Mapa pintado", uri)
-            }, "Compartilhar estoque com mapa"))
-        } catch (e: Exception) {
-            Toast.makeText(this, "Falha ao compartilhar mapa: ${e.message}", Toast.LENGTH_LONG).show()
-        }
-    }
-
-    private fun gerarPdfEstoque() {
+    private fun compartilharEstoqueImagem() {
         val report=relatorioGrupo("Estoque de cana","estoques_salvos",listOf(progresso()))
-        val pictures=arquivoMapaAtual()?.let {listOf(ReportPicture(it,"Mapa: ${nomeOriginalMapaEstoque(it)}"))}?:report.pictures
-        salvarRelatorioPdf(report.copy(pictures=pictures),"Relatorio_Estoque.pdf")
+        val pictures=mapaEstoqueSelecionado?.takeIf {it.isFile}?.let {listOf(ReportPicture(it,"Mapa: ${nomeOriginalMapaEstoque(it)}"))}?:report.pictures
+        compartilharRelatorio(report.copy(pictures=pictures))
     }
 
     private fun salvarImagemMapa() {
@@ -1430,13 +1331,10 @@ class MainActivity : Activity() {
         coluna.addView(botao("+ Registrar ocorrência") { editarRegistro("relatorios_turno", -1, false, turno) })
         coluna.addView(botao("Editar / excluir registros do turno") {listarRegistros("relatorios_turno","Registros do turno $turno",false)})
         coluna.addView(botao("Compartilhar relatório") {
-            relatorioAtual?.invoke()?.let {compartilharFormatos(it,textoRelatorio(turno)) {gerarPdfTurno(turno)}}
+            relatorioAtual?.invoke()?.let(::compartilharRelatorio)
         })
     }
 
-    private fun gerarPdfTurno(turno:String) {
-        salvarRelatorioPdf(relatorioGrupo("Relatório do turno $turno","relatorios_turno",FieldReports.rows(dados("relatorios_turno")).filter {it.optString("turno")==turno}),"Relatorio_Turno_${turno}.pdf")
-    }
 
     private fun dataHoje(): String =
         java.text.SimpleDateFormat("dd/MM/yyyy", Locale("pt", "BR")).format(java.util.Date())
@@ -1536,7 +1434,7 @@ class MainActivity : Activity() {
                 FieldReports.trucks(TeamPolicy.label(teamStore!!.team),dataInicial,trucks,TruckRecords.summary(calendarTrucks,day)).sections
             FieldReport("Registros do dia",TeamPolicy.label(teamStore!!.team),dataInicial,sections)
         }
-        coluna.addView(botao("Compartilhar o dia em PDF / imagem") {relatorioAtual?.invoke()?.let(::compartilharRelatorio)})
+        coluna.addView(botao("Compartilhar o dia por imagem") {relatorioAtual?.invoke()?.let(::compartilharRelatorio)})
         if (encontrados == 0) coluna.addView(texto("Nenhum registro nesta data.", 14f))
     }
 
@@ -1562,65 +1460,7 @@ class MainActivity : Activity() {
     }
 
     private fun compartilharPendenciaMenu(obj: JSONObject) {
-        val fotos = fotosPendencia(obj)
-        val opcoes = arrayOf("WhatsApp / mensagem sem foto", "WhatsApp / mensagem com foto", "PDF sem foto", "PDF com foto")
-        AlertDialog.Builder(this).setTitle("Compartilhar pendência • O.S.: " + obj.optString("osPendencia").ifBlank { "Não informada" })
-            .setItems(opcoes) { _, escolha ->
-                when (escolha) {
-                    0 -> compartilharTextoPendencia(obj)
-                    1 -> if (fotos.isEmpty()) {
-                        Toast.makeText(this, "Esta pendência não tem fotos anexadas", Toast.LENGTH_LONG).show()
-                    } else compartilharFotoPendencia(obj, fotos.first())
-                    2 -> gerarPdfPendencia(obj, false)
-                    3 -> if (fotos.isEmpty()) {
-                        Toast.makeText(this, "Esta pendência não tem fotos anexadas", Toast.LENGTH_LONG).show()
-                    } else gerarPdfPendencia(obj, true)
-                }
-            }.show()
-    }
-
-    private fun compartilharTextoPendencia(obj: JSONObject) {
-        startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
-            type = "text/plain"
-            putExtra(Intent.EXTRA_TEXT, textoPendencia(obj))
-        }, "Compartilhar pendência"))
-    }
-
-    private fun compartilharFotoPendencia(obj: JSONObject, foto: File) {
-        try {
-            if (Build.VERSION.SDK_INT < 29) {
-                Toast.makeText(this, "Use PDF com foto neste Android", Toast.LENGTH_LONG).show()
-                gerarPdfPendencia(obj, true)
-                return
-            }
-            val bitmap = BitmapFactory.decodeFile(foto.absolutePath) ?: throw IOException("Foto inválida")
-            val valores = android.content.ContentValues().apply {
-                put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, "pendencia_${System.currentTimeMillis()}.jpg")
-                put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
-                put(android.provider.MediaStore.Images.Media.RELATIVE_PATH,
-                    android.os.Environment.DIRECTORY_PICTURES + "/ColheitaGPS")
-            }
-            val uri = contentResolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, valores)
-                ?: throw IOException("Não foi possível preparar a foto")
-            contentResolver.openOutputStream(uri)?.use { saida ->
-                bitmap.compress(Bitmap.CompressFormat.JPEG, 90, saida)
-            } ?: throw IOException("Não foi possível gravar a foto")
-            bitmap.recycle()
-            startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
-                type = "image/jpeg"
-                putExtra(Intent.EXTRA_STREAM, uri)
-                putExtra(Intent.EXTRA_TEXT, textoPendencia(obj))
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                clipData = ClipData.newUri(contentResolver, "Foto da pendência", uri)
-            }, "Compartilhar pendência com foto"))
-        } catch (e: Exception) {
-            Toast.makeText(this, "Erro ao compartilhar foto: ${e.message}", Toast.LENGTH_LONG).show()
-        }
-    }
-
-    private fun gerarPdfPendencia(obj:JSONObject,comFotos:Boolean) {
-        val report=relatorioGrupo("Pendência de manutenção","pendencias",listOf(obj))
-        salvarRelatorioPdf(if(comFotos) report else report.copy(pictures=emptyList()),"Pendencia_Manutencao.pdf")
+        compartilharRelatorio(relatorioGrupo("Pendência de manutenção","pendencias",listOf(obj)))
     }
 
     private fun maintenanceCatalog(): JSONArray = synchronized(teamStore?.lock ?: this) {
@@ -1930,7 +1770,7 @@ class MainActivity : Activity() {
             return
         }
         val opcoes = listOf("Editar pendência", if (concluida) "↩ Reabrir pendência" else "✓ Concluir pendência",
-            "Excluir pendência", "Compartilhar (WhatsApp / PDF)", "Adicionar foto", "Ver fotos")
+            "Excluir pendência", "Compartilhar imagem", "Adicionar foto", "Ver fotos")
             .mapIndexed { index, label -> label to index }.filter { it.second != 2 || podeGerenciar() }
         AlertDialog.Builder(this).setTitle(obj.optString("equipamento", "Pendência"))
             .setItems(opcoes.map { it.first }.toTypedArray()) { _, escolha ->
@@ -2008,7 +1848,7 @@ class MainActivity : Activity() {
         if(podeGerenciar()&&MaintenanceRecords.isArchived(item)) actions.add("Restaurar pedido de peça" to {confirmarRestauracao("pendencias",item.optString("id"))})
         if(podeEditarPeca(item)) actions.add("Editar peça / situação" to { editarPeca(item.optString("id")) })
         actions.add("Ver fotos" to { verFotosPeca(item) })
-        actions.add("Compartilhar pedido e fotos" to { compartilharPeca(item) })
+        actions.add("Compartilhar pedido por imagem" to { compartilharPeca(item) })
         if(podeGerenciar()&&!MaintenanceRecords.isArchived(item)) actions.add("Excluir e manter no histórico" to {
             AlertDialog.Builder(this).setTitle("Excluir pedido de peça?").setMessage("A peça sairá da lista ativa e permanecerá no histórico com suas informações e fotos locais.")
                 .setNegativeButton("Cancelar",null).setPositiveButton("Excluir") { _,_->
@@ -2119,17 +1959,7 @@ class MainActivity : Activity() {
         AlertDialog.Builder(this).setTitle("Fotos da peça").setItems(photos.indices.map { "Foto ${it+1}" }.toTypedArray()) { _,index->mostrarFotoPeca(photos[index]) }.show()
     }
     private fun compartilharPeca(item:JSONObject) {
-        val text=PartsRecords.sharingText(item,TeamPolicy.label(teamStore!!.team))
-        val photos=fotosPeca(item)
-        val intent=Intent(if(photos.isEmpty()) Intent.ACTION_SEND else Intent.ACTION_SEND_MULTIPLE).apply {
-            type=if(photos.isEmpty()) "text/plain" else "image/*"; putExtra(Intent.EXTRA_TEXT,text)
-            if(photos.isNotEmpty()) {
-                val uris=ArrayList(photos.map { androidx.core.content.FileProvider.getUriForFile(applicationContext,"$packageName.files",it) })
-                putParcelableArrayListExtra(Intent.EXTRA_STREAM,uris); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                clipData=ClipData.newUri(contentResolver,"Peças a pedir",uris.first()).apply { uris.drop(1).forEach { addItem(ClipData.Item(it)) } }
-            }
-        }
-        startActivity(Intent.createChooser(intent,"Compartilhar pedido de peça"))
+        compartilharRelatorio(relatorioGrupo("Pedido de peça","pendencias",listOf(item)))
     }
     private fun resultadoFotoPeca(code:Int,result:Int,data:Intent?) {
         if(teamStore==null||teamAccess==null) return
@@ -2453,48 +2283,7 @@ class MainActivity : Activity() {
     }
 
     private fun compartilharOcorrencia(obj: JSONObject) {
-        val fotos = fotosPendencia(obj)
-        AlertDialog.Builder(this).setTitle("Compartilhar ocorrência")
-            .setItems(arrayOf("WhatsApp / mensagem sem foto", "WhatsApp / mensagem com foto",
-                "PDF sem foto", "PDF com fotos")) { _, opcao ->
-                when (opcao) {
-                    0 -> startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
-                        type = "text/plain"; putExtra(Intent.EXTRA_TEXT, textoOcorrencia(obj))
-                    }, "Compartilhar ocorrência"))
-                    1 -> if (fotos.isEmpty()) Toast.makeText(this, "Sem fotos anexadas", Toast.LENGTH_LONG).show()
-                        else compartilharArquivoOcorrencia(obj, fotos.first())
-                    2 -> gerarPdfOcorrencia(obj, false)
-                    3 -> if (fotos.isEmpty()) Toast.makeText(this, "Sem fotos anexadas", Toast.LENGTH_LONG).show()
-                        else gerarPdfOcorrencia(obj, true)
-                }
-            }.show()
-    }
-
-    private fun compartilharArquivoOcorrencia(obj: JSONObject, foto: File) {
-        try {
-            if (Build.VERSION.SDK_INT < 29) { gerarPdfOcorrencia(obj, true); return }
-            val valores = android.content.ContentValues().apply {
-                put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, "ocorrencia_${System.currentTimeMillis()}.jpg")
-                put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
-                put(android.provider.MediaStore.Images.Media.RELATIVE_PATH,
-                    android.os.Environment.DIRECTORY_PICTURES + "/ColheitaGPS")
-            }
-            val uri = contentResolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, valores)
-                ?: throw IOException("Não foi possível preparar a foto")
-            contentResolver.openOutputStream(uri)?.use { out -> foto.inputStream().use { it.copyTo(out) } }
-            startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
-                type = "image/jpeg"
-                putExtra(Intent.EXTRA_STREAM, uri)
-                putExtra(Intent.EXTRA_TEXT, textoOcorrencia(obj))
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                clipData = ClipData.newUri(contentResolver, "Foto da ocorrência", uri)
-            }, "Compartilhar ocorrência com foto"))
-        } catch (e: Exception) { Toast.makeText(this, "Erro ao compartilhar: ${e.message}", Toast.LENGTH_LONG).show() }
-    }
-
-    private fun gerarPdfOcorrencia(obj:JSONObject,comFotos:Boolean) {
-        val report=relatorioGrupo("Ocorrência de campo","ocorrencias_campo",listOf(obj))
-        salvarRelatorioPdf(if(comFotos) report else report.copy(pictures=emptyList()),"Ocorrencia_Campo.pdf")
+        compartilharRelatorio(relatorioGrupo("Ocorrência de campo","ocorrencias_campo",listOf(obj)))
     }
 
     private fun relatoriosTurno() = relatorios()
@@ -2720,7 +2509,7 @@ class MainActivity : Activity() {
         val report=FieldReports.trucks(TeamPolicy.label(teamStore!!.team),period,rows,summary)
         relatorioAtual={report}
         column.addView(botao("Compartilhar caminhões") {
-            compartilharFormatos(report,TruckRecords.report(rows,TeamPolicy.label(teamStore!!.team),period,summary))
+            compartilharRelatorio(report)
         })
         periodoCaminhoesMostrado=TruckShift.at(now).key
         if(live) agendarViradaCaminhoes(now)
@@ -2813,7 +2602,7 @@ class MainActivity : Activity() {
         cab.addView(texto("COLHEITA GPS 2.0", 23f, Color.WHITE))
         cab.addView(botao("←") { inicio() })
         cab.addView(
-            texto("Mapas desta equipe neste aparelho. Receba o PDF compartilhado e importe pelo botão +.", 14f, 0xFFB6DCC6.toInt())
+            texto("Seus mapas neste aparelho. Importe o mapa PDF pelo botão + ou encontre o arquivo no Drive abaixo.", 14f, 0xFFB6DCC6.toInt())
         )
         coluna.addView(cab)
 
@@ -2920,15 +2709,13 @@ class MainActivity : Activity() {
         AlertDialog.Builder(this)
             .setTitle(nome(id))
             .setItems(
-                arrayOf("Abrir", "O.S. de trabalho", "Renomear", "Excluir", "Compartilhar PDF", "Compartilhar imagem do mapa")
+                arrayOf("Abrir", "Renomear", "Excluir", "Compartilhar imagem do mapa")
             ) { _, i ->
                 when (i) {
                     0 -> abrir(id)
-                    1 -> ordens(id)
-                    2 -> renomear(id)
-                    3 -> excluir(id)
-                    4 -> compartilharMapaPdf(id)
-                    5 -> compartilharImagemMapa(id)
+                    1 -> renomear(id)
+                    2 -> excluir(id)
+                    3 -> compartilharImagemMapa(id)
                 }
             }.show()
     }
@@ -2966,18 +2753,6 @@ class MainActivity : Activity() {
                 }
             } catch(_:Exception) {runOnUiThread {if(!isDestroyed) Toast.makeText(this,"Não foi possível preparar a imagem do mapa.",Toast.LENGTH_LONG).show()}}
         }.start()
-    }
-    private fun compartilharMapaPdf(id: String) {
-        val file = File(pasta(), "$id.pdf")
-        if (!file.isFile) return
-        val uri = androidx.core.content.FileProvider.getUriForFile(applicationContext, "$packageName.files", file)
-        startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
-            type = "application/pdf"
-            putExtra(Intent.EXTRA_STREAM, uri)
-            putExtra(Intent.EXTRA_TEXT, nome(id))
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            clipData = ClipData.newUri(contentResolver, "Mapa da equipe", uri)
-        }, "Compartilhar mapa PDF"))
     }
     private fun renomear(id: String) {
         pausarSincronizacao()
@@ -3121,7 +2896,7 @@ class MainActivity : Activity() {
                 }
                 opened.show()
             }
-            .setNeutralButton("PDF / imagem") {_,_->compartilharRelatorio(FieldReport("Ordens de serviço",TeamPolicy.label(teamStore!!.team),nome(id),listOf(secoesOrdens(id))))}
+            .setNeutralButton("Imagem") {_,_->compartilharRelatorio(FieldReport("Ordens de serviço",TeamPolicy.label(teamStore!!.team),nome(id),listOf(secoesOrdens(id))))}
             .setNegativeButton("Fechar", null)
             .show()
     }
@@ -3169,12 +2944,12 @@ class MainActivity : Activity() {
                 val actions=mutableListOf<Pair<String,()->Unit>>()
                 actions.add("Ver informações" to {AlertDialog.Builder(this).setTitle("O.S. ${item.optString("numeroOs")}")
                     .setMessage(RecordArchive.description(item)+"\nMapa: ${item.optString("nomeMapa")}").setPositiveButton("Fechar",null).show()})
-                actions.add("Compartilhar PDF / imagem" to {compartilharRelatorio(relatorioGrupo("O.S. ${item.optString("numeroOs")}",OrderRecords.GROUP,listOf(item)))})
+                actions.add("Compartilhar imagem" to {compartilharRelatorio(relatorioGrupo("O.S. ${item.optString("numeroOs")}",OrderRecords.GROUP,listOf(item)))})
                 if(OrderRecords.closed(item)) actions.add("Reabrir O.S." to {restaurarOrdemServico(item.optString("id"))})
                 AlertDialog.Builder(this).setTitle("O.S. ${item.optString("numeroOs")}").setItems(actions.map {it.first}.toTypedArray()) {_,i->actions[i].second()}.show()
             },LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(10)})
         if(records.isEmpty()) column.addView(texto("Nenhuma O.S. encerrada nesta equipe.",15f))
-        column.addView(botao("Compartilhar histórico em PDF / imagem") {relatorioAtual?.invoke()?.let(::compartilharRelatorio)})
+        column.addView(botao("Compartilhar histórico por imagem") {relatorioAtual?.invoke()?.let(::compartilharRelatorio)})
     }
 
     private fun excluirOrdemServico(mapId:String,number:String) {
@@ -3544,11 +3319,11 @@ class MainActivity : Activity() {
         val opcoes = if (ativo) arrayOf(
             "Adicionar ponto", "Desfazer ponto", "Concluir",
             "Cancelar ferramenta", "Pintar talhão", "Medir área",
-            "Medir distância", "Pincel", "Borracha", "O.S. de trabalho", "GPS", "Salvar mapa pintado"
+            "Medir distância", "Pincel", "Borracha", "GPS", "Salvar mapa pintado"
         ) else arrayOf(
             "Pintar talhão", "Medir área", "Medir distância", "Pincel",
             "Borracha", "Desfazer", "Excluir última pintura",
-            "O.S. de trabalho", "GPS", "Salvar mapa pintado", "Voltar aos mapas"
+            "GPS", "Salvar mapa pintado", "Voltar aos mapas"
         )
         val navigation=arrayOf("Repor orientação original (0°)","Como girar o mapa")
         AlertDialog.Builder(this).setTitle("Ferramentas")
@@ -3572,9 +3347,8 @@ class MainActivity : Activity() {
                     6 -> ferramenta(9)
                     7 -> ferramenta(1)
                     8 -> ferramenta(2)
-                    9 -> ordens(chaveAtual)
-                    10 -> iniciarGps()
-                    11 -> { v.salvar(); salvarImagemMapa() }
+                    9 -> iniciarGps()
+                    10 -> { v.salvar(); salvarImagemMapa() }
                 } else when (i) {
                     0 -> ferramenta(7)
                     1 -> ferramenta(8)
@@ -3585,10 +3359,9 @@ class MainActivity : Activity() {
                     6 -> AlertDialog.Builder(this).setTitle("Excluir última pintura?")
                         .setPositiveButton("Excluir") { _, _ -> v.desfazer() }
                         .setNegativeButton("Cancelar", null).show()
-                    7 -> ordens(chaveAtual)
-                    8 -> iniciarGps()
-                    9 -> { v.salvar(); salvarImagemMapa() }
-                    10 -> biblioteca()
+                    7 -> iniciarGps()
+                    8 -> { v.salvar(); salvarImagemMapa() }
+                    9 -> biblioteca()
                 }
             }.show()
     }

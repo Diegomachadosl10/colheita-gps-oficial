@@ -38,7 +38,7 @@ test('supervisor aprova operador e tratorista somente da mesma frente e turno', 
   for(const uid of ['pendingB','pendingOutra','pendingSupervisor'])
     await assertFails(updateDoc(doc(db('supA'),'usuarios',uid),{papel:'operador',perfil:'operador',status:'aprovado'}));
 });
-test('somente o UID principal aprova supervisores e ajusta equipes', async () => {
+test('somente o UID principal aprova outro supervisor e ajusta equipes', async () => {
   await assertSucceeds(updateDoc(doc(db(owner),'usuarios','pendingSupervisor'),{papel:'supervisor',perfil:'supervisor',status:'aprovado'}));
   await assertFails(updateDoc(doc(db('fakeAdmin'),'usuarios','pendingB'),{status:'aprovado'}));
   await assertFails(updateDoc(doc(db('supA'),'usuarios','pending'),{turno:'B'}));
@@ -277,4 +277,71 @@ test('consulta HTTPS com ID token do usuário obedece às regras e não usa aces
   assert.equal((await read(owner,'usuarios/opA')).status,200);
   assert.equal((await read('opA','configuracao/equipes')).status,404);
   const blockedOwn=await read('blocked','usuarios/blocked');assert.equal(blockedOwn.status,200);assert.equal((await blockedOwn.json()).fields.status.stringValue,'bloqueado');
+});
+
+test('novo supervisor entra aprovado sem liberar aprovação automática de operadores ou acesso global',async()=>{
+  const supervisor={...profile('supervisor'),criadoEm:serverTimestamp()};
+  await assertSucceeds(setDoc(doc(db('novoSup'),'usuarios','novoSup'),supervisor));
+  await assertSucceeds(updateDoc(doc(db('novoSup'),'usuarios','pending'),{papel:'operador',perfil:'operador',status:'aprovado'}));
+  await assertSucceeds(getDocs(collection(db('novoSup'),'equipes',team,'registros')));
+  await assertFails(getDocs(collection(db('novoSup'),'equipes','santo_inacio_B','registros')));
+  await assertFails(getDocs(collection(db('novoSup'),'usuarios')));
+  await assertFails(updateDoc(doc(db('novoSup'),'usuarios','pendingSupervisor'),{papel:'supervisor',perfil:'supervisor',status:'aprovado'}));
+  for(const [i,change] of [
+    {papel:'administrador',perfil:'administrador'}, {papel:'operador',perfil:'operador'},
+    {solicitacaoPerfil:'operador'}, {perfil:'operador'}, {frenteId:'invalida'}, {turno:'D'}, {matricula:'99999'},
+    {status:'bloqueado'}
+  ].entries()) {
+    const uid='supInvalido'+i;
+    await assertFails(setDoc(doc(db(uid),'usuarios',uid),{...supervisor,...change}));
+  }
+  await assertFails(updateDoc(doc(db('novoSup'),'usuarios','novoSup'),{frenteId:'colorado'}));
+  await assertFails(updateDoc(doc(db('novoSup'),'usuarios','novoSup'),{turno:'B'}));
+  await assertFails(updateDoc(doc(db('novoSup'),'usuarios','novoSup'),{papel:'administrador',perfil:'administrador'}));
+  await assertSucceeds(updateDoc(doc(db(owner),'usuarios','novoSup'),{frenteId:'colorado',turno:'B'}));
+});
+
+test('pedido antigo de supervisor ativa somente o próprio perfil pendente e preserva equipe e dados',async()=>{
+  await assertFails(updateDoc(doc(db('pendingSupervisor'),'usuarios','pendingSupervisor'),{papel:'supervisor',perfil:'supervisor',status:'aprovado',turno:'B'}));
+  await assertFails(updateDoc(doc(db('pendingSupervisor'),'usuarios','pendingSupervisor'),{papel:'supervisor',perfil:'supervisor',status:'aprovado',nome:'Outro nome'}));
+  await assertSucceeds(updateDoc(doc(db('pendingSupervisor'),'usuarios','pendingSupervisor'),{papel:'supervisor',perfil:'supervisor',status:'aprovado'}));
+  const active=(await getDoc(doc(db('pendingSupervisor'),'usuarios','pendingSupervisor'))).data();
+  assert.equal(active.frenteId,'santo_inacio');assert.equal(active.turno,'A');assert.equal(active.matricula,'80911');
+  await assertSucceeds(updateDoc(doc(db('pendingSupervisor'),'usuarios','pendingTratorista'),{papel:'tratorista',perfil:'tratorista',status:'aprovado'}));
+  await assertFails(updateDoc(doc(db('pendingSupervisor'),'usuarios','pendingB'),{papel:'operador',perfil:'operador',status:'aprovado'}));
+  await assertFails(updateDoc(doc(db('pendingSupervisor'),'usuarios','pendingSupervisor'),{turno:'B'}));
+});
+
+test('ativação própria nunca promove operador nem reativa supervisor bloqueado ou excluído',async()=>{
+  const activation={papel:'supervisor',perfil:'supervisor',status:'aprovado'};
+  for(const uid of ['opA','pending','pendingTratorista','blocked']) {
+    await assertFails(updateDoc(doc(db(uid),'usuarios',uid),activation));
+    await assertFails(updateDoc(doc(db(uid),'usuarios',uid),{...activation,solicitacaoPerfil:'supervisor'}));
+  }
+  await env.withSecurityRulesDisabled(async c=>{
+    await Promise.all([
+      setDoc(doc(c.firestore(),'usuarios','supBloqueado'),profile('supervisor','A','santo_inacio','bloqueado')),
+      setDoc(doc(c.firestore(),'usuarios','supExcluido'),{...pending('supervisor'),status:'excluido'}),
+      setDoc(doc(c.firestore(),'contasEncerradas','pendingSupervisor'),{encerrada:true}),
+      setDoc(doc(c.firestore(),'contasEncerradas','supRemovido'),{encerrada:true}),
+    ]);
+  });
+  for(const uid of ['supBloqueado','supExcluido','pendingSupervisor']) await assertFails(updateDoc(doc(db(uid),'usuarios',uid),activation));
+  await assertFails(setDoc(doc(db('supRemovido'),'usuarios','supRemovido'),profile('supervisor')));
+  await assertFails(setDoc(doc(db('supBloqueado'),'usuarios','supBloqueado'),profile('supervisor')));
+});
+
+test('PATCH HTTPS de ativação respeita máscara e regras, sem alterar a frente nem reabrir bloqueios',async()=>{
+  const host=process.env.FIRESTORE_EMULATOR_HOST;assert.ok(host);
+  const project='demo-dm-agro';const now=Math.floor(Date.now()/1000);
+  const encode=v=>Buffer.from(JSON.stringify(v)).toString('base64url');
+  const token=uid=>encode({alg:'none',typ:'JWT'})+'.'+encode({sub:uid,user_id:uid,aud:project,iss:'https://securetoken.google.com/'+project,iat:now,exp:now+3600,firebase:{sign_in_provider:'custom'},email:'matricula.80911@acesso.dm-agro.app'})+'.';
+  const patch=(uid,fields={papel:'supervisor',perfil:'supervisor',status:'aprovado'})=>fetch(
+    `http://${host}/v1/projects/${project}/databases/(default)/documents/usuarios/${uid}?updateMask.fieldPaths=papel&updateMask.fieldPaths=perfil&updateMask.fieldPaths=status&currentDocument.exists=true`,
+    {method:'PATCH',headers:{Authorization:'Bearer '+token(uid),'Content-Type':'application/json'},body:JSON.stringify({fields:Object.fromEntries(Object.entries(fields).map(([key,value])=>[key,{stringValue:value}]))})});
+  const activated=await patch('pendingSupervisor');assert.equal(activated.status,200);
+  const data=(await activated.json()).fields;assert.equal(data.status.stringValue,'aprovado');assert.equal(data.frenteId.stringValue,'santo_inacio');assert.equal(data.turno.stringValue,'A');
+  assert.equal((await patch('pending')).status,403);
+  await assertSucceeds(updateDoc(doc(db(owner),'usuarios','pendingSupervisor'),{status:'bloqueado'}));
+  assert.equal((await patch('pendingSupervisor')).status,403);
 });

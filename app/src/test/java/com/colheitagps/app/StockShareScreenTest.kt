@@ -111,4 +111,19 @@ class StockShareScreenTest {
         assertEquals(2,maps.map {it.title}.toSet().size)
         assertTrue(maps.all {it.title.startsWith("Mapa pintado ")&&!it.label.contains("outra frente")&&!it.label.contains("mapa_relatorio_")})
     }
+    @Test fun mixedLotsProduceOnlyImagePagesWithTheChosenPhotosAndPreserveStoredAttachments() {
+        val a=prepare();attach(a,"A",photo(a));attach(a,"B",photo(a))
+        ReflectionHelpers.getField<MutableSet<String>>(a,"omitted").add("B")
+        val report=ReflectionHelpers.callInstanceMethod<FieldReport>(a,"preparedReport")
+        assertEquals(2,report.sections.single().rows.size)
+        assertEquals(1,report.pictures.size);assertTrue(report.pictures.single().caption.startsWith("Lote A"))
+        val output=FieldReportRenderer.render(report,File(store(a).cache,"image-only-batch"),false)
+        assertTrue(output.size>=2);assertTrue(output.all {it.extension=="png"&&android.graphics.BitmapFactory.decodeFile(it.path)!=null})
+        val stored=JSONArray(store(a).prefs("registros_v3").getString("estoques_salvos","[]"))
+        assertTrue(stored.getJSONObject(0).has("fotoEstoque"));assertTrue(stored.getJSONObject(1).has("fotoEstoque"))
+        ReflectionHelpers.callInstanceMethod<Unit>(a,"render")
+        val labels=views(a.window.decorView).filterIsInstance<android.widget.TextView>().map {it.text.toString()}
+        assertTrue(labels.contains("Compartilhar estoques por imagem"));assertFalse(labels.any {it.contains("PDF")})
+    }
+
 }

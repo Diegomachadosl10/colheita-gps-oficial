@@ -25,6 +25,7 @@ internal object AccessFailures {
         val code=code(error)
         val message=when(code) {
             "PERMISSION_DENIED"->"O Firestore recusou a consulta ao seu cadastro. É necessário conferir as regras publicadas ou a configuração de acesso."
+            "SUPERVISOR_ENROLLMENT"->"O servidor ainda não liberou este cadastro de supervisor. Peça ao administrador para conferir a publicação das regras da versão 1.8.0."
             "PROFILE_INVALID"->"O cadastro ainda não está aprovado ou a equipe e o perfil precisam ser conferidos pelo administrador."
             "UNAUTHENTICATED","SESSION_CHANGED"->"Sua sessão precisa ser conferida novamente. Saia da conta e entre com seus dados no aplicativo."
             "DNS"->"O aplicativo não conseguiu localizar o endereço do Firestore nesta rede."

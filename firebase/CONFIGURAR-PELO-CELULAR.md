@@ -1,3 +1,5 @@
+> Guia histórico da versão 1.1.0. Para a versão atual, use [o passo a passo 1.8.0](../docs/ATUALIZACAO-1.8.0.md), que inclui a entrada de supervisores sem aprovação e o compartilhamento por imagem.
+
 # Ativar equipes no Firebase — DM AGRO 1.1.0
 
 **Plano obrigatório nesta entrega: Spark gratuito. Não fazer upgrade nem ativar faturamento.** O envio automático de anexos está desativado no APK.

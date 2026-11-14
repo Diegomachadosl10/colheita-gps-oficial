@@ -13,7 +13,7 @@ import android.widget.LinearLayout
 import android.widget.RadioButton
 import android.widget.TextView
 
-/** A requested profile is a single choice; selecting Supervisor never grants that permission. */
+/** Single profile choice; access is granted only after Firestore accepts the enrollment. */
 internal class ProfileChoice(context:Context):LinearLayout(context) {
     enum class Profile(val label:String,val requested:String,val description:String,val icon:FieldIcon) {
         OPERATOR("Operador","operador","Registrar atividades no campo",FieldIcon.EQUIPMENT),

@@ -218,7 +218,7 @@ internal class TeamSync(context: Context, private val access: TeamAccess, val st
         val conflicts = local.all.keys.count { it.startsWith("c_") }
         val errors = local.all.keys.count { it.startsWith("e_") }
         if (errors > 0) announce("$errors registros ou anexos permanecem somente neste aparelho. Toque em Sincronização.")
-        else if (conflicts == 0) announce(if (pending == 0) "Registros sincronizados • fotos e PDFs por compartilhamento" else "$pending alterações aguardando envio")
+        else if (conflicts == 0) announce(if (pending == 0) "Registros sincronizados • compartilhamento por imagem" else "$pending alterações aguardando envio")
     }
     private fun flushNotificationOutbox() {
         for((prefKey,revision) in local.all) {
@@ -380,7 +380,7 @@ internal class TeamSync(context: Context, private val access: TeamAccess, val st
         "${local.all.keys.count { it.startsWith("q_") }} alterações aguardando envio\n" +
         "${local.all.keys.count { it.startsWith("c_") }} conflitos preservados\n" +
         "${local.all.keys.count { it.startsWith("e_") }} registros ou arquivos acima do limite de envio\n" +
-        (if (TeamPolicy.AUTOMATIC_ATTACHMENTS) "Anexos automáticos quando há conexão. " else "Plano gratuito: fotos e PDFs ficam neste aparelho e são compartilhados manualmente. ") +
+        (if (TeamPolicy.AUTOMATIC_ATTACHMENTS) "Anexos automáticos quando há conexão. " else "Plano gratuito: anexos ficam neste aparelho; compartilhe os registros por imagem. ") +
         "Alterações simultâneas preservam uma cópia local."
     fun useSharedCopies() { execute {
         for (key in local.all.keys.filter { it.startsWith("c_") }) {

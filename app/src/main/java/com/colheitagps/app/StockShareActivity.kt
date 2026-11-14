@@ -2,18 +2,14 @@ package com.colheitagps.app
 
 import android.app.Activity
 import android.app.AlertDialog
-import android.content.ClipData
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.widget.CheckBox
 import android.widget.ImageView
-import android.widget.Toast
-import androidx.core.content.FileProvider
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
-import java.util.Locale
 
 /** One prepared shipment: all selected lots, with an optional local photo for each lot. */
 class StockShareActivity:Activity() {
@@ -66,7 +62,7 @@ class StockShareActivity:Activity() {
     private fun render() {
         val a=access?:return;val s=store?:return
         val records=records()
-        val body=ui.page("Preparar envio de estoques","${TeamPolicy.label(s.team)}\nEscolha em quais lotes deseja enviar foto. Os demais podem seguir somente com os dados.")
+        val body=ui.page("Preparar envio de estoques","${TeamPolicy.label(s.team)}\nEscolha em quais lotes deseja enviar foto. Os demais serão enviados em imagem somente com os dados.")
         if(records.size!=ids.size) ui.add(body,ui.text("Algum estoque selecionado foi removido. Volte e confira a seleção.",15f,ui.green,true))
         for(record in records) {
             val id=record.optString("id");val photo=StockShareFiles.photo(s.files,record)
@@ -82,15 +78,11 @@ class StockShareActivity:Activity() {
                     buttonTintList=android.content.res.ColorStateList.valueOf(ui.green)
                     setOnCheckedChangeListener { _,checked->if(checked) omitted.remove(id) else omitted.add(id) }
                 },4)
-            } else ui.add(card,ui.text(if(record.optBoolean("anexosManuais")) "A foto não está neste celular. Você pode escolher outra ou enviar sem foto." else "Sem foto • será enviado somente o texto",13f),8)
+            } else ui.add(card,ui.text(if(record.optBoolean("anexosManuais")) "A foto não está neste celular. Você pode escolher outra ou enviar sem foto." else "Sem foto • a imagem terá somente os dados",13f),8)
             ui.button(card,if(photo==null) "Adicionar foto a este lote" else "Trocar foto deste lote",true) { choosePhoto(id) }
         }
         val enabled=records.isNotEmpty()&&records.size==ids.size&&a.manages
-        ui.button(body,"Compartilhar estoques") {
-            AlertDialog.Builder(this).setTitle("Compartilhar estoques").setItems(arrayOf("Mensagem e fotos","PDF","Imagem")) {_,option->
-                when(option) {0->send(false);1->sendReport(true);2->sendReport(false)}
-            }.setNegativeButton("Cancelar",null).show()
-        }.isEnabled=enabled
+        ui.button(body,"Compartilhar estoques por imagem") {sendReport()}.isEnabled=enabled
         ui.button(body,"Voltar",true){finish()}
     }
     private fun choosePhoto(id:String) {
@@ -143,31 +135,18 @@ class StockShareActivity:Activity() {
             if(access!=null) receivePhoto()
         } else {pendingLot=null;pendingUri=null;if(access!=null) render()}
     }
-    private fun sendReport(pdf:Boolean) {
+    private fun preparedReport():FieldReport {
+        val s=store?:error("Equipe indisponível")
+        val selected=records().map {JSONObject(it.toString()).apply {if(optString("id") in omitted) remove("fotoEstoque")}}
+        require(selected.isNotEmpty()&&selected.size==ids.size&&selected.all {StockBatch.complete(it)}) {"Confira os lotes selecionados antes de enviar."}
+        return FieldReport("Estoques selecionados",TeamPolicy.label(s.team),sections=listOf(FieldReports.group("Lotes","estoques_salvos",selected)),
+            pictures=selected.mapNotNull {record->StockShareFiles.photo(s.files,record)?.let {ReportPicture(it,"Lote ${record.optString("os")} • Talhões: ${record.optString("talhoes")}")}})
+    }
+    private fun sendReport() {
         val a=access?:return;val s=store?:return
         if(!a.manages) return
-        val selected=records().map {JSONObject(it.toString()).apply {if(optString("id") in omitted) remove("fotoEstoque")}}
-        if(selected.isEmpty()||selected.size!=ids.size||selected.any {!StockBatch.complete(it)}) {notice("Confira os lotes selecionados antes de enviar.");return}
-        val report=FieldReport("Estoques selecionados",TeamPolicy.label(s.team),sections=listOf(FieldReports.group("Lotes","estoques_salvos",selected)),
-            pictures=selected.mapNotNull {record->StockShareFiles.photo(s.files,record)?.let {ReportPicture(it,"Lote ${record.optString("os")} • Talhões: ${record.optString("talhoes")}")}})
-        FieldReportSharing.share(this,report,s.cache,pdf) {access?.uid==a.uid&&access?.manages==true&&store?.team==s.team}
-    }
-    private fun send(pdf:Boolean) {
-        if(access?.manages!=true) return
-        val s=store?:return
-        val selected=records().map {JSONObject(it.toString()).apply {if(optString("id") in omitted) remove("fotoEstoque")}}
-        if(selected.isEmpty()||selected.size!=ids.size||selected.any {!StockBatch.complete(it)}) {notice("Confira os lotes selecionados e complete os dados antes de enviar.");return}
-        try {
-            val date=java.text.SimpleDateFormat("dd/MM/yyyy HH:mm",Locale("pt","BR")).format(java.util.Date())
-            val photoLots=selected.filter {StockShareFiles.photo(s.files,it)!=null}
-            val text=StockBatch.text(selected,TeamPolicy.label(s.team),date)+(if(photoLots.isEmpty()) "" else "\n\nFotos anexadas dos lotes: "+photoLots.joinToString {it.optString("os")})
-            val intent=if(pdf) {
-                val file=StockShareFiles.pdf(s.cache,s.files,selected,text)
-                val uri=FileProvider.getUriForFile(this,"$packageName.files",file)
-                Intent(Intent.ACTION_SEND).apply {type="application/pdf";putExtra(Intent.EXTRA_STREAM,uri);putExtra(Intent.EXTRA_TEXT,"Estoques selecionados — DM AGRO");addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);clipData=ClipData.newUri(contentResolver,"PDF dos estoques",uri)}
-            } else StockShareFiles.message(this,s.cache,s.files,selected,text)
-            startActivity(Intent.createChooser(intent,"Compartilhar estoques"))
-        } catch(error:Exception) {notice(error.message?:"Não foi possível preparar o envio. Tente novamente.")}
+        val report=try {preparedReport()} catch(error:Exception) {notice(error.message?:"Confira os lotes selecionados antes de enviar.");return}
+        FieldReportSharing.share(this,report,s.cache) {access?.uid==a.uid&&access?.manages==true&&store?.team==s.team}
     }
     companion object {private const val PHOTO=8810}
 }

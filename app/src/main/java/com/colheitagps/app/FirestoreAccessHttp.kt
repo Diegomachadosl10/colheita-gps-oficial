@@ -7,7 +7,7 @@ import java.net.URLEncoder
 import java.time.Instant
 import javax.net.ssl.HttpsURLConnection
 
-/** Firebase ID tokens, not service accounts: the same Firestore Security Rules evaluate every GET. */
+/** Firebase ID tokens, not service accounts: the same Firestore Security Rules evaluate every request. */
 internal object FirestoreAccessHttp {
     fun path(project:String,uid:String,readiness:Boolean):String {
         require(project.matches(Regex("[a-z][a-z0-9-]{3,62}")))
@@ -34,14 +34,25 @@ internal object FirestoreAccessHttp {
         field.has("nullValue")->null
         else->null
     }
-    fun get(project:String,uid:String,idToken:String,readiness:Boolean=false):Map<String,Any>? {
+    fun get(project:String,uid:String,idToken:String,readiness:Boolean=false):Map<String,Any>? =
+        request(project,uid,idToken,readiness,null)
+    fun activateSupervisor(project:String,uid:String,idToken:String):Map<String,Any> {
+        val fields=JSONObject()
+        EnrollmentPolicy.supervisorActivation.forEach {(key,value)->fields.put(key,JSONObject().put("stringValue",value))}
+        return request(project,uid,idToken,false,JSONObject().put("fields",fields).toString())?:throw AccessFailure("INVALID_RESPONSE")
+    }
+    private fun request(project:String,uid:String,idToken:String,readiness:Boolean,payload:String?):Map<String,Any>? {
         if(idToken.isBlank()) throw AccessFailure("UNAUTHENTICATED")
-        val address=path(project,uid,readiness)
+        val address=path(project,uid,readiness)+(if(payload!=null) "?updateMask.fieldPaths=papel&updateMask.fieldPaths=perfil&updateMask.fieldPaths=status&currentDocument.exists=true" else "")
         val connection=URL(address).openConnection() as HttpsURLConnection
-        connection.requestMethod="GET";connection.connectTimeout=10000;connection.readTimeout=10000;connection.instanceFollowRedirects=false
+        connection.requestMethod=if(payload==null) "GET" else "PATCH";connection.connectTimeout=10000;connection.readTimeout=10000;connection.instanceFollowRedirects=false
         connection.setRequestProperty("Authorization","Bearer $idToken");connection.setRequestProperty("Accept","application/json")
         connection.useCaches=false
         return try {
+            if(payload!=null) {
+                connection.doOutput=true;connection.setRequestProperty("Content-Type","application/json; charset=UTF-8")
+                connection.outputStream.use {it.write(payload.toByteArray(Charsets.UTF_8))}
+            }
             val status=connection.responseCode
             val stream=if(status in 200..299) connection.inputStream else connection.errorStream
             val body=stream?.bufferedReader()?.use {reader->

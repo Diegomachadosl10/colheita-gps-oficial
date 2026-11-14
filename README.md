@@ -2,15 +2,15 @@
 
 Android, ramificação de trabalho **dm-agro-login**. A `main` permanece intacta.
 
-## Versão 1.2.0
+## Versão 1.8.0
 
-Veja [as melhorias, testes e publicação de atualizações](ATUALIZACOES-1.2.0.md). O download dentro do aplicativo depende de publicar os releases no GitHub com a assinatura permanente.
+Veja [as mudanças e a configuração de supervisores pelo celular](docs/ATUALIZACAO-1.8.0.md). O download dentro do aplicativo depende de publicar os releases no GitHub com a assinatura permanente. Histórico: [versão 1.2.0](ATUALIZACOES-1.2.0.md).
 
 ## Equipes por frente e turno
 
-- O UID principal possui acesso geral e aprova supervisores.
+- O UID principal possui acesso geral e gerencia todos os usuários. Supervisores entram ao concluir o cadastro, sem aprovação do principal; operadores e tratoristas continuam pendentes até a aprovação de um gestor da equipe.
 - Supervisores usam as ferramentas dentro de sua equipe e aprovam somente operadores/tratoristas da mesma frente e turno.
-- Registros de manutenção, estoque, relatórios e caminhões são armazenados por equipe. Os mapas novos dos operadores e tratoristas e suas pinturas ficam privados no aparelho. Equipamentos permanecem cadastrados mesmo sem pendências abertas. Registros de texto usam Firestore com cache e fila local. **Plano Spark gratuito: fotos e PDFs permanecem locais e são compartilhados manualmente**, sem ativar Storage nem faturamento.
+- Registros de manutenção, estoque, relatórios e caminhões são armazenados por equipe. Os mapas novos dos operadores e tratoristas e suas pinturas ficam privados no aparelho. Equipamentos permanecem cadastrados mesmo sem pendências abertas. Registros de texto usam Firestore com cache e fila local. **Plano Spark gratuito: anexos permanecem locais; o compartilhamento das ferramentas usa somente imagens**, sem ativar Storage nem faturamento.
 - As revisões detectam alterações simultâneas; cópias conflitantes são preservadas. O painel **Sincronização** informa o estado do envio.
 - Dados antigos não são apagados nem atribuídos automaticamente a uma equipe. A importação de dados sem equipe é exclusiva do principal.
 - Matrícula e senha não exigem e-mail pessoal. Os endereços técnicos continuam `matricula.<matricula>@acesso.dm-agro.app`.

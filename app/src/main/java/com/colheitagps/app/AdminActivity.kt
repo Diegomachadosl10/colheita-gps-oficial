@@ -37,7 +37,7 @@ class AdminActivity : Activity() {
                 if (isDestroyed) return@addOnCompleteListener
                 busy = false
                 val card = ui.page(if (access.primary) "Gerenciar todos os acessos" else "Aprovar minha equipe",
-                    if (access.primary) "Somente você aprova supervisores e ajusta as equipes."
+                    if (access.primary) "Supervisores entram ao concluir o cadastro. Você gerencia todos os acessos e ajusta as equipes."
                     else "${TeamPolicy.label(access.team!!)}. Você pode aprovar somente operadores e tratoristas desta equipe.")
                 val toolbar=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL };ui.add(card,toolbar,0)
                 for((label,action) in listOf("Atualizar" to { if(!busy) load() },"Voltar" to { finish() })) {
@@ -67,7 +67,7 @@ class AdminActivity : Activity() {
                 val front=if(access.primary) ui.spinner(card,"Frente",arrayOf("Todas as frentes")+TeamPolicy.fronts.values.toTypedArray()).apply {
                     setSelection((TeamPolicy.fronts.keys.indexOf(frontFilter)+1).coerceAtLeast(0))
                 } else null
-                ui.button(card,"Compartilhar lista em PDF / imagem",true) {
+                ui.button(card,"Compartilhar lista por imagem",true) {
                     val filtered=AdminUserList.filter(users,search,statusFilter,frontFilter)
                     AccessRepository.loadTeamAccess(this,{current->
                         if(current.uid!=access.uid||!current.manages||(!current.primary&&current.team!=access.team)) {notice("Não foi possível confirmar a permissão para compartilhar.");return@loadTeamAccess}
@@ -76,7 +76,7 @@ class AdminActivity : Activity() {
                                 val d=user.data;listOf("${d["nome"]?:"Sem nome"}\nMatrícula: ${d["matricula"]?:"Não informada"}",TeamPolicy.team(d)?.let(TeamPolicy::label)?:"Não definida","${TeamPolicy.requested(d)}\n${AccessPolicy.normalized(d["status"])}")
                             })))
                         val cache=TeamStore(applicationContext,current.team?:"santo_inacio_A").cache
-                        FieldReportSharing.choose(this,report,cache) {auth.currentUser?.uid==current.uid}
+                        FieldReportSharing.share(this,report,cache) {auth.currentUser?.uid==current.uid}
                     },{notice("Confira sua conexão antes de compartilhar a lista.")})
                 }
                 val rows=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }; ui.add(card,rows)
