@@ -44,6 +44,7 @@ class MainActivity : Activity() {
     private val syncUiHandler = Handler(Looper.getMainLooper())
     private var refreshPending = false
     private var relatorioAtual: (() -> FieldReport?)? = null
+    private var compartilharImagemAtual:(()->Unit)?=null
     private var buscaEstoque=""
     private var buscaEquipamento=""
     private var buscaMapas=""
@@ -806,6 +807,7 @@ class MainActivity : Activity() {
         renderedNight=AppTheme.night(this)
         themeScreen={inicio()}
         relatorioAtual = {relatorioPadrao(titulo)}
+        compartilharImagemAtual=null
         if(titulo=="DM AGRO") relatorioAtual=null
         returnToParent = if (titulo == "DM AGRO") null else parent
         telaAtual = if (titulo == "DM AGRO") "inicio" else "pagina"
@@ -843,7 +845,9 @@ class MainActivity : Activity() {
             setPadding(dp(12), 0, dp(8), 0)
             contentDescription = "Mais opções"; minWidth = dp(48); minHeight = dp(48); gravity = Gravity.CENTER
             setOnClickListener { v -> PopupMenu(this@MainActivity, v).apply {
-                if(relatorioAtual!=null&&titulo!="Estoque de cana") menu.add(0,4,0,"Compartilhar imagem").setOnMenuItemClickListener {relatorioAtual?.invoke()?.let(::compartilharRelatorio);true}
+                if(relatorioAtual!=null&&titulo!="Estoque de cana") menu.add(0,4,0,"Compartilhar imagem").setOnMenuItemClickListener {
+                    compartilharImagemAtual?.invoke() ?: relatorioAtual?.invoke()?.let(::compartilharRelatorio);true
+                }
                 menu.add(0,1,1,"Tema do aplicativo").setOnMenuItemClickListener {escolherTema();true}
                 menu.add(0,2,2,"Configurações").setOnMenuItemClickListener {configuracoes();true}
                 menu.add(0,3,3,"Sair da conta").setOnMenuItemClickListener {sairDaConta();true}
@@ -1482,19 +1486,6 @@ class MainActivity : Activity() {
         if (encontrados == 0) coluna.addView(texto("Nenhum registro nesta data.", 14f))
     }
 
-    private fun textoPendencia(obj: JSONObject): String = buildString {
-        append("PENDÊNCIA DE MANUTENÇÃO - COLHEITA GPS\n")
-        append("Data: ").append(dataRegistro(obj)).append("\n")
-        append("O.S.: ").append(obj.optString("osPendencia").ifBlank { "Não informada" }).append("\n")
-        append("Equipamento: ").append(obj.optString("equipamento")).append("\n")
-        append("Pendência: ").append(obj.optString("descricao")).append("\n")
-        append("Situação: ").append(if (MaintenanceRecords.isArchived(obj)) "Excluída, preservada no histórico" else if (obj.optBoolean("concluida", false)) "Concluída" else "Pendente")
-        if (MaintenanceRecords.isArchived(obj)) append("\nExcluída em: ${obj.optString("arquivadoEm", "data não registrada")}\nPor: ${obj.optString("arquivadoPorNome", "gestor da equipe")}")
-        if (obj.optBoolean("concluida", false) && obj.optString("dataConclusao").isNotBlank()) {
-            append("\nConcluída em: ").append(obj.optString("dataConclusao"))
-        }
-    }
-
     private fun fotosPendencia(obj: JSONObject): List<File> {
         val arr = obj.optJSONArray("fotos")
         val caminhos = if (arr != null && arr.length() > 0)
@@ -1503,8 +1494,44 @@ class MainActivity : Activity() {
         return caminhos.filter { it.isNotBlank() }.map { File(it) }.filter { it.isFile }
     }
 
-    private fun compartilharPendenciaMenu(obj: JSONObject) {
-        compartilharRelatorio(relatorioGrupo("Pendência de manutenção","pendencias",listOf(obj)))
+    private fun compartilharPendenciaMenu(obj:JSONObject) {
+        val id=obj.optString("id")
+        escolherEnvioPendencias(false) {
+            FieldReports.rows(maintenanceCatalog()).filter {MaintenanceShareData.issue(it)&&it.optString("id")==id}
+        }
+    }
+    private fun compartilharPendenciasAbertas(imagem:Boolean=false,equipamento:String?=null) {
+        escolherEnvioPendencias(imagem) {MaintenanceShareData.open(maintenanceCatalog(),equipamento)}
+    }
+    private fun escolherEnvioPendencias(imagem:Boolean,ler:()->List<JSONObject>) {
+        val store=teamStore?:return;val uid=teamAccess?.uid?:return
+        fun allowed()=acessoConfirmado&&teamStore?.team==store.team&&teamAccess?.uid==uid
+        if(!allowed()) return
+        val rows=ler()
+        if(rows.isEmpty()) {Toast.makeText(this,"Nenhuma pendência disponível para compartilhar.",Toast.LENGTH_LONG).show();return}
+        val body=LinearLayout(this).apply {orientation=LinearLayout.VERTICAL;setPadding(dp(20),dp(8),dp(20),dp(12))}
+        body.addView(texto("${TeamPolicy.label(store.team)}\n${rows.size} pendência${if(rows.size==1) "" else "s"}",15f))
+        val format=RadioGroup(this).apply {orientation=RadioGroup.VERTICAL;tag="formatoEnvioPendencias"}
+        for((index,label) in listOf("Mensagem para WhatsApp","Imagem").withIndex()) format.addView(RadioButton(this).apply {
+            id=if(index==0) 5101 else 5102;text=label;setTextColor(palette.text);textSize=16f;minHeight=dp(48)
+            buttonTintList=ColorStateList.valueOf(palette.accent)
+        })
+        format.check(if(imagem) 5102 else 5101);body.addView(format,LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(12)})
+        val photosAvailable=rows.any {MaintenanceShareData.photos(store.files,it).isNotEmpty()}
+        val photos=CheckBox(this).apply {
+            text="Incluir fotos disponíveis neste celular";tag="incluirFotosPendencias";isChecked=photosAvailable;isEnabled=photosAvailable
+            textSize=15f;setTextColor(palette.text);minHeight=dp(48);buttonTintList=ColorStateList.valueOf(palette.accent)
+        }
+        body.addView(photos)
+        body.addView(texto(if(photosAvailable) "Desmarque para enviar sem fotos. Na imagem, descrição e fotos ficam juntas." else "Sem fotos neste celular. Todas as informações podem ser enviadas normalmente.",13f,palette.muted))
+        AlertDialog.Builder(this).setTitle(if(rows.size==1) "Compartilhar pendência" else "Compartilhar pendências")
+            .setView(ScrollView(this).apply {addView(body)}).setNegativeButton("Cancelar",null).setPositiveButton("Compartilhar") {_,_->
+                if(allowed()) {
+                    // Refresh the team list now: completed/deleted issues must not enter an open-issues shipment.
+                    val current=ler()
+                    MaintenanceSharing.share(this,store,current,format.checkedRadioButtonId==5102,photos.isChecked,::allowed)
+                }
+            }.show()
     }
 
     private fun maintenanceCatalog(): JSONArray = synchronized(teamStore?.lock ?: this) {
@@ -1704,9 +1731,11 @@ class MainActivity : Activity() {
     private fun pendencias() {
         val coluna=pagina("Pendências de manutenção")
         themeScreen={pendencias()}
+        compartilharImagemAtual={compartilharPendenciasAbertas(imagem=true)}
         atalhos(coluna,
             Triple("Nova pendência",FieldIcon.PENDING,{editarPendencia(-1)}),
             Triple("Cadastrar equipamento",FieldIcon.EQUIPMENT,{cadastrarEquipamento()}))
+        coluna.addView(botao("Compartilhar todas as abertas") {compartilharPendenciasAbertas()})
         coluna.addView(secao("Equipamentos da equipe"))
         val results=LinearLayout(this).apply {orientation=LinearLayout.VERTICAL;tag="resultadosEquipamentos"}
         fun render() {
@@ -1753,6 +1782,12 @@ class MainActivity : Activity() {
             parent = { if (concluidas && archivedEquipment) historicoEquipamentos() else if (concluidas) pendenciasEquipamento(number) else pendencias() })
         themeScreen={pendenciasEquipamento(number,concluidas)}
         refreshList = { pendenciasEquipamento(number, concluidas) }
+        compartilharImagemAtual={
+            escolherEnvioPendencias(true) {
+                FieldReports.rows(maintenanceCatalog()).filter {MaintenanceShareData.issue(it)&&MaintenanceRecords.number(it.optString("equipamento"))==number&&
+                    (if(concluidas) RecordArchive.archived(it)||it.optBoolean("concluida") else !RecordArchive.archived(it)&&!it.optBoolean("concluida"))}
+            }
+        }
         relatorioAtual={relatorioGrupo(if(concluidas) "Histórico do equipamento $number" else "Pendências do equipamento $number","pendencias",FieldReports.rows(dados("pendencias")).filter {
             MaintenanceRecords.number(it.optString("equipamento"))==number&&(if(concluidas) RecordArchive.archived(it)||it.optBoolean("concluida") else !RecordArchive.archived(it)&&!it.optBoolean("concluida"))
         })}
@@ -1783,6 +1818,9 @@ class MainActivity : Activity() {
     private fun historicoPendencias() {
         val coluna = pagina("Histórico de pendências", parent = { pendencias() })
         themeScreen={historicoPendencias()}
+        compartilharImagemAtual={escolherEnvioPendencias(true) {
+            FieldReports.rows(maintenanceCatalog()).filter {MaintenanceShareData.issue(it)&&(RecordArchive.archived(it)||it.optBoolean("concluida"))}
+        }}
         refreshList = { historicoPendencias() }
         val arr = dados("pendencias")
         var total = 0
@@ -1841,7 +1879,7 @@ class MainActivity : Activity() {
             return
         }
         val opcoes = listOf("Editar pendência", if (concluida) "↩ Reabrir pendência" else "✓ Concluir pendência",
-            "Excluir pendência", "Compartilhar imagem", "Adicionar foto", "Ver fotos")
+            "Excluir pendência", "Compartilhar", "Adicionar foto", "Ver fotos")
             .mapIndexed { index, label -> label to index }.filter { it.second != 2 || podeGerenciar() }
         AlertDialog.Builder(this).setTitle(obj.optString("equipamento", "Pendência"))
             .setItems(opcoes.map { it.first }.toTypedArray()) { _, escolha ->
