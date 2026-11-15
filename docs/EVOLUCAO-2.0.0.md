@@ -30,7 +30,9 @@ Instale o APK sobre a versão atual, sem desinstalar nem limpar dados. Confira n
 
 ## Publicação
 
-O código desta versão foi enviado com sucesso ao repositório Diegomachadosl10/colheita-gps-oficial na branch dm-agro-login após instalar o conector; a main foi preservada. O envio do código não publica automaticamente a release para os aplicativos. Para disponibilizar pelo atualizador, extraia PUBLICAR-DM-AGRO-2.0.0.zip e publique uma release estável mais recente, tag v2.0.0, destino dm-agro-login, com os cinco arquivos na área Attach binaries abaixo da descrição. O código/bundle anexados preservam a entrega; não atualizam automaticamente a branch remota. A publicação na Play Store não foi realizada por esta atualização.
+A [release estável 2.0.0](https://github.com/Diegomachadosl10/colheita-gps-oficial/releases/tag/v2.0.0) foi publicada em 15/11/2026 e marcada como mais recente. Os cinco anexos foram conferidos por tamanho e SHA-256 antes da liberação. O manifesto público usado pelo atualizador entrega a versão 2.0.0, código 28; o APK público foi baixado e teve hash e assinatura permanente confirmados. A tag aponta para 1499e97a33ddaf82b8bde341a7a3c7b8ffecc4f0. A main foi preservada.
+
+A publicação usou o APK previamente assinado pelo workflow publish-prebuilt.yml, sem enviar chave privada. Usuários de versões anteriores podem atualizar ao abrir o aplicativo ou em ⋮ → Configurações → Verificar atualização, confirmando a instalação no Android. Quem já instalou 2.0.0 não recebe nova atualização. A publicação na Play Store não faz parte desta entrega.
 
 ## Validação concluída
 

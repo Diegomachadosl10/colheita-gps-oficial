@@ -4,6 +4,8 @@ Android, ramificação de trabalho **dm-agro-login**. A `main` permanece intacta
 
 ## Versão 2.0.0
 
+[Atualização estável publicada para todos](https://github.com/Diegomachadosl10/colheita-gps-oficial/releases/tag/v2.0.0). O atualizador do aplicativo já entrega a versão 2.0.0 (código 28).
+
 Veja [as dez melhorias da rotina no campo](docs/EVOLUCAO-2.0.0.md). Mantido [o envio de pendências por mensagem, imagem e de todas as abertas](docs/PENDENCIAS-WHATSAPP-1.9.2.md). Mantida [a organização das telas e o menu simplificado](docs/VISUAL-1.9.1.md). Mantidos [busca, favoritos, urgência e temas claro/noturno](docs/MELHORIAS-1.9.0.md). A [simplificação da versão 1.8.3](docs/SIMPLIFICACAO-1.8.3.md) foi preservada. O [envio de estoque por mensagem e fotos](docs/ESTOQUE-WHATSAPP-1.8.2.md) continua disponível. A [correção do fechamento ao compartilhar](docs/CORRECAO-COMPARTILHAMENTO-1.8.1.md) foi preservada. A configuração dos supervisores permanece descrita na [versão 1.8.0](docs/ATUALIZACAO-1.8.0.md). O download dentro do aplicativo depende de publicar os releases no GitHub com a assinatura permanente. Histórico: [versão 1.2.0](ATUALIZACOES-1.2.0.md).
 
 ## Equipes por frente e turno
@@ -22,7 +24,7 @@ Veja [as dez melhorias da rotina no campo](docs/EVOLUCAO-2.0.0.md). Mantido [o e
 
 O workflow `.github/workflows/android.yml` testa as regras em emuladores isolados e depois executa os testes Android e `assembleDebug` com Java 17/Gradle 8.9. Abra Actions → **Gerar APK Colheita GPS** → **Run workflow** → escolha **dm-agro-login**. Espere o resultado verde e baixe **DM-AGRO-APK** em **Artifacts**, extraia o ZIP e instale o APK.
 
-A conexão do ChatGPT Codex Connector foi instalada e o envio do código 2.0.0 foi confirmado na branch dm-agro-login. A main foi preservada. Os erros 403 anteriores foram resolvidos. O envio de código inicia a compilação; a atualização para os aplicativos depende da publicação de uma release estável com APK e manifesto assinados. O workflow exige o segredo protegido ANDROID_UPDATE_KEYSTORE_BASE64 com a assinatura permanente antes de gerar um APK compatível.
+A conexão do ChatGPT Codex Connector foi instalada e o envio do código 2.0.0 foi confirmado na branch dm-agro-login. A main foi preservada. Os erros 403 anteriores foram resolvidos. A release estável 2.0.0 foi publicada com o APK já assinado e validado nesta entrega; o manifesto público e o download foram conferidos. O envio de código inicia a compilação. O workflow exige o segredo protegido ANDROID_UPDATE_KEYSTORE_BASE64 com a assinatura permanente antes de gerar um APK compatível.
 
 Não desinstale nem limpe os dados para atualizar. Os APKs produzidos nesta sessão compartilham a mesma assinatura de teste. O workflow agora exige a chave permanente em segredo protegido e verifica o certificado antes de publicar, para não depender de um cache que pode expirar.
 
@@ -34,4 +36,4 @@ npm ci --prefix tests/firebase
 tests/firebase/node_modules/.bin/firebase emulators:exec --project demo-dm-agro --only firestore,storage 'cd tests/firebase && npm test'
 ```
 
-Os emuladores usam exclusivamente o projeto fictício `demo-dm-agro`. Não há implantação Firebase no workflow. A publicação GitHub só acontece em execução manual, na ramificação dm-agro-login, com a opção publicar_atualizacao marcada. As regras antigas fornecidas pelo proprietário estão em `firebase/firestore.anterior.rules`; os arquivos para publicar no modo gratuito são `firebase/firestore.rules` e `firebase/firestore.indexes.json`. `firebase/storage.rules` é apenas preparação isolada e não deve ser publicado nem ativado neste plano.
+Os emuladores usam exclusivamente o projeto fictício `demo-dm-agro`. Não há implantação Firebase no workflow. O workflow Android publica pelo fluxo manual na ramificação dm-agro-login, com a opção publicar_atualizacao marcada. Para um APK já assinado, publish-prebuilt.yml valida assinatura, origem, manifesto e hashes em um pacote explícito na mesma branch antes de publicar. Ele não gera nem recebe a chave privada; sem pacote, não publica nada. As regras antigas fornecidas pelo proprietário estão em `firebase/firestore.anterior.rules`; os arquivos para publicar no modo gratuito são `firebase/firestore.rules` e `firebase/firestore.indexes.json`. `firebase/storage.rules` é apenas preparação isolada e não deve ser publicado nem ativado neste plano.
