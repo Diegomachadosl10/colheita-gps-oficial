@@ -30,7 +30,7 @@ Instale o APK sobre a versão atual, sem desinstalar nem limpar dados. Confira n
 
 ## Publicação
 
-Para disponibilizar pelo atualizador, extraia PUBLICAR-DM-AGRO-2.0.0.zip e publique uma release estável mais recente, tag v2.0.0, destino dm-agro-login, com os cinco arquivos na área Attach binaries abaixo da descrição. O código/bundle anexados preservam a entrega; não atualizam automaticamente a branch remota. A publicação na Play Store não foi realizada por esta atualização.
+O envio do código desta versão aguarda autorização explícita para o repositório externo; a revisão automática de aprovação bloqueou a execução antes do push. Não houve publicação. Depois de autorizado e resolvido o acesso, para disponibilizar pelo atualizador, extraia PUBLICAR-DM-AGRO-2.0.0.zip e publique uma release estável mais recente, tag v2.0.0, destino dm-agro-login, com os cinco arquivos na área Attach binaries abaixo da descrição. O código/bundle anexados preservam a entrega; não atualizam automaticamente a branch remota. A publicação na Play Store não foi realizada por esta atualização.
 
 ## Validação concluída
 

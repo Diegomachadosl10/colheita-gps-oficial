@@ -22,7 +22,7 @@ Veja [as dez melhorias da rotina no campo](docs/EVOLUCAO-2.0.0.md). Mantido [o e
 
 O workflow `.github/workflows/android.yml` testa as regras em emuladores isolados e depois executa os testes Android e `assembleDebug` com Java 17/Gradle 8.9. Abra Actions → **Gerar APK Colheita GPS** → **Run workflow** → escolha **dm-agro-login**. Espere o resultado verde e baixe **DM-AGRO-APK** em **Artifacts**, extraia o ZIP e instale o APK.
 
-A integração atual recusou os envios com HTTP 403. Enquanto esse acesso não for resolvido, o GitHub contém a versão anterior; os arquivos e APKs desta conversa são as entregas atualizadas. Não substitua a `main`.
+Envios anteriores foram recusados com HTTP 403. Nesta entrega 2.0.0, a revisão automática de aprovação impediu executar o envio por exigir autorização explícita para o repositório externo. Enquanto a publicação não estiver autorizada e o acesso resolvido, o GitHub contém a versão anterior; os arquivos e APKs desta conversa são as entregas atualizadas. Não substitua a `main`.
 
 Não desinstale nem limpe os dados para atualizar. Os APKs produzidos nesta sessão compartilham a mesma assinatura de teste. O workflow agora exige a chave permanente em segredo protegido e verifica o certificado antes de publicar, para não depender de um cache que pode expirar.
 
