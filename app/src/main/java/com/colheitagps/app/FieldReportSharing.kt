@@ -51,7 +51,15 @@ internal object FieldReportSharing {
         worker.execute {
             try {
                 val files=prepare()
-                activity.runOnUiThread {deliverImages(activity,report,files,allowed)}
+                activity.runOnUiThread {
+                    if(!activity.isFinishing&&!activity.isDestroyed&&allowed()) {
+                        val app=activity.applicationContext
+                        try {
+                            val uris=ArrayList(files.map {FileProvider.getUriForFile(app,"${app.packageName}.files",it)})
+                            SharePreview.review(activity,imageIntent(activity,report,uris),allowed) {deliverImages(activity,report,files,allowed)}
+                        } catch(_:Exception) {failure(activity,"Não foi possível preparar a prévia. Tente novamente.")}
+                    }
+                }
             } catch(_:OutOfMemoryError) {
                 activity.runOnUiThread {failure(activity,"Memória insuficiente para preparar as imagens. Tente compartilhar menos itens por vez.")}
             } catch(_:Exception) {

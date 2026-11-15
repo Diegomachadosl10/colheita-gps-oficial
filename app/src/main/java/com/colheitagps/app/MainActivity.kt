@@ -45,6 +45,20 @@ class MainActivity : Activity() {
     private var refreshPending = false
     private var relatorioAtual: (() -> FieldReport?)? = null
     private var compartilharImagemAtual:(()->Unit)?=null
+    private var salvarRascunhoAtivo:(()->Unit)?=null
+    private var receberFotoEstoque:((File)->Unit)?=null
+    private var filtroParadaChuva=false
+    private fun chaveSessao()="${teamAccess?.uid}|${teamStore?.team}"
+    private fun rascunhos()=FieldDrafts(applicationContext,teamStore!!.team,teamAccess!!.uid)
+    private fun registrarRascunho(key:String,fields:List<EditText>,capture:()->JSONObject):()->Unit {
+        val store=teamStore!!.team;val uid=teamAccess!!.uid
+        val save:()->Unit={if(teamStore?.team==store&&teamAccess?.uid==uid) rascunhos().write(key,capture())}
+        salvarRascunhoAtivo=save;FieldDrafts.watch(fields,save);return save
+    }
+    private fun historicoCorrecoes(group:String,id:String) {
+        val row=FieldReports.rows(todosRegistros(group)).firstOrNull {it.optString("id")==id}?:return
+        AlertDialog.Builder(this).setTitle("Histórico de correções").setView(ScrollView(this).apply {addView(texto(RecordEdits.text(row)).apply {setPadding(dp(18),dp(10),dp(18),dp(16))})}).setPositiveButton("Fechar",null).show()
+    }
     private var buscaEstoque=""
     private var buscaEquipamento=""
     private var buscaMapas=""
@@ -69,7 +83,8 @@ class MainActivity : Activity() {
             .setNegativeButton("Voltar") { _, _ -> moveTaskToBack(true) }.show()
     }
     private fun openTeam(access: TeamAccess, id: String) {
-        if(teamStore?.team!=id||teamAccess?.uid!=access.uid) {buscaEstoque="";buscaEquipamento="";buscaMapas=""}
+        if(teamStore?.team!=id||teamAccess?.uid!=access.uid) {buscaEstoque="";buscaEquipamento="";buscaMapas="";filtroParadaChuva=false}
+        salvarRascunhoAtivo?.invoke();salvarRascunhoAtivo=null;receberFotoEstoque=null
         mapa?.salvar(); mapa = null; chaveAtual = ""
         teamSync?.stop()
         profileWatch?.remove()
@@ -229,7 +244,10 @@ class MainActivity : Activity() {
             val value = if (key == "pendencias") {
                 MaintenanceRecords.merge(arr, old)
             } else RecordArchive.merge(arr,old)
-            prefs.edit().putString(key, value.toString()).apply()
+            val audited=RecordEdits.stamp(old,value,teamAccess?.uid.orEmpty(),teamAccess?.profile?.get("nome")?.toString().orEmpty(),archiveDate())
+            prefs.edit().putString(key, audited.toString()).apply()
+            syncMessage="Salvo neste celular • aguardando verificação do envio"
+            syncLabel?.text="● ${DashboardUi.status(syncMessage)}"
         }
     }
     private fun comRegistroAtual(group: String, id: String, action: (Int) -> Unit) {
@@ -324,6 +342,7 @@ class MainActivity : Activity() {
             vozResultado = null
         }
         if (requestCode == 306) {
+            val receive=receberFotoEstoque?:return
             val uri = data?.data ?: return
             try {
                 val destino = File(filesDir, "foto_estoque_${System.currentTimeMillis()}.jpg")
@@ -341,9 +360,7 @@ class MainActivity : Activity() {
                 } ?: "Foto do estoque.jpg"
                 getSharedPreferences("controle_colheita", 0).edit()
                     .putString("nome_foto_estoque", nomeFoto).apply()
-                val p = progresso().put("fotoEstoque", destino.absolutePath)
-                salvarEstoqueAtual(p)
-                estoque()
+                receive(destino)
                 Toast.makeText(this, "Foto anexada ao estoque", Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
                 Toast.makeText(this, "Erro ao anexar foto: ${e.message}", Toast.LENGTH_LONG).show()
@@ -669,7 +686,7 @@ class MainActivity : Activity() {
         StartupUpdates.resume(this)
         if(acessoConfirmado&&teamStore!=null) {
             if(renderedNight!=AppTheme.night(this)) {AppTheme.apply(this);renderedNight=AppTheme.night(this);themeScreen();return}
-            if(telaAtual=="inicio") inicio() else if(telaAtual=="caminhoes") caminhoes()
+            if(salvarRascunhoAtivo==null) {if(telaAtual=="inicio") inicio() else if(telaAtual=="caminhoes") caminhoes()}
         }
     }
 
@@ -866,6 +883,7 @@ class MainActivity : Activity() {
         val coluna=pagina("Configurações")
         themeScreen={configuracoes()};relatorioAtual=null
         coluna.addView(secao("Aplicativo"))
+        coluna.addView(botao("Organizar início") {organizarInicio()})
         coluna.addView(botao("Verificar atualização") {startActivity(Intent(this,UpdateActivity::class.java))})
         if(podeGerenciar()) coluna.addView(botao("Notificações") {startActivity(Intent(this,NotificationSettingsActivity::class.java))})
         if(podeGerenciar()) {
@@ -925,23 +943,10 @@ class MainActivity : Activity() {
         }
         coluna.addView(overview,LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(12)})
         coluna.addView(ui.text("Ferramentas", 23f, bold = true).apply { setPadding(0, dp(24), 0, dp(3)) })
-        val open = MaintenanceRecords.summaries(maintenanceCatalog()).sumOf { it.open }
-        val tiles = mutableListOf(
-            DashboardUi.Tile("Mapas", FieldIcon.MAP, { biblioteca() }),
-            DashboardUi.Tile("Pendências", FieldIcon.PENDING, { pendencias() }, open),
-            DashboardUi.Tile("Peças a pedir", FieldIcon.PART, { pecas() }),
-            DashboardUi.Tile("Chuva por turno", FieldIcon.RAIN, { chuvas() })
-        )
-        if (access.manages) tiles.addAll(listOf(
-            DashboardUi.Tile("Estoque", FieldIcon.STOCK, { estoque() }),
-            DashboardUi.Tile("Ordens de serviço", FieldIcon.ORDER, { paginaOrdens() })
-        ))
-        tiles.add(DashboardUi.Tile("Ocorrências", FieldIcon.OCCURRENCE, { ocorrenciasCampo() }))
-        if (access.manages) tiles.addAll(listOf(
-            DashboardUi.Tile("Caminhões", FieldIcon.TRUCK, { abrirCaminhoes() }),
-            DashboardUi.Tile("Calendário", FieldIcon.CALENDAR, { calendario() })
-        ))
-        ui.grid(coluna, tiles)
+        val tiles=homeTiles(access)
+        val arrangement=HomeArrangement(applicationContext,store.team,access.uid)
+        val ordered=arrangement.order(tiles.map {it.title}).mapNotNull {title->tiles.firstOrNull {it.title==title}}
+        ui.grid(coluna, ordered)
         if (access.manages) coluna.addView(ui.panel { startActivity(Intent(this, AdminActivity::class.java)) }.apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
             addView(FieldIconView(this@MainActivity, FieldIcon.PEOPLE), LinearLayout.LayoutParams(dp(36), dp(36)))
@@ -959,6 +964,47 @@ class MainActivity : Activity() {
                     catch (e: Exception) { Toast.makeText(this, e.message ?: "Falha na importação", Toast.LENGTH_LONG).show() }
                 }.show()
         })
+    }
+
+    private fun homeTiles(access:TeamAccess):MutableList<DashboardUi.Tile> {
+        val open = MaintenanceRecords.summaries(maintenanceCatalog()).sumOf { it.open }
+        val tiles = mutableListOf(
+            DashboardUi.Tile("Mapas", FieldIcon.MAP, { biblioteca() }),
+            DashboardUi.Tile("Pendências", FieldIcon.PENDING, { pendencias() }, open),
+            DashboardUi.Tile("Peças a pedir", FieldIcon.PART, { pecas() }),
+            DashboardUi.Tile("Chuva por turno", FieldIcon.RAIN, { chuvas() })
+        )
+        if (access.manages) tiles.addAll(listOf(
+            DashboardUi.Tile("Estoque", FieldIcon.STOCK, { estoque() }),
+            DashboardUi.Tile("Ordens de serviço", FieldIcon.ORDER, { paginaOrdens() })
+        ))
+        tiles.add(DashboardUi.Tile("Ocorrências", FieldIcon.OCCURRENCE, { ocorrenciasCampo() }))
+        if (access.manages) tiles.addAll(listOf(
+            DashboardUi.Tile("Caminhões", FieldIcon.TRUCK, { abrirCaminhoes() }),
+            DashboardUi.Tile("Calendário", FieldIcon.CALENDAR, { calendario() })
+        ))
+        return tiles
+    }
+    private fun organizarInicio() {
+        val access=teamAccess?:return;val store=teamStore?:return
+        val arrangement=HomeArrangement(applicationContext,store.team,access.uid)
+        val available=homeTiles(access).map {it.title}
+        val content=LinearLayout(this).apply {orientation=LinearLayout.VERTICAL;setPadding(dp(16),dp(8),dp(16),dp(12))}
+        content.addView(texto("Marque favoritas para aparecerem primeiro. Use as setas para organizar cada grupo.",14f))
+        val rows=LinearLayout(this).apply {orientation=LinearLayout.VERTICAL};content.addView(rows)
+        fun render() {
+            rows.removeAllViews();val order=arrangement.order(available)
+            order.forEachIndexed {index,title->
+                val row=LinearLayout(this).apply {orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL}
+                row.addView(CheckBox(this).apply {text=title;isChecked=arrangement.favorite(title);setTextColor(palette.text);minHeight=dp(52);setOnCheckedChangeListener {_,_->arrangement.toggle(title);render()}},LinearLayout.LayoutParams(0,-2,1f))
+                for((label,delta) in listOf("↑" to -1,"↓" to 1)) row.addView(botao(label) {
+                    val next=index+delta
+                    if(next in order.indices) {val changed=order.toMutableList();java.util.Collections.swap(changed,index,next);arrangement.save(changed);render()}
+                }.apply {contentDescription="${if(delta<0) "Subir" else "Descer"} $title";isEnabled=index+delta in order.indices&&arrangement.favorite(title)==arrangement.favorite(order[index+delta])},LinearLayout.LayoutParams(dp(48),dp(52)).apply {marginStart=dp(4)})
+                rows.addView(row)
+            }
+        };render()
+        AlertDialog.Builder(this).setTitle("Organizar início").setView(ScrollView(this).apply {addView(content)}).setPositiveButton("Concluir") {_,_->inicio()}.show()
     }
 
     private fun definirNome() {
@@ -1014,8 +1060,9 @@ class MainActivity : Activity() {
         val detalhe = "Lote: $lote\nTalhões: ${obj.optString("talhoes")}\nÁrea: ${obj.optString("areaRestante")} ha\nProdutividade: ${obj.optString("produtividade")} t/ha"
         AlertDialog.Builder(this).setTitle("Estoque $lote")
             .setView(texto(detalhe, 15f))
-            .setItems(arrayOf("Editar estoque", "Compartilhar estoque", "Excluir estoque")) { _, escolha ->
+            .setItems(arrayOf("Editar estoque", "Compartilhar estoque", "Excluir estoque", "Histórico de correções")) { _, escolha ->
                 when (escolha) {
+                    3 -> historicoCorrecoes("estoques_salvos",obj.optString("id"))
                     0 -> editarProgressoColheita(false)
                     1 -> escolherCompartilhamentoEstoque()
                     2 -> comRegistroAtual("estoques_salvos",obj.optString("id")) { current->remover("estoques_salvos",current) {
@@ -1044,7 +1091,8 @@ class MainActivity : Activity() {
             }
             for(item in rows) {
                 val lote=item.optString("os").ifBlank {"Sem lote"}
-                val detalhe="Talhões: ${item.optString("talhoes")}\n${item.optString("areaRestante")} ha • ${item.optString("produtividade")} t/ha"
+                val detalhe="Talhões: ${item.optString("talhoes")}\n${item.optString("areaRestante")} ha • ${item.optString("produtividade")} t/ha"+
+                    item.optString("atualizadoEm").takeIf {it.isNotBlank()}?.let {"\nAtualizado em $it • ${item.optString("atualizadoPorNome")}"}.orEmpty()
                 results.addView(cartao(lote,detalhe) {abrirEstoqueSalvo(item)},LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(10)})
             }
             if(rows.isEmpty()) results.addView(texto(if(all.length()==0) "Nenhum estoque cadastrado ainda." else "Nenhum lote encontrado. Altere ou apague a busca.",14f))
@@ -1068,6 +1116,7 @@ class MainActivity : Activity() {
             val card=ui.card().apply { elevation=0f;background=ui.background(0xFFF1F6F1.toInt()) }
             rows.addView(card,LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(12) })
             val fields=listOf("Lote","Talhões","Área (ha)","Produtividade (t/ha)").map { ui.field(card,it) }
+            for(field in fields.drop(2)) FieldWorkflow.numeric(field)
             ui.button(card,"Remover este lote",true) { rows.removeView(card);inputs.removeAll { it.first===card } }
             inputs.add(card to fields)
         }
@@ -1081,10 +1130,24 @@ class MainActivity : Activity() {
                 val records=try { StockBatch.records(drafts,dataHoje()) } catch(error:IllegalArgumentException) {
                     Toast.makeText(this,error.message,Toast.LENGTH_LONG).show();return@setOnClickListener
                 }
-                synchronized(teamStore!!.lock) { val all=listaEstoques();records.forEach { all.put(it) };guardar("estoques_salvos",all) }
-                dialog.dismiss();estoque()
-                AlertDialog.Builder(this).setTitle("${records.size} lote(s) salvo(s)").setMessage("Deseja compartilhar esses lotes juntos?")
-                    .setNegativeButton("Agora não",null).setPositiveButton("Compartilhar") { _,_->compartilharLotes(records) }.show()
+                fun saveBatch(update:Boolean) {
+                    val all=listaEstoques();val saved=mutableListOf<JSONObject>()
+                    for(record in records) {
+                        val existing=FieldWorkflow.matches(all,record)
+                        if(update&&existing.size==1) {
+                            val previous=existing.single();for(key in listOf("os","talhoes","areaRestante","produtividade")) previous.put(key,record.get(key))
+                            for(i in 0 until all.length()) if(all.getJSONObject(i).optString("id")==previous.optString("id")) all.put(i,previous)
+                            saved.add(previous)
+                        } else {all.put(record);saved.add(record)}
+                    }
+                    guardar("estoques_salvos",all);dialog.dismiss();estoque()
+                    AlertDialog.Builder(this).setTitle("${saved.size} lote(s) salvo(s)").setMessage("Deseja compartilhar esses lotes juntos?")
+                        .setNegativeButton("Agora não",null).setPositiveButton("Compartilhar") {_,_->compartilharLotes(saved)}.show()
+                }
+                val matches=records.sumOf {FieldWorkflow.matches(listaEstoques(),it).size}
+                if(matches==0) saveBatch(false) else AlertDialog.Builder(this).setTitle("Há lotes já cadastrados")
+                    .setMessage("Atualizar os lotes com um único registro correspondente? Os demais serão salvos separadamente, preservando o histórico.")
+                    .setPositiveButton("Atualizar existentes") {_,_->saveBatch(true)}.setNeutralButton("Salvar separados") {_,_->saveBatch(false)}.setNegativeButton("Voltar",null).show()
             }
         }
         dialog.show()
@@ -1169,22 +1232,26 @@ class MainActivity : Activity() {
         JSONObject(getSharedPreferences("controle_colheita", 0).getString("progresso", "{}") ?: "{}")
     } catch (_: Exception) { JSONObject() }
 
-    private fun editarProgressoColheita(novo: Boolean = false) {
+    private fun editarProgressoColheita(novo:Boolean=false) {
+        if(!exigirGestor()) return
         pausarSincronizacao()
-        val anterior = progresso()
-        val atual = if (novo) JSONObject() else anterior
-        val corpo = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), dp(8), dp(18), dp(8))
-        }
-        val os = campo("Lote (ex.: K/39)", atual.optString("os"))
-        val talhoes = campo("Talhões (ex.: 1 a 10, 25, 301)", atual.optString("talhoes"))
-        val area = campo("Área (ha)", atual.optString("areaRestante",
-            atual.optString("areaTotal")))
-        val produtividade = campo("Produtividade (toneladas/ha)", atual.optString("produtividade"))
-        for (v in listOf(os, talhoes, area, produtividade)) corpo.addView(v)
-        corpo.addView(botao("Seleção rápida de talhões (1 a 500)") {
-            val entrada = campo("Ex.: 1-10, 15, 28-35, 500", talhoes.text.toString())
+        val formSession=chaveSessao()
+        val original=if(novo) JSONObject() else progresso()
+        val draftKey="estoque_${if(novo) "novo" else original.optString("id","atual")}"
+        var current=rascunhos().read(draftKey)?:original
+        val ui=AccessUi(this,false)
+        val body=LinearLayout(this).apply {orientation=LinearLayout.VERTICAL;setPadding(dp(18),dp(8),dp(18),dp(16))}
+        if(rascunhos().read(draftKey)!=null) body.addView(texto("Rascunho recuperado • confira antes de salvar",13f,palette.accent))
+        val lot=ui.field(body,"Lote (ex.: K/39)").apply {setText(current.optString("os"))}
+        val plots=ui.field(body,"Talhões (ex.: 1 a 10, 25, 301)").apply {setText(current.optString("talhoes"));inputType=android.text.InputType.TYPE_CLASS_TEXT}
+        val area=ui.field(body,"Área restante (ha)").apply {setText(current.optString("areaRestante",current.optString("areaTotal")));FieldWorkflow.numeric(this)}
+        val yield=ui.field(body,"Produtividade (t/ha)").apply {setText(current.optString("produtividade"));FieldWorkflow.numeric(this)}
+        fun capture()=JSONObject(current.toString()).put("os",lot.text.toString()).put("talhoes",plots.text.toString()).put("areaRestante",area.text.toString()).put("produtividade",yield.text.toString())
+        val saveDraft=registrarRascunho(draftKey,listOf(lot,plots,area,yield),::capture)
+        val photoLabel=texto("",13f,palette.muted)
+        fun updatePhoto() {photoLabel.text=if(current.optString("fotoEstoque").isBlank()) "Sem foto anexada" else "Foto / mapa anexado ao rascunho";saveDraft()}
+        body.addView(botao("Seleção rápida de talhões (1 a 500)") {
+            val entrada = campo("Ex.: 1-10, 15, 28-35, 500", plots.text.toString())
             AlertDialog.Builder(this).setTitle("Selecionar talhões")
                 .setMessage("Digite números de 1 a 500 separados por vírgulas. Use hífen para intervalos.")
                 .setView(entrada)
@@ -1208,56 +1275,51 @@ class MainActivity : Activity() {
                         for (n in primeiro..ultimo) selecionados.add(n)
                     }
                     if (valido && selecionados.isNotEmpty()) {
-                        talhoes.setText(selecionados.joinToString(", "))
+                        plots.setText(selecionados.joinToString(", "))
                     } else {
                         Toast.makeText(this, "Use talhões de 1 a 500. Ex.: 1-10, 25, 301", Toast.LENGTH_LONG).show()
                     }
                 }.show()
         })
-        corpo.addView(botao("Adicionar foto / mapa pintado") {
-            val rascunho = JSONObject(atual.toString()).put("os", os.text.toString())
-                .put("talhoes", talhoes.text.toString())
-                .put("areaRestante", area.text.toString())
-                .put("produtividade", produtividade.text.toString())
-            atual.optString("id").takeIf { it.isNotBlank() }?.let { rascunho.put("id", it) }
-            atual.optString("fotoEstoque").takeIf { it.isNotBlank() }?.let { rascunho.put("fotoEstoque", it) }
-            salvarEstoqueAtual(rascunho)
-            atual.put("id", progresso().optString("id"))
-            val mapas = mapasDisponiveisEstoque()
-            val escolhas = if (mapas.isEmpty()) arrayOf("Escolher da galeria")
-                else arrayOf("Escolher da galeria", "Usar mapa pintado salvo")
-            AlertDialog.Builder(this).setTitle("Adicionar foto")
-                .setItems(escolhas) { _, opcao ->
-                    if (opcao == 0) escolherFotoEstoque()
-                    else {
-                        val nomes = mapas.map { it.title }.toTypedArray()
-                        AlertDialog.Builder(this).setTitle("Mapa pintado salvo")
-                            .setItems(nomes) { _, indice ->
-                                val obj = progresso().put("fotoEstoque", mapas[indice].file.absolutePath)
-                                salvarEstoqueAtual(obj)
-                                estoque()
-                            }.setNegativeButton("Cancelar", null).show()
-                    }
-                }.show()
-        })
-        fotoEstoque()?.let { corpo.addView(texto("Foto atual: ${it.name}", 14f)) }
-        val rolagem = ScrollView(this).apply { addView(corpo) }
-        AlertDialog.Builder(this).setTitle(if (novo) "Novo estoque" else "Editar estoque").setView(rolagem)
-            .setNegativeButton("Cancelar", null).setPositiveButton("Salvar") { _, _ ->
-                // Campos são texto livre. Os exemplos não são regras de validação.
-                val obj = JSONObject(atual.toString()).put("os", os.text.toString())
-                    .put("talhoes", talhoes.text.toString())
-                    .put("areaRestante", area.text.toString())
-                    .put("produtividade", produtividade.text.toString())
-                atual.optString("id").takeIf { it.isNotBlank() }?.let { obj.put("id", it) }
-                atual.optString("fotoEstoque").takeIf { it.isNotBlank() }?.let { obj.put("fotoEstoque", it) }
-                salvarEstoqueAtual(obj)
-                estoque()
-                AlertDialog.Builder(this).setTitle("Estoque salvo")
-                    .setMessage("Deseja compartilhar este estoque agora?")
-                    .setPositiveButton("Compartilhar") { _, _ -> escolherCompartilhamentoEstoque() }
-                    .setNegativeButton("Agora não", null).show()
-            }.show()
+        ui.button(body,"Escolher lote já cadastrado",true) {
+            val records=FieldReports.rows(listaEstoques())
+            AlertDialog.Builder(this).setTitle("Atualizar lote salvo").setItems(records.map {"${it.optString("os")} • ${it.optString("talhoes")}"}.toTypedArray()) {_,i->
+                current=JSONObject(records[i].toString());lot.setText(current.optString("os"));plots.setText(current.optString("talhoes"));area.setText(current.optString("areaRestante"));yield.setText(current.optString("produtividade"));updatePhoto()
+            }.setNegativeButton("Cancelar",null).show()
+        }
+        ui.button(body,"Adicionar foto / mapa pintado",true) {
+            saveDraft()
+            val maps=mapasDisponiveisEstoque()
+            AlertDialog.Builder(this).setTitle("Adicionar foto").setItems(if(maps.isEmpty()) arrayOf("Escolher da galeria") else arrayOf("Escolher da galeria","Usar mapa pintado salvo")) {_,option->
+                if(option==0) {
+                    receberFotoEstoque={file->if(acessoConfirmado&&chaveSessao()==formSession) {current.put("fotoEstoque",file.path);updatePhoto()}};escolherFotoEstoque()
+                } else PaintedMapPicker.show(this,maps) {file->current.put("fotoEstoque",file.path);updatePhoto()}
+            }.setNegativeButton("Cancelar",null).show()
+        }
+        body.addView(photoLabel);photoLabel.text=if(current.optString("fotoEstoque").isBlank()) "Sem foto anexada" else "Foto / mapa anexado"
+        val dialog=AlertDialog.Builder(this).setTitle(if(novo) "Novo estoque" else "Editar estoque").setView(ScrollView(this).apply {addView(body)})
+            .setNegativeButton("Fechar e guardar rascunho") {_,_->saveDraft();salvarRascunhoAtivo=null;receberFotoEstoque=null}.setPositiveButton("Salvar",null).create()
+        fun finish(row:JSONObject) {
+            if(!acessoConfirmado||chaveSessao()!=formSession||!exigirGestor()) return
+            salvarEstoqueAtual(row);rascunhos().clear(draftKey);salvarRascunhoAtivo=null;receberFotoEstoque=null
+            dialog.dismiss();estoque()
+            AlertDialog.Builder(this).setTitle("Estoque salvo neste celular").setMessage("O registro será sincronizado com a equipe quando houver conexão. Deseja compartilhar agora?")
+                .setPositiveButton("Compartilhar") {_,_->escolherCompartilhamentoEstoque()}.setNegativeButton("Agora não",null).show()
+        }
+        dialog.setOnShowListener {dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            val row=capture()
+            try {FieldWorkflow.requireStock(row)} catch(error:IllegalArgumentException) {Toast.makeText(this,error.message,Toast.LENGTH_LONG).show();return@setOnClickListener}
+            val duplicates=FieldWorkflow.matches(listaEstoques(),row)
+            if(duplicates.isEmpty()) finish(row)
+            else AlertDialog.Builder(this).setTitle("Este lote já está cadastrado").setItems((duplicates.map {"Atualizar ${it.optString("os")} • ${it.optString("talhoes")}"}+"Salvar como registro separado").toTypedArray()) {_,i->
+                if(i==duplicates.size) finish(row) else {
+                    val merged=JSONObject(duplicates[i].toString());for(key in listOf("os","talhoes","areaRestante","produtividade","fotoEstoque")) if(row.has(key)) merged.put(key,row.get(key))
+                    finish(merged)
+                }
+            }.setNegativeButton("Voltar",null).show()
+        }}
+        dialog.setOnDismissListener {if(salvarRascunhoAtivo===saveDraft) {saveDraft();salvarRascunhoAtivo=null;receberFotoEstoque=null}}
+        dialog.show()
     }
 
     private fun historicoEstoque() {
@@ -1497,11 +1559,11 @@ class MainActivity : Activity() {
     private fun compartilharPendenciaMenu(obj:JSONObject) {
         val id=obj.optString("id")
         escolherEnvioPendencias(false) {
-            FieldReports.rows(maintenanceCatalog()).filter {MaintenanceShareData.issue(it)&&it.optString("id")==id}
+            val all=maintenanceCatalog();FieldWorkflow.enrich(all,FieldReports.rows(all).filter {MaintenanceShareData.issue(it)&&it.optString("id")==id})
         }
     }
     private fun compartilharPendenciasAbertas(imagem:Boolean=false,equipamento:String?=null) {
-        escolherEnvioPendencias(imagem) {MaintenanceShareData.open(maintenanceCatalog(),equipamento)}
+        escolherEnvioPendencias(imagem) {val all=maintenanceCatalog();FieldWorkflow.enrich(all,MaintenanceShareData.open(all,equipamento).filter {!filtroParadaChuva||it.optBoolean("paradaChuva")})}
     }
     private fun escolherEnvioPendencias(imagem:Boolean,ler:()->List<JSONObject>) {
         val store=teamStore?:return;val uid=teamAccess?.uid?:return
@@ -1735,14 +1797,21 @@ class MainActivity : Activity() {
         atalhos(coluna,
             Triple("Nova pendência",FieldIcon.PENDING,{editarPendencia(-1)}),
             Triple("Cadastrar equipamento",FieldIcon.EQUIPMENT,{cadastrarEquipamento()}))
-        coluna.addView(botao("Compartilhar todas as abertas") {compartilharPendenciasAbertas()})
+        coluna.addView(CheckBox(this).apply {
+            text="Serviços para a parada de chuva";setTextColor(palette.text);minHeight=dp(48);isChecked=filtroParadaChuva
+            setOnCheckedChangeListener {_,checked->filtroParadaChuva=checked;pendencias()}
+        })
+        coluna.addView(botao(if(filtroParadaChuva) "Compartilhar serviços para a parada" else "Compartilhar todas as abertas") {compartilharPendenciasAbertas()})
         coluna.addView(secao("Equipamentos da equipe"))
         val results=LinearLayout(this).apply {orientation=LinearLayout.VERTICAL;tag="resultadosEquipamentos"}
         fun render() {
             results.removeAllViews()
             val all=maintenanceCatalog()
-            val equipment=MaintenanceRecords.search(all,buscaEquipamento)
-            for(item in equipment) {
+            val selectedNumbers=MaintenanceShareData.open(all).filter {it.optBoolean("paradaChuva")}.map {MaintenanceRecords.number(it.optString("equipamento"))}.toSet()
+            val equipment=MaintenanceRecords.search(all,buscaEquipamento).filter {!filtroParadaChuva||it.number in selectedNumbers}
+            for(summary in equipment) {
+                val rainIssues=if(filtroParadaChuva) MaintenanceShareData.open(all,summary.number).filter {it.optBoolean("paradaChuva")} else emptyList()
+                val item=if(filtroParadaChuva) summary.copy(open=rainIssues.size,urgent=rainIssues.count {MaintenanceRecords.urgent(it)}) else summary
                 val card=LinearLayout(this).apply {
                     orientation=if(resources.configuration.fontScale>=1.3f||resources.configuration.screenWidthDp<360) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
                     gravity=Gravity.CENTER_VERTICAL;minimumHeight=dp(76);setPadding(dp(16),dp(14),dp(16),dp(14));isFocusable=true
@@ -1752,7 +1821,7 @@ class MainActivity : Activity() {
                 val info=LinearLayout(this).apply {
                     orientation=LinearLayout.VERTICAL
                     addView(texto("Equipamento ${item.number}",17f).apply {setTypeface(null,Typeface.BOLD)})
-                    addView(texto("${item.completed} concluída${if(item.completed==1) "" else "s"} • Opções ›",13f,palette.muted).apply {setPadding(0,dp(5),0,0)})
+                    addView(texto(if(filtroParadaChuva) "Serviços para parada • Opções ›" else "${item.completed} concluída${if(item.completed==1) "" else "s"} • Opções ›",13f,palette.muted).apply {setPadding(0,dp(5),0,0)})
                 }
                 card.addView(info,if(card.orientation==LinearLayout.HORIZONTAL) LinearLayout.LayoutParams(0,-2,1f) else LinearLayout.LayoutParams(-1,-2))
                 card.addView(TextView(this).apply {
@@ -1785,12 +1854,16 @@ class MainActivity : Activity() {
         compartilharImagemAtual={
             escolherEnvioPendencias(true) {
                 FieldReports.rows(maintenanceCatalog()).filter {MaintenanceShareData.issue(it)&&MaintenanceRecords.number(it.optString("equipamento"))==number&&
-                    (if(concluidas) RecordArchive.archived(it)||it.optBoolean("concluida") else !RecordArchive.archived(it)&&!it.optBoolean("concluida"))}
+                    (if(concluidas) RecordArchive.archived(it)||it.optBoolean("concluida") else !RecordArchive.archived(it)&&!it.optBoolean("concluida")&&(!filtroParadaChuva||it.optBoolean("paradaChuva")))}
             }
         }
         relatorioAtual={relatorioGrupo(if(concluidas) "Histórico do equipamento $number" else "Pendências do equipamento $number","pendencias",FieldReports.rows(dados("pendencias")).filter {
             MaintenanceRecords.number(it.optString("equipamento"))==number&&(if(concluidas) RecordArchive.archived(it)||it.optBoolean("concluida") else !RecordArchive.archived(it)&&!it.optBoolean("concluida"))
         })}
+        if(filtroParadaChuva&&!concluidas) {
+            coluna.addView(texto("Filtro ativo: serviços para a parada de chuva",14f,palette.accent))
+            coluna.addView(botao("Mostrar todas as pendências deste equipamento") {filtroParadaChuva=false;pendenciasEquipamento(number)})
+        }
         if (archivedEquipment) coluna.addView(texto("Equipamento excluído • registros preservados no histórico", 15f, palette.muted))
         if(archivedEquipment&&podeGerenciar()) coluna.addView(botao("Restaurar equipamento") {restaurarEquipamento(number)})
         if (!concluidas && !archivedEquipment) coluna.addView(botao("+ Adicionar pendência",true) {
@@ -1803,13 +1876,15 @@ class MainActivity : Activity() {
             val archived = MaintenanceRecords.isArchived(obj)
             if ((if (concluidas) !obj.optBoolean("concluida", false) && !archived else obj.optBoolean("concluida", false) || archived) ||
                 MaintenanceRecords.number(obj.optString("equipamento")) != number) continue
+            if(!concluidas&&filtroParadaChuva&&!obj.optBoolean("paradaChuva")) continue
             total++
             coluna.addView(cartao((if(MaintenanceRecords.urgent(obj)) "🔴 URGENTE • " else "• ") + obj.optString("descricao").ifBlank { "Sem descrição" },
-                if (archived) "Excluída • toque para consultar" else if (concluidas) "Toque para consultar ou reabrir" else "Toque para ver opções") {
+                (if (archived) "Excluída • toque para consultar" else if (concluidas) "Toque para consultar ou reabrir" else "Toque para ver opções")+
+                    (if(obj.optBoolean("paradaChuva")) "\nServiço para parada de chuva" else "")+FieldWorkflow.partsLabel(catalog,obj.optString("id")).takeIf {it.isNotBlank()}?.let {"\n$it"}.orEmpty()) {
                 comRegistroAtual("pendencias", obj.optString("id")) { opcoesPendencia(it) }
             }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
         }
-        if (total == 0) coluna.addView(texto(if (concluidas) "Nenhuma pendência concluída ou excluída neste equipamento." else if (archivedEquipment) "Nenhuma pendência ativa neste equipamento excluído." else "Nenhuma pendência aberta. O equipamento continua salvo para novos registros.", 14f))
+        if (total == 0) coluna.addView(texto(if (concluidas) "Nenhuma pendência concluída ou excluída neste equipamento." else if (archivedEquipment) "Nenhuma pendência ativa neste equipamento excluído." else if(filtroParadaChuva) "Nenhum serviço marcado para a parada de chuva neste equipamento." else "Nenhuma pendência aberta. O equipamento continua salvo para novos registros.", 14f))
         coluna.addView(botao(if (concluidas) "Voltar às pendências abertas" else "✓ Histórico deste equipamento") {
             pendenciasEquipamento(number, !concluidas)
         })
@@ -1879,7 +1954,7 @@ class MainActivity : Activity() {
             return
         }
         val opcoes = listOf("Editar pendência", if (concluida) "↩ Reabrir pendência" else "✓ Concluir pendência",
-            "Excluir pendência", "Compartilhar", "Adicionar foto", "Ver fotos")
+            "Excluir pendência", "Compartilhar", "Adicionar foto", "Ver fotos", "Peças vinculadas", "Histórico de correções")
             .mapIndexed { index, label -> label to index }.filter { it.second != 2 || podeGerenciar() }
         AlertDialog.Builder(this).setTitle(obj.optString("equipamento", "Pendência"))
             .setItems(opcoes.map { it.first }.toTypedArray()) { _, escolha ->
@@ -1892,6 +1967,12 @@ class MainActivity : Activity() {
                         fotoPendente = obj.optString("id")
                         startActivityForResult(Intent(Intent.ACTION_GET_CONTENT).apply { type = "image/*" }, 301)
                     }
+                    6 -> {
+                        val parts=FieldWorkflow.parts(maintenanceCatalog(),obj.optString("id"))
+                        if(parts.isEmpty()) Toast.makeText(this,"Nenhuma peça vinculada. Vincule pelo cadastro de peças.",Toast.LENGTH_LONG).show()
+                        else AlertDialog.Builder(this).setTitle("Peças desta pendência").setItems(parts.map {"${it.optString("codigoPeca")} • ${PartsRecords.states[it.optString("situacaoPeca")]}"}.toTypedArray()) {_,i->opcoesPeca(parts[i],PartsRecords.historical(parts[i]))}.show()
+                    }
+                    7 -> historicoCorrecoes("pendencias",obj.optString("id"))
                     5 -> {
                         val existentes = fotosPendencia(obj)
                         if (existentes.isEmpty()) Toast.makeText(this, "Sem foto", Toast.LENGTH_SHORT).show()
@@ -1912,7 +1993,9 @@ class MainActivity : Activity() {
         }
     }
     private fun guardarPecas(parts:JSONArray) = synchronized(teamStore?.lock ?: this) {
-        getSharedPreferences("registros_v3",0).edit().putString("pendencias",PartsRecords.merge(parts,maintenanceCatalog()).toString()).apply()
+        val old=maintenanceCatalog();val merged=PartsRecords.merge(parts,old)
+        val audited=RecordEdits.stamp(old,merged,teamAccess!!.uid,teamAccess!!.profile["nome"]?.toString().orEmpty(),archiveDate())
+        getSharedPreferences("registros_v3",0).edit().putString("pendencias",audited.toString()).apply()
     }
     private fun rascunhoPecaPrefs()=getSharedPreferences("rascunho_peca_${teamStore!!.team}_${teamAccess!!.uid}",0)
     private fun lerRascunhoPeca():JSONObject?=try { rascunhoPecaPrefs().getString("json",null)?.let(::JSONObject)?.also { draft ->
@@ -1957,6 +2040,7 @@ class MainActivity : Activity() {
         val actions=mutableListOf<Pair<String,()->Unit>>()
         if(podeGerenciar()&&MaintenanceRecords.isArchived(item)) actions.add("Restaurar pedido de peça" to {confirmarRestauracao("pendencias",item.optString("id"))})
         if(podeEditarPeca(item)) actions.add("Editar peça / situação" to { editarPeca(item.optString("id")) })
+        actions.add("Histórico de correções" to {historicoCorrecoes("pendencias",item.optString("id"))})
         actions.add("Ver fotos" to { verFotosPeca(item) })
         actions.add("Compartilhar pedido por imagem" to { compartilharPeca(item) })
         if(podeGerenciar()&&!MaintenanceRecords.isArchived(item)) actions.add("Excluir e manter no histórico" to {
@@ -1973,6 +2057,7 @@ class MainActivity : Activity() {
     }
     private fun editarPeca(id:String?=null,retomar:Boolean=false) {
         pausarSincronizacao()
+        val formSession=chaveSessao()
         val all=dadosPecas()
         val existing=id?.let { key->(0 until all.length()).mapNotNull { all.optJSONObject(it) }.firstOrNull { it.optString("id")==key } }
         if(id!=null&&(existing==null||!podeEditarPeca(existing))) { Toast.makeText(this,"Somente o autor ou o gestor pode editar esta peça ativa.",Toast.LENGTH_LONG).show(); return }
@@ -2004,11 +2089,28 @@ class MainActivity : Activity() {
             setSelection(PartsRecords.states.keys.indexOf(draft.optString("situacaoPeca","a_pedir")).coerceAtLeast(0))
             body.addView(texto("Situação do pedido",14f,palette.text)); body.addView(this)
         } else null
+        val linkLabel=texto("",13f,palette.muted)
+        fun showLink() {linkLabel.text=if(draft.optString("pendenciaId").isBlank()) "Sem pendência vinculada" else "Pendência vinculada: ${draft.optString("pendenciaDescricao")}"}
+        body.addView(botao("Vincular a uma pendência") {
+            val open=MaintenanceShareData.open(maintenanceCatalog())
+            AlertDialog.Builder(this).setTitle("Pendência da peça").setItems((open.map {"${it.optString("equipamento")} • ${it.optString("descricao")}"}+"Retirar vínculo").toTypedArray()) {_,i->
+                val issue=open.getOrNull(i)
+                draft.put("pendenciaId",issue?.optString("id").orEmpty()).put("pendenciaDescricao",issue?.optString("descricao").orEmpty())
+                if(issue!=null) reference.setText(issue.optString("equipamento"));showLink();salvarRascunhoAtivo?.invoke()
+            }.setNegativeButton("Cancelar",null).show()
+        });body.addView(linkLabel);showLink()
         val photoCount=texto("",14f,palette.text); body.addView(photoCount)
         fun capture() {
+            if(chaveSessao()!=formSession) return
             draft.put("codigoPeca",code.text.toString()).put("nomePeca",description.text.toString()).put("descricao",description.text.toString()).put("quantidadePeca",quantity.text.toString()).put("equipamentoReferencia",reference.text.toString())
                 .put("situacaoPeca",state?.let { PartsRecords.states.keys.elementAt(it.selectedItemPosition) } ?: draft.optString("situacaoPeca","a_pedir"))
             pecaRascunho=draft; rascunhoPecaPrefs().edit().putString("json",draft.toString()).apply()
+        }
+        FieldDrafts.watch(listOf(code,description,quantity,reference)) {capture()}
+        salvarRascunhoAtivo={capture()}
+        if(state!=null) state.onItemSelectedListener=object:android.widget.AdapterView.OnItemSelectedListener {
+            override fun onNothingSelected(parent:android.widget.AdapterView<*>?) {}
+            override fun onItemSelected(parent:android.widget.AdapterView<*>?,view:View?,position:Int,id:Long) {capture()}
         }
         atualizarFotosPeca={photoCount.text="Fotos neste celular: ${draft.optJSONArray("fotos")?.length() ?: 0} (até 6)"}; atualizarFotosPeca?.invoke()
         body.addView(botao("Escolher fotos no celular") {
@@ -2038,20 +2140,26 @@ class MainActivity : Activity() {
             }.show()
         })
         val dialog=AlertDialog.Builder(this).setTitle(if(draft.optBoolean("_novo",true)) "Cadastrar peça a pedir" else "Editar peça")
-            .setView(ScrollView(this).apply { addView(body) }).setNegativeButton("Cancelar") { _,_->rascunhoPecaPrefs().edit().clear().apply(); pecaRascunho=null; atualizarFotosPeca=null }
+            .setView(ScrollView(this).apply { addView(body) }).setNegativeButton("Fechar e guardar rascunho") {_,_->capture();salvarRascunhoAtivo=null;pecaRascunho=null;atualizarFotosPeca=null}
             .setPositiveButton("Salvar",null).create()
         dialog.setOnShowListener { dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            if(!acessoConfirmado||chaveSessao()!=formSession) return@setOnClickListener
             try {
                 capture()
+                val linked=FieldReports.rows(maintenanceCatalog()).firstOrNull {MaintenanceShareData.issue(it)&&it.optString("id")==draft.optString("pendenciaId")}
+                if(draft.optString("pendenciaId").isNotBlank()) require(linked!=null&&MaintenanceRecords.number(reference.text.toString())==MaintenanceRecords.number(linked.optString("equipamento"))&&
+                    (existing?.optString("pendenciaId")==draft.optString("pendenciaId")||(!RecordArchive.archived(linked)&&!linked.optBoolean("concluida")))) {"O equipamento precisa ser o mesmo da pendência vinculada. Confira o vínculo."}
                 val clean=JSONObject(draft.toString()).apply { remove("_novo"); remove("cameraPeca") }
                 val item=PartsRecords.build(clean,code.text.toString(),description.text.toString(),quantity.text.toString(),reference.text.toString(),draft.optString("situacaoPeca","a_pedir"),teamAccess!!.uid,teamAccess!!.profile["nome"]?.toString().orEmpty(),dataHoje())
                 val parts=dadosPecas()
                 if(!draft.optBoolean("_novo",true)&&!podeEditarPeca(item)) return@setOnClickListener
                 if(!colocarRegistro(parts,if(draft.optBoolean("_novo",true)) -1 else 0,item)) return@setOnClickListener
-                guardarPecas(parts); rascunhoPecaPrefs().edit().clear().apply(); pecaRascunho=null; atualizarFotosPeca=null
+                guardarPecas(parts); rascunhoPecaPrefs().edit().clear().apply(); salvarRascunhoAtivo=null;pecaRascunho=null; atualizarFotosPeca=null
                 dialog.dismiss(); pecas()
             } catch(error:IllegalArgumentException) { Toast.makeText(this,error.message,Toast.LENGTH_LONG).show() }
-        } }; dialog.show()
+        } }
+        dialog.setOnDismissListener {if(pecaRascunho===draft) {capture();salvarRascunhoAtivo=null;pecaRascunho=null;atualizarFotosPeca=null}}
+        dialog.show()
     }
     private fun fotosPeca(item:JSONObject):List<File> {
         val all=item.optJSONArray("fotos") ?: JSONArray()
@@ -2146,6 +2254,7 @@ class MainActivity : Activity() {
             .setMessage("${TeamPolicy.label(teamStore!!.team)}\nAcumulado do turno: ${RainRecords.label(registro)}\n" +
                 "Registrado por: ${registro.optString("registradoPorNome")}\n\n" +
                 registro.optString("observacaoChuva").ifBlank { "Sem observação" })
+            .setView(botao("Histórico de correções") {historicoCorrecoes(RainRecords.GROUP,registro.optString("id"))})
             .setNegativeButton("Fechar", null)
         val editavel = podeEditarChuva(registro)
         if (editavel) dialogo.setPositiveButton("Corrigir registro", null)
@@ -2342,7 +2451,7 @@ class MainActivity : Activity() {
             return
         }
         val actions=listOf("Visualizar / compartilhar", "Editar", "Adicionar foto", "Ver fotos",
-            if (concluida) "↩ Reabrir ocorrência" else "✓ Concluir ocorrência", "Excluir")
+            if (concluida) "↩ Reabrir ocorrência" else "✓ Concluir ocorrência", "Excluir", "Histórico de correções")
             .mapIndexed {index,label->label to index}.filter {it.second!=5||podeGerenciar()}
         AlertDialog.Builder(this).setTitle(obj.optString("tipo"))
             .setItems(actions.map {it.first}.toTypedArray()) { _, selected ->
@@ -2378,6 +2487,7 @@ class MainActivity : Activity() {
                             guardar("ocorrencias_campo", arr)
                             ocorrenciasCampo(concluida)
                         }.show()
+                    6 -> historicoCorrecoes("ocorrencias_campo",obj.optString("id"))
                     5 -> remover("ocorrencias_campo", idx) { ocorrenciasCampo(concluida) }
                 }
             }.show()
@@ -2401,11 +2511,15 @@ class MainActivity : Activity() {
     private fun editarPendencia(idx:Int,equipamentoInicial:String="") {
         val key="pendencias"
         pausarSincronizacao()
-        val atual=if(idx>=0) dados(key).optJSONObject(idx) else null
-        if(!exigirEdicao(key,atual)) return
+        val formSession=chaveSessao()
+        val server=if(idx>=0) dados(key).optJSONObject(idx) else null
+        if(!exigirEdicao(key,server)) return
+        val draftKey="pendencia_${server?.optString("id")?:"nova_$equipamentoInicial"}"
+        val atual=rascunhos().read(draftKey)?:server
         val corpo=LinearLayout(this).apply {orientation=LinearLayout.VERTICAL;setPadding(dp(18),dp(8),dp(18),dp(8))}
+        if(rascunhos().read(draftKey)!=null) corpo.addView(texto("Rascunho recuperado • confira antes de salvar",13f,palette.accent))
         val equipamento=campo("Equipamento",atual?.optString("equipamento")?:equipamentoInicial)
-        if(equipamentoInicial.isNotBlank()||atual!=null) equipamento.isEnabled=false
+        if(equipamentoInicial.isNotBlank()||idx>=0) equipamento.isEnabled=false
         if(equipamentoInicial.isBlank()&&atual==null) corpo.addView(botao("Escolher equipamento salvo") {
             val equipment=MaintenanceRecords.summaries(maintenanceCatalog())
             if(equipment.isEmpty()) Toast.makeText(this,"Nenhum equipamento salvo. Informe o número no campo.",Toast.LENGTH_LONG).show()
@@ -2416,12 +2530,19 @@ class MainActivity : Activity() {
         corpo.addView(equipamento);corpo.addView(osPendencia);corpo.addView(descricao)
         val urgency=CheckBox(this).apply {text="Marcar como urgente";isChecked=atual?.optBoolean("urgente")==true;minHeight=dp(48);setTextColor(palette.text)}
         corpo.addView(urgency)
+        val rainWork=CheckBox(this).apply {text="Pode ser feito na parada de chuva";isChecked=atual?.optBoolean("paradaChuva")==true;minHeight=dp(48);setTextColor(palette.text)}
+        corpo.addView(rainWork)
         fotosFormulario=mutableListOf<String>().apply {
             atual?.optJSONArray("fotos")?.let {arr->for(i in 0 until arr.length()) add(arr.optString(i))}
             if(isEmpty()) atual?.optString("foto")?.takeIf {it.isNotBlank()}?.let {add(it)}
         }
         val resumo=texto("Fotos anexadas: ${fotosFormulario.size}",14f);corpo.addView(resumo)
-        atualizarFotosFormulario={resumo.text="Fotos anexadas: ${fotosFormulario.size}"}
+        val saveDraft=registrarRascunho(draftKey,listOf(equipamento,osPendencia,descricao)) {
+            JSONObject(atual?.toString()?:"{}").put("equipamento",equipamento.text.toString()).put("descricao",descricao.text.toString())
+                .put("osPendencia",osPendencia.text.toString()).put("urgente",urgency.isChecked).put("paradaChuva",rainWork.isChecked).put("fotos",JSONArray(fotosFormulario))
+        }
+        urgency.setOnCheckedChangeListener {_,_->saveDraft()};rainWork.setOnCheckedChangeListener {_,_->saveDraft()}
+        atualizarFotosFormulario={resumo.text="Fotos anexadas: ${fotosFormulario.size}";saveDraft()}
         corpo.addView(botao("📷 Tirar foto") {startActivityForResult(Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE),308)})
         corpo.addView(botao("🖼 Adicionar fotos da galeria") {
             startActivityForResult(Intent(Intent.ACTION_GET_CONTENT).apply {type="image/*";putExtra(Intent.EXTRA_ALLOW_MULTIPLE,true)},307)
@@ -2430,32 +2551,36 @@ class MainActivity : Activity() {
             if(fotosFormulario.isNotEmpty()) AlertDialog.Builder(this).setTitle("Remover foto")
                 .setItems(fotosFormulario.mapIndexed {i,_->"Foto ${i+1}"}.toTypedArray()) {_,pos->fotosFormulario.removeAt(pos);atualizarFotosFormulario?.invoke()}.show()
         })
-        AlertDialog.Builder(this).setTitle(if(idx<0) "Novo registro" else "Editar registro")
-            .setView(ScrollView(this).apply {addView(corpo)}).setNegativeButton("Cancelar",null).setPositiveButton("Salvar") {_,_->
+        val dialog=AlertDialog.Builder(this).setTitle(if(idx<0) "Novo registro" else "Editar registro")
+            .setView(ScrollView(this).apply {addView(corpo)}).setNegativeButton("Fechar e guardar rascunho") {_,_->saveDraft();salvarRascunhoAtivo=null}.setPositiveButton("Salvar",null).create()
+        dialog.show()
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                if(!acessoConfirmado||chaveSessao()!=formSession) return@setOnClickListener
                 val number=MaintenanceRecords.number(equipamento.text.toString())
                 if(number.isBlank()||equipamento.text.length>80||descricao.text.isBlank()) {
-                    Toast.makeText(this,"Informe o equipamento (até 80 caracteres) e descreva a pendência.",Toast.LENGTH_LONG).show();return@setPositiveButton
+                    Toast.makeText(this,"Informe o equipamento (até 80 caracteres) e descreva a pendência.",Toast.LENGTH_LONG).show();return@setOnClickListener
                 }
                 if(idx<0) {
                     val catalog=maintenanceCatalog()
                     if((0 until catalog.length()).mapNotNull {catalog.optJSONObject(it)}.any {
                         MaintenanceRecords.isEquipment(it)&&MaintenanceRecords.number(it.optString("equipamento"))==number&&MaintenanceRecords.isArchived(it)
                     }) {
-                        Toast.makeText(this,"Este equipamento foi excluído e está no histórico. Peça ao supervisor para restaurar o equipamento para novos registros.",Toast.LENGTH_LONG).show();return@setPositiveButton
+                        Toast.makeText(this,"Este equipamento foi excluído e está no histórico. Peça ao supervisor para restaurar o equipamento para novos registros.",Toast.LENGTH_LONG).show();return@setOnClickListener
                     }
                 }
                 val arr=dados(key)
                 val obj=atual?:JSONObject().put("id",System.currentTimeMillis().toString())
-                obj.put("equipamento",number).put("descricao",descricao.text.toString()).put("osPendencia",osPendencia.text.toString()).put("urgente",urgency.isChecked)
+                obj.put("equipamento",number).put("descricao",descricao.text.toString()).put("osPendencia",osPendencia.text.toString()).put("urgente",urgency.isChecked).put("paradaChuva",rainWork.isChecked)
                 val photos=JSONArray();fotosFormulario.filter {File(it).exists()}.forEach {photos.put(it)}
                 obj.put("fotos",photos).put("foto",if(photos.length()>0) photos.optString(0) else "")
                 if(obj.optString("dataCadastro").isBlank()) obj.put("dataCadastro",dataHoje())
-                if(!colocarRegistro(arr,idx,obj)) return@setPositiveButton
-                guardar(key,arr);atualizarFotosFormulario=null
-                pendenciasEquipamento(number)
+                if(!colocarRegistro(arr,idx,obj)) return@setOnClickListener
+                guardar(key,arr);rascunhos().clear(draftKey);salvarRascunhoAtivo=null;atualizarFotosFormulario=null
+                dialog.dismiss();pendenciasEquipamento(number)
                 AlertDialog.Builder(this).setTitle("Pendência salva").setMessage("Deseja compartilhar esta pendência agora?")
                     .setNegativeButton("Agora não",null).setPositiveButton("Compartilhar") {_,_->compartilharPendenciaMenu(obj)}.show()
-            }.show()
+            }
+        dialog.setOnDismissListener {if(salvarRascunhoAtivo===saveDraft) {saveDraft();salvarRascunhoAtivo=null;atualizarFotosFormulario=null}}
     }
     private var diaCaminhoes=""
     private var corteCaminhoes:java.time.LocalTime?=null
@@ -2465,14 +2590,15 @@ class MainActivity : Activity() {
         override fun run() {
             if(telaAtual!="caminhoes"||diaCaminhoes.isNotBlank()||!acessoConfirmado||isFinishing||isDestroyed) return
             val now=java.time.LocalDateTime.now(relogioCaminhoes)
-            if(TruckShift.at(now).key!=periodoCaminhoesMostrado) {corteCaminhoes=null;caminhoes()}
-            else agendarViradaCaminhoes(now)
+            if(salvarRascunhoAtivo!=null) {agendarViradaCaminhoes(now);return}
+            if(TruckShift.at(now).key!=periodoCaminhoesMostrado) corteCaminhoes=null
+            caminhoes()
         }
     }
     private fun agendarViradaCaminhoes(now:java.time.LocalDateTime) {
         syncUiHandler.removeCallbacks(atualizarTurnoCaminhoes)
         val delay=java.time.Duration.between(now,TruckShift.at(now).end).toMillis().coerceIn(1L,60_000L)
-        syncUiHandler.postDelayed(atualizarTurnoCaminhoes,delay)
+        syncUiHandler.postDelayed(atualizarTurnoCaminhoes,minOf(delay,60000L))
     }
     private fun abrirCaminhoes() {diaCaminhoes="";corteCaminhoes=null;caminhoes()}
     private fun escolherDiaCaminhao(initial:java.time.LocalDate,selected:(java.time.LocalDate)->Unit) {
@@ -2522,12 +2648,15 @@ class MainActivity : Activity() {
         val rows=snapshot.rows;val summary=snapshot.summary
         column.addView(texto("Entradas: ${summary.entries} • Saídas: ${summary.exits}\nAguardando saída neste período: ${summary.pending}",16f))
         column.addView(texto("A lista zera na troca de turno. Os registros anteriores ficam no Histórico.",14f))
-        for(record in rows) column.addView(cartao("Caminhão ${record.optString("numero")} • Turno ${record.optString("turno")}",TruckRecords.details(record)) {
+        val waitAt=cutoff?:now
+        val longest=rows.mapNotNull {FieldWorkflow.waitMinutes(it,waitAt)}.maxOrNull()?:0L
+        for(record in rows) column.addView(cartao("Caminhão ${record.optString("numero")} • Turno ${record.optString("turno")}",TruckRecords.details(record)+
+            FieldWorkflow.waitMinutes(record,waitAt)?.let {minutes->"\nEspera neste período: ${FieldWorkflow.waitLabel(minutes)}"+(if(minutes==longest&&minutes>0) " • Maior espera" else "")}.orEmpty()) {
             AlertDialog.Builder(this).setTitle("Caminhão ${record.optString("numero")}")
-                .setItems(arrayOf("Registrar saída / editar entrada","Excluir e manter no histórico")) {_,option->
-                    comRegistroAtual("caminhoes",record.optString("id")) {index->if(option==0) editarCaminhao(index) else remover("caminhoes",index) {caminhoes()}}
+                .setItems(arrayOf("Registrar saída / editar entrada","Excluir e manter no histórico","Histórico de correções")) {_,option->
+                    if(option==2) historicoCorrecoes("caminhoes",record.optString("id")) else comRegistroAtual("caminhoes",record.optString("id")) {index->if(option==0) editarCaminhao(index) else remover("caminhoes",index) {caminhoes()}}
                 }.show()
-        },LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(10)})
+        }.apply {if(longest>0&&FieldWorkflow.waitMinutes(record,waitAt)==longest) (background as? GradientDrawable)?.setStroke(dp(2),palette.favorite)},LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(10)})
         if(rows.isEmpty()) column.addView(texto("Nenhum caminhão neste período.",15f))
         val report=FieldReports.trucks(TeamPolicy.label(teamStore!!.team),period,rows,summary)
         relatorioAtual={report}
@@ -2540,20 +2669,23 @@ class MainActivity : Activity() {
     private fun editarCaminhao(idx:Int) {
         if(!exigirGestor()) return
         pausarSincronizacao()
+        val formSession=chaveSessao()
         val current=if(idx>=0) dados("caminhoes").optJSONObject(idx) else null
         if(!exigirEdicao("caminhoes",current)) return
         val selectedStart=RainRecords.date(diaCaminhoes)
         val shift=teamStore!!.team.substringAfterLast('_')
-        var manualDate=false
-        var entryDay=current?.let(TruckRecords::entryDay)?:selectedStart?:java.time.LocalDate.now(relogioCaminhoes)
-        var exitDay=current?.let {if(it.optString("saida").isNotBlank()) TruckRecords.exitDay(it) else null}
+        val draftKey="caminhao_${current?.optString("id")?:"novo"}"
+        val draft=rascunhos().read(draftKey)
+        var manualDate=draft?.optBoolean("dataManual")==true
+        var entryDay=draft?.optString("dataEntrada")?.let(RainRecords::date)?:current?.let(TruckRecords::entryDay)?:selectedStart?:java.time.LocalDate.now(relogioCaminhoes)
+        var exitDay=draft?.optString("dataSaida")?.let(RainRecords::date)?:current?.let {if(it.optString("saida").isNotBlank()) TruckRecords.exitDay(it) else null}
         val ui=AccessUi(this,attach=false)
         val body=LinearLayout(this).apply {orientation=LinearLayout.VERTICAL;setPadding(dp(18),dp(8),dp(18),dp(12))}
         ui.add(body,ui.text(TeamPolicy.label(teamStore!!.team),15f,ui.green,true),0)
-        val number=ui.field(body,"Número do caminhão").apply {setText(current?.optString("numero").orEmpty())}
+        val number=ui.field(body,"Número do caminhão").apply {setText(draft?.optString("numero")?:current?.optString("numero").orEmpty())}
         val entryButton=ui.button(body,"Data da entrada: ${TruckRecords.label(entryDay)}",true) {}
         entryButton.setOnClickListener {escolherDiaCaminhao(entryDay) {day->manualDate=true;entryDay=day;entryButton.text="Data da entrada: ${TruckRecords.label(day)}"}}
-        val arrival=ui.field(body,"Entrada (HH:mm)").apply {setText(current?.optString("chegada").orEmpty());inputType=android.text.InputType.TYPE_CLASS_DATETIME or android.text.InputType.TYPE_DATETIME_VARIATION_TIME}
+        val arrival=ui.field(body,"Entrada (HH:mm)").apply {setText(draft?.optString("chegada")?:current?.optString("chegada").orEmpty());inputType=android.text.InputType.TYPE_CLASS_DATETIME or android.text.InputType.TYPE_DATETIME_VARIATION_TIME}
         ui.add(body,ui.text("Turno $shift: ${TruckShift.hours(shift)}. Informe a data real da entrada.",13f),5)
         arrival.addTextChangedListener(object:android.text.TextWatcher {
             override fun beforeTextChanged(s:CharSequence?,start:Int,count:Int,after:Int) {}
@@ -2564,7 +2696,7 @@ class MainActivity : Activity() {
                 }
             }
         })
-        val departure=ui.field(body,"Saída (HH:mm), opcional").apply {setText(current?.optString("saida").orEmpty());inputType=android.text.InputType.TYPE_CLASS_DATETIME or android.text.InputType.TYPE_DATETIME_VARIATION_TIME}
+        val departure=ui.field(body,"Saída (HH:mm), opcional").apply {setText(draft?.optString("saida")?:current?.optString("saida").orEmpty());inputType=android.text.InputType.TYPE_CLASS_DATETIME or android.text.InputType.TYPE_DATETIME_VARIATION_TIME}
         val exitButton=ui.button(body,"Data da saída: ${exitDay?.let(TruckRecords::label)?:"automática"}",true) {}
         exitButton.setOnClickListener {escolherDiaCaminhao(exitDay?:entryDay) {day->exitDay=day;exitButton.text="Data da saída: ${TruckRecords.label(day)}"}}
         ui.add(body,ui.text("Sem data de saída escolhida, um horário menor que a entrada será registrado no dia seguinte. Deixe a saída vazia enquanto o caminhão estiver na frente.",13f),8)
@@ -2583,11 +2715,16 @@ class MainActivity : Activity() {
             if(time!=null) if(Regex("sa[ií]da|saiu|partiu",RegexOption.IGNORE_CASE).containsMatchIn(speech)) departure.setText(time) else arrival.setText(time)
             Toast.makeText(this,"Confira as datas e os horários antes de salvar.",Toast.LENGTH_LONG).show()
         }}
+        val saveDraft=registrarRascunho(draftKey,listOf(number,arrival,departure)) {
+            JSONObject().apply {if(current!=null) put("registroBase",draft?.optJSONObject("registroBase")?:current)}.put("numero",number.text.toString()).put("chegada",arrival.text.toString()).put("saida",departure.text.toString())
+                .put("dataEntrada",TruckRecords.label(entryDay)).put("dataSaida",exitDay?.let(TruckRecords::label).orEmpty()).put("dataManual",manualDate)
+        }
+        if(draft!=null) ui.add(body,ui.text("Rascunho recuperado • confira antes de salvar",13f,ui.green))
         val dialog=AlertDialog.Builder(this).setTitle(if(current==null) "Registrar entrada de caminhão" else "Entrada e saída do caminhão")
-            .setView(ScrollView(this).apply {addView(body)}).setNegativeButton("Cancelar",null).setPositiveButton("Salvar",null).create()
+            .setView(ScrollView(this).apply {addView(body)}).setNegativeButton("Fechar e guardar rascunho",null).setPositiveButton("Salvar",null).create()
         dialog.setOnShowListener {dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-            if(!exigirGestor()) return@setOnClickListener
-            val record=try {TruckRecords.build(current,number.text.toString(),arrival.text.toString(),departure.text.toString(),entryDay,exitDay,teamStore!!.team)}
+            if(!acessoConfirmado||chaveSessao()!=formSession||!exigirGestor()) return@setOnClickListener
+            val record=try {TruckRecords.build(draft?.optJSONObject("registroBase")?:current,number.text.toString(),arrival.text.toString(),departure.text.toString(),entryDay,exitDay,teamStore!!.team)}
                 catch(error:IllegalArgumentException) {noticeCaminhao(error.message?:"Confira os dados do caminhão.");return@setOnClickListener}
             if(current==null||entryDay!=TruckRecords.entryDay(current)||record.optString("chegada")!=current.optString("chegada")) {
                 try {TruckShift.requireEntry(shift,TruckShift.entry(record)!!)}
@@ -2595,19 +2732,23 @@ class MainActivity : Activity() {
             }
             val all=dados("caminhoes")
             if(!colocarRegistro(all,if(current==null) -1 else 0,record)) return@setOnClickListener
-            guardar("caminhoes",all);dialog.dismiss();caminhoes()
+            guardar("caminhoes",all);rascunhos().clear(draftKey);salvarRascunhoAtivo=null;dialog.dismiss();caminhoes()
         }}
-        dialog.setOnDismissListener {teamSync?.available(hasWindowFocus()&&mapa==null)}
+        dialog.setOnDismissListener {salvarRascunhoAtivo?.invoke();salvarRascunhoAtivo=null;teamSync?.available(hasWindowFocus()&&mapa==null)}
         dialog.show()
     }
     private fun noticeCaminhao(message:String) {Toast.makeText(this,message,Toast.LENGTH_LONG).show()}
 
     private fun biblioteca() {
+        val opened=mapa
+        if(opened!=null) {
+            if(!opened.salvar()) {Toast.makeText(this,"Não foi possível salvar a pintura. Confira o espaço do celular e tente novamente.",Toast.LENGTH_LONG).show();return}
+            Toast.makeText(this,"Pintura salva neste celular",Toast.LENGTH_SHORT).show()
+        }
         themeScreen={biblioteca()}
         refreshList = { biblioteca() }
         telaAtual = "biblioteca"
         returnToParent = { inicio() }
-        mapa?.salvar()
         mapa = null
         chaveAtual = ""
         status = null
@@ -2678,9 +2819,14 @@ class MainActivity : Activity() {
             val info = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
             }
-            info.addView(texto(nome(id), 16f).apply { maxLines = 2 })
-            info.addView(texto("Abrir mapa e opções ›", 13f, palette.muted))
+            info.addView(texto(nome(id), 16f).apply {maxLines=2;ellipsize=android.text.TextUtils.TruncateAt.END})
+            val paintDate=getSharedPreferences("datas_mapas_${teamStore!!.team}_${teamAccess!!.uid}",0).getString(id,"").orEmpty()
+            info.addView(texto(if(paintDate.isBlank()) "Abrir mapa e opções ›" else "Pintura: $paintDate",13f,palette.muted))
 
+            item.addView(ImageView(this).apply {
+                contentDescription="Miniatura de ${nome(id)}";scaleType=ImageView.ScaleType.FIT_CENTER
+                MapThumbnail.load(this,f,File(filesDir,"mapa_relatorio_$id.png"),"${teamStore!!.team}_${teamAccess!!.uid}_$id")
+            },LinearLayout.LayoutParams(dp(54),dp(74)).apply {marginEnd=dp(10)})
             item.addView(info, LinearLayout.LayoutParams(0, -2, 1f))
 
             item.addView(
@@ -3217,6 +3363,8 @@ class MainActivity : Activity() {
         val visual = MapaView(this).apply {
             carregar(imagem, id, geo)
         }
+        val savedTeam=teamStore!!.team;val savedUid=teamAccess!!.uid
+        visual.aoSalvar={changed->if(changed&&teamStore?.team==savedTeam&&teamAccess?.uid==savedUid) getSharedPreferences("datas_mapas_${savedTeam}_${savedUid}",0).edit().putString(id,archiveDate()).apply()}
         mapa = visual
         telaAtual = "mapa"
         returnToParent = { biblioteca() }
@@ -3564,6 +3712,7 @@ class MainActivity : Activity() {
     override fun onBackPressed() { voltarTela() }
 
     override fun onPause() {
+        salvarRascunhoAtivo?.invoke()
         super.onPause()
         syncUiHandler.removeCallbacks(atualizarTurnoCaminhoes)
         mapa?.salvar()
@@ -3581,6 +3730,8 @@ class MainActivity : Activity() {
 }
 
 class MapaView(context: Context) : View(context) {
+    var aoSalvar:((Boolean)->Unit)?=null
+    private var dataPinturaPendente=false
     var modo = 0
     var areaFechada = false
         private set
@@ -4326,12 +4477,16 @@ class MapaView(context: Context) : View(context) {
             .put("coresAreas", JSONArray(coresAreas))
             .put("coresLinhas", JSONArray(coresLinhas))
 
+        val previous=context.getSharedPreferences("pinturas",0).getString(id,"").orEmpty()
+        val changed=previous!=j.toString()&&(previous.isNotBlank()||areas.isNotEmpty()||linhas.isNotEmpty())
+        dataPinturaPendente=dataPinturaPendente||changed
         context.getSharedPreferences("pinturas", 0)
             .edit()
             .putString(id, j.toString())
             .apply()
         val exported=atualizarResumoMapa()
         aoAtualizarArea?.invoke()
+        if(exported) {aoSalvar?.invoke(dataPinturaPendente);dataPinturaPendente=false}
         return exported
     }
 

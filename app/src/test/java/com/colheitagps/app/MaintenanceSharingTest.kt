@@ -67,6 +67,7 @@ class MaintenanceSharingTest {
         val end=System.nanoTime()+Duration.ofSeconds(15).toNanos()
         while(System.nanoTime()<end) {
             shadowOf(Looper.getMainLooper()).idle()
+            ShadowAlertDialog.getLatestAlertDialog()?.takeIf {it.isShowing&&it.getButton(android.app.AlertDialog.BUTTON_POSITIVE)?.text=="Escolher aplicativo"}?.getButton(android.app.AlertDialog.BUTTON_POSITIVE)?.performClick()
             shadowOf(a).nextStartedActivity?.let {chooser->
                 assertEquals(Intent.ACTION_CHOOSER,chooser.action)
                 return chooser.getParcelableExtra(Intent.EXTRA_INTENT)!!

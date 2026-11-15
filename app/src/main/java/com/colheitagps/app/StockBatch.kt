@@ -9,6 +9,8 @@ internal object StockBatch {
     fun records(drafts:List<Draft>,date:String):List<JSONObject> {
         require(drafts.isNotEmpty()&&drafts.size<=20) { "Adicione de 1 a 20 lotes por cadastro." }
         require(drafts.all { listOf(it.lot,it.fields,it.area,it.yield).all { value->value.isNotBlank() } }) { "Preencha lote, talhões, área e produtividade em todos os cartões." }
+        require(drafts.map {FieldWorkflow.lot(it.lot)}.distinct().size==drafts.size) {"Há um lote repetido neste cadastro. Mantenha um cartão por lote."}
+        require(drafts.all {FieldWorkflow.decimal(it.area)&&FieldWorkflow.decimal(it.yield)}) {"Área (ha) e produtividade (t/ha) precisam ser números válidos."}
         return drafts.map { d->JSONObject().put("id",UUID.randomUUID().toString()).put("os",d.lot.trim())
             .put("talhoes",d.fields.trim()).put("areaRestante",d.area.trim()).put("produtividade",d.yield.trim()).put("dataCadastro",date) }
     }

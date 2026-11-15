@@ -27,6 +27,8 @@ internal object MaintenanceShareData {
     fun details(row:JSONObject):String=buildString {
         append(row.optString("descricao").ifBlank {"Sem descrição"})
         if(row.optBoolean("urgente")) append("\nPrioridade: Urgente")
+        if(row.optBoolean("paradaChuva")) append("\nServiço para parada de chuva")
+        row.optString("situacaoPecas").takeIf {it.isNotBlank()}?.let {append("\nPeças: $it")}
         row.optString("osPendencia").takeIf {it.isNotBlank()}?.let {append("\nO.S.: $it")}
         row.optString("dataCadastro").takeIf {it.isNotBlank()}?.let {append("\nData: $it")}
         append("\nSituação: ${status(row)}")

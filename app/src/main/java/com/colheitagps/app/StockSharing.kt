@@ -29,7 +29,7 @@ internal object StockSharing {
         worker.execute {
             try {
                 val intent=StockShareFiles.message(activity.applicationContext,store.cache,store.files,selected,message)
-                activity.runOnUiThread {deliver(activity,intent,allowed)}
+                activity.runOnUiThread {SharePreview.review(activity,intent,allowed) {deliver(activity,intent,allowed)}}
             } catch(_:Exception) {activity.runOnUiThread {failure(activity)}}
         }
     }

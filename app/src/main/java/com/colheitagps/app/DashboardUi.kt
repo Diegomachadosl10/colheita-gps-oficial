@@ -112,7 +112,7 @@ internal class DashboardUi(private val activity: Activity) {
         fun status(message: String): String = when {
             message.contains("sincronizados", true) -> "Sincronizado"
             message.contains("conflito", true) || message.contains("indisponível", true) -> "Verificar sincronização"
-            message.contains("aguardando", true) || message.contains("pendente", true) -> "Aguardando sincronização"
+            message.contains("aguardando", true) || message.contains("pendente", true) -> Regex("^[0-9]+ alterações aguardando envio").find(message)?.value?:if(message.startsWith("Salvo neste celular")) "Salvo neste celular • aguardando envio" else "Aguardando sincronização"
             else -> "Conectando à equipe…"
         }
     }

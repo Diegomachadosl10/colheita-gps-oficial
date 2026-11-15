@@ -51,7 +51,7 @@ internal object MaintenanceSharing {
         worker.execute {
             try {
                 val intent=prepare(activity.applicationContext,store,selected,image,photos,date)
-                activity.runOnUiThread {deliver(activity,intent,allowed)}
+                activity.runOnUiThread {SharePreview.review(activity,intent,allowed) {deliver(activity,intent,allowed)}}
             } catch(_:OutOfMemoryError) {activity.runOnUiThread {failure(activity,"Não foi possível preparar as fotos. Tente enviar sem fotos.")}}
             catch(error:Exception) {activity.runOnUiThread {failure(activity,if(error is IllegalArgumentException) error.message?:"Não foi possível preparar as pendências." else "Não foi possível preparar as pendências. Tente novamente.")}}
         }

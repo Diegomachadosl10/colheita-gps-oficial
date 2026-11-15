@@ -26,6 +26,7 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import org.robolectric.shadows.ShadowContentResolver
+import org.robolectric.shadows.ShadowAlertDialog
 import org.robolectric.util.ReflectionHelpers
 import java.io.File
 import java.time.Duration
@@ -67,6 +68,7 @@ class SharingProviderRegressionTest {
         val deadline=System.nanoTime()+Duration.ofSeconds(15).toNanos()
         while(chooser==null&&System.nanoTime()<deadline) {
             Thread.sleep(25);shadowOf(Looper.getMainLooper()).idle()
+            ShadowAlertDialog.getLatestAlertDialog()?.takeIf {it.isShowing&&it.getButton(android.app.AlertDialog.BUTTON_POSITIVE)?.text=="Escolher aplicativo"}?.getButton(android.app.AlertDialog.BUTTON_POSITIVE)?.performClick()
             chooser=shadowOf(a).nextStartedActivity
         }
         assertNotNull("O compartilhamento precisa abrir sem encerrar o aplicativo",chooser)
@@ -203,4 +205,15 @@ class SharingProviderRegressionTest {
         assertFalse(FieldReportSharing.deliverImages(a,report,listOf(file)) {false})
         assertNull(shadowOf(a).nextStartedActivity)
     }
+    @Test fun savingAnUnchangedMapDoesNotChangeTheLastDrawingDateSignal() {
+        val a=activity();val id="c".repeat(64);val view=MapaView(a)
+        view.carregar(Bitmap.createBitmap(80,80,Bitmap.Config.ARGB_8888).apply {eraseColor(Color.WHITE)},id,null)
+        var changes=0;view.aoSalvar={if(it) changes++}
+        assertTrue(view.salvar());assertEquals(0,changes)
+        ReflectionHelpers.getField<MutableList<MutableList<PointF>>>(view,"areas").add(mutableListOf(PointF(5f,5f),PointF(50f,5f),PointF(50f,50f)))
+        ReflectionHelpers.getField<MutableList<Int>>(view,"coresAreas").add(Color.RED)
+        assertTrue(view.salvar());assertEquals(1,changes)
+        assertTrue(view.salvar());assertEquals(1,changes)
+    }
+
 }
