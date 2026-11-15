@@ -1,0 +1,39 @@
+name: Publicar APK previamente assinado
+
+on:
+  push:
+    branches: [dm-agro-login]
+    paths:
+      - 'release-prebuilt/**'
+      - 'scripts/publish-prebuilt.py'
+      - '.github/workflows/publish-prebuilt.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publicar-apk-validado
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools build-tools;35.0.0'
+      - name: Testar validações da publicação
+        run: python3 -m unittest discover -s scripts -p 'test_*.py'
+      - name: Conferir assinatura e publicar o pacote completo
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/publish-prebuilt.py

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "packageName": "com.colheitagps.app",
+  "versionCode": 28,
+  "versionName": "2.0.0",
+  "minSdk": 26,
+  "apkUrl": "https://github.com/Diegomachadosl10/colheita-gps-oficial/releases/download/v2.0.0/DM-AGRO-2.0.0.apk",
+  "sha256": "f5690e91c6463a2c56d879e0a986e25ac543155325c58c3f3075eee11c35e47e",
+  "sizeBytes": 13003384,
+  "changes": "DM AGRO 2.0.0 — Organização do trabalho no campo\n\nServiços para a parada de chuva: marque a pendência, filtre a lista e compartilhe os serviços selecionados. Peças podem ser vinculadas à pendência e ao equipamento, mostrando o que está a pedir, pedido ou recebido.\n\nRascunhos automáticos de pendências, estoque e caminhões, separados por conta e equipe neste celular. O preenchimento só vira cadastro ao salvar. Prévia de mensagens e imagens antes de escolher o WhatsApp ou outro aplicativo.\n\nEstoque oferece atualizar lote existente, preservando o cadastro, os anexos e o histórico. Campos de área e produtividade têm unidades e validação numérica com vírgula ou ponto.\n\nCaminhões mostram tempo de espera até o momento/horário de corte consultado e destacam a maior espera. Mapas têm miniaturas, data das pinturas salvas nesta versão e confirmação ao sair do visualizador.\n\nHistórico de correções registra data, nome e os campos alterados. Em Configurações → Organizar início, cada usuário escolhe favoritas e a ordem dos cartões.\n\nMantidos os temas claro/noturno, as permissões existentes, o estoque com mensagem e mapa original e o compartilhamento de pendências com descrição e fotos na mesma imagem. Sem novas regras Firebase, serviços pagos ou alterações no Cloudflare. Instale sobre a versão atual, sem desinstalar nem limpar os dados."
+}

@@ -1,0 +1,27 @@
+{
+  "version": "2.0.0",
+  "sourceCommit": "1499e97a33ddaf82b8bde341a7a3c7b8ffecc4f0",
+  "releaseId": 446406202,
+  "files": {
+    "DM-AGRO-2.0.0.apk": {
+      "size": 13003384,
+      "sha256": "f5690e91c6463a2c56d879e0a986e25ac543155325c58c3f3075eee11c35e47e"
+    },
+    "dm-agro-update.json": {
+      "size": 1767,
+      "sha256": "9cd7e5e92d89e5b32a93faa53a3c0158025a54b27529513a83b3ffb68a0ec5a3"
+    },
+    "SHA256.txt": {
+      "size": 84,
+      "sha256": "914aa95694179e0aebb84525774d8e0a042612a3c73c4ca4e9504cf24fe51220"
+    },
+    "DM-AGRO-2.0.0-codigo.zip": {
+      "size": 1161111,
+      "sha256": "75f4957d674f621a6b729e9e2ab0e5b5eacc78fd2691a8a52515f4b786a137c2"
+    },
+    "DM-AGRO-2.0.0-dm-agro-login.bundle": {
+      "size": 1349355,
+      "sha256": "fba9326bf5d7856d7d77fa187fd3e1fe9190e03b4cc2c9c71637ecb650ce2cf2"
+    }
+  }
+}
