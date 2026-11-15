@@ -30,7 +30,7 @@ Instale o APK sobre a versão atual, sem desinstalar nem limpar dados. Confira n
 
 ## Publicação
 
-O usuário autorizou explicitamente o envio desta versão ao repositório Diegomachadosl10/colheita-gps-oficial, somente na branch dm-agro-login. A tentativa autorizada por Git retornou HTTP 403; a integração também retornou Resource not accessible by integration (403). Não houve publicação nem mudança na main. Depois de resolvido o acesso de escrita, para disponibilizar pelo atualizador, extraia PUBLICAR-DM-AGRO-2.0.0.zip e publique uma release estável mais recente, tag v2.0.0, destino dm-agro-login, com os cinco arquivos na área Attach binaries abaixo da descrição. O código/bundle anexados preservam a entrega; não atualizam automaticamente a branch remota. A publicação na Play Store não foi realizada por esta atualização.
+O código desta versão foi enviado com sucesso ao repositório Diegomachadosl10/colheita-gps-oficial na branch dm-agro-login após instalar o conector; a main foi preservada. O envio do código não publica automaticamente a release para os aplicativos. Para disponibilizar pelo atualizador, extraia PUBLICAR-DM-AGRO-2.0.0.zip e publique uma release estável mais recente, tag v2.0.0, destino dm-agro-login, com os cinco arquivos na área Attach binaries abaixo da descrição. O código/bundle anexados preservam a entrega; não atualizam automaticamente a branch remota. A publicação na Play Store não foi realizada por esta atualização.
 
 ## Validação concluída
 
@@ -39,3 +39,5 @@ O usuário autorizou explicitamente o envio desta versão ao repositório Diegom
 - As regressões de autenticação, permissões locais, navegação, compartilhamento com FileProvider real, estoque com mapas originais, pendências com fotos na mesma página, rotação/GPS, arquivamento/restauração e limites dos turnos continuam aprovadas.
 - APK verificado: pacote com.colheitagps.app, versão 2.0.0, código 28, mínimo API 26, mesma assinatura permanente. Não houve implantação ou mudança de regras/índices/backend.
 - Instalação física, envio/recepção no WhatsApp e GPS no campo ainda precisam de conferência no aparelho.
+
+A primeira execução no GitHub aprovou os testes do serviço e do Firebase, mas o setup Android tentou instalar o pacote obsoleto tools. O workflow agora declara explicitamente platform-tools, platforms;android-35 e build-tools;35.0.0, sem essa dependência obsoleta. A assinatura ainda deve ser restaurada exclusivamente de segredo protegido; não se deve publicar a chave nem gerar outra para substituir a existente.

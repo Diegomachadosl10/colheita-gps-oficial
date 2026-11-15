@@ -22,7 +22,7 @@ Veja [as dez melhorias da rotina no campo](docs/EVOLUCAO-2.0.0.md). Mantido [o e
 
 O workflow `.github/workflows/android.yml` testa as regras em emuladores isolados e depois executa os testes Android e `assembleDebug` com Java 17/Gradle 8.9. Abra Actions → **Gerar APK Colheita GPS** → **Run workflow** → escolha **dm-agro-login**. Espere o resultado verde e baixe **DM-AGRO-APK** em **Artifacts**, extraia o ZIP e instale o APK.
 
-O usuário autorizou explicitamente o envio da versão 2.0.0 para Diegomachadosl10/colheita-gps-oficial, somente na branch dm-agro-login, preservando main. Após essa autorização, tanto o Git quanto a integração GitHub recusaram a escrita com HTTP 403 (Resource not accessible by integration). Enquanto o acesso de escrita não estiver resolvido, o GitHub contém a versão anterior; os arquivos e APKs desta conversa são as entregas atualizadas. Não substitua a `main`.
+A conexão do ChatGPT Codex Connector foi instalada e o envio do código 2.0.0 foi confirmado na branch dm-agro-login. A main foi preservada. Os erros 403 anteriores foram resolvidos. O envio de código inicia a compilação; a atualização para os aplicativos depende da publicação de uma release estável com APK e manifesto assinados. O workflow exige o segredo protegido ANDROID_UPDATE_KEYSTORE_BASE64 com a assinatura permanente antes de gerar um APK compatível.
 
 Não desinstale nem limpe os dados para atualizar. Os APKs produzidos nesta sessão compartilham a mesma assinatura de teste. O workflow agora exige a chave permanente em segredo protegido e verifica o certificado antes de publicar, para não depender de um cache que pode expirar.
 
