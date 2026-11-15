@@ -2,6 +2,10 @@
 
 Android, ramificação de trabalho **dm-agro-login**. A `main` permanece intacta.
 
+## Versão 2.1.0
+
+As [cinco melhorias para passagem de turno, preventiva, notificações, fotos e ajuda](docs/EVOLUCAO-2.1.0.md) estão implementadas. O pacote 2.1.0 está em validação para publicação pelo atualizador.
+
 ## Versão 2.0.0
 
 [Atualização estável publicada para todos](https://github.com/Diegomachadosl10/colheita-gps-oficial/releases/tag/v2.0.0). O atualizador do aplicativo já entrega a versão 2.0.0 (código 28).

@@ -57,7 +57,13 @@ internal class AccessUi(private val activity: Activity,attach:Boolean=true) {
         add(root,brand,0)
         val card = card()
         add(root, card, 16)
-        add(card, text(title, 22f, dark, true), 0)
+        val heading=LinearLayout(activity).apply {orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL}
+        heading.addView(text(title,22f,dark,true),LinearLayout.LayoutParams(0,-2,1f))
+        heading.addView(TextView(activity).apply {
+            text="?";textSize=20f;setTextColor(green);gravity=Gravity.CENTER;minWidth=dp(44);minHeight=dp(48);contentDescription="Ajuda desta tela"
+            setOnClickListener {android.app.AlertDialog.Builder(activity).setTitle("Como usar • $title").setMessage(ScreenHelp.text(title)).setPositiveButton("Entendi",null).show()}
+        })
+        add(card,heading,0)
         add(card, text(description), 6)
         add(root, text("Criado por Diego Machado",12f,muted).apply { gravity = Gravity.CENTER }, 24)
         return card

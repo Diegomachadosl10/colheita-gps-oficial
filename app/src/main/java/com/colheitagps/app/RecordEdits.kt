@@ -9,7 +9,8 @@ internal object RecordEdits {
         "concluida" to "Concluída","os" to "Lote","talhoes" to "Talhões","areaRestante" to "Área (ha)","produtividade" to "Produtividade (t/ha)",
         "numero" to "Caminhão","chegada" to "Entrada","saida" to "Saída","dataEntrada" to "Data da entrada","dataSaida" to "Data da saída",
         "codigoPeca" to "Código da peça","nomePeca" to "Peça","quantidadePeca" to "Quantidade","equipamentoReferencia" to "Equipamento da peça","situacaoPeca" to "Situação da peça",
-        "pendenciaId" to "Vínculo com pendência","chuvaMm" to "Chuva (mm)","observacaoChuva" to "Observação da chuva","tipo" to "Tipo","localizacao" to "Localização")
+        "pendenciaId" to "Vínculo com pendência","chuvaMm" to "Chuva (mm)","observacaoChuva" to "Observação da chuva","tipo" to "Tipo","localizacao" to "Localização",
+        "preventivaServico" to "Próxima revisão", "preventivaData" to "Data da revisão", "horimetroAtual" to "Horímetro atual (h)", "proximaRevisaoHoras" to "Horímetro de revisão (h)")
     fun stamp(previous:JSONArray,current:JSONArray,uid:String,name:String,date:String):JSONArray {
         val before=FieldReports.rows(previous).associateBy {it.optString("id")}
         return JSONArray().apply {for(item in FieldReports.rows(current)) {

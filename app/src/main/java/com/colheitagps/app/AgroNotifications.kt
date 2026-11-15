@@ -71,6 +71,9 @@ internal object AgroNotifications {
         WorkManager.getInstance(context.applicationContext).cancelAllWorkByTag("avisos-$uid")
         if(enabled(context,uid)) FirebaseMessaging.getInstance().deleteToken()
     }
+    fun tapIntent(context:Context,uid:String,data:JSONObject)=Intent(context,MainActivity::class.java)
+        .putExtra("equipeAlerta",data.optString("team")).putExtra("eventoAlerta",data.optString("eventId")).putExtra("usuarioAlerta",uid)
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
     fun display(context: Context, uid: String, data: JSONObject) {
         if(!allowed(context)||!enabled(context,uid)) return
         val event=data.optString("eventId"); if(event.isBlank()||event.length>160) return
@@ -78,8 +81,7 @@ internal object AgroNotifications {
         if(prefs.contains(event)) return
         val manager=context.getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(NotificationChannel(CHANNEL,"Novidades da equipe",NotificationManager.IMPORTANCE_DEFAULT))
-        val intent=Intent(context,MainActivity::class.java).putExtra("equipeAlerta",data.optString("team"))
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        val intent=tapIntent(context,uid,data)
         val pending=PendingIntent.getActivity(context,(uid+event).hashCode(),intent,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val notification=NotificationCompat.Builder(context,CHANNEL).setSmallIcon(R.drawable.ic_agro_notification)
             .setContentTitle(data.optString("title","Novidade na equipe").take(100)).setContentText(data.optString("body").take(200))

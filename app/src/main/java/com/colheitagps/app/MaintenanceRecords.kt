@@ -49,6 +49,9 @@ internal object MaintenanceRecords {
             })
         }
         ensureEquipment(result, next)
+        val oldEquipment=(0 until all.length()).mapNotNull {all.optJSONObject(it)}.firstOrNull {isEquipment(it)&&number(it.optString("equipamento"))==old}
+        val newEquipment=(0 until result.length()).mapNotNull {result.optJSONObject(it)}.firstOrNull {isEquipment(it)&&number(it.optString("equipamento"))==next}
+        if(oldEquipment!=null&&newEquipment!=null) for(key in PreventiveMaintenance.fields) if(oldEquipment.has(key)) newEquipment.put(key,oldEquipment.get(key))
         return result
     }
     fun number(value: String): String = Normalizer.normalize(value, Normalizer.Form.NFKC)

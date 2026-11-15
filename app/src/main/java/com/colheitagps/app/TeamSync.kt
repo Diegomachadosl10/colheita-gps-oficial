@@ -370,6 +370,9 @@ internal class TeamSync(context: Context, private val access: TeamAccess, val st
         if (local.all.keys.none { it.startsWith("q_") || it.startsWith("c_") || it.startsWith("e_") }) announce("Registros e anexos sincronizados")
     }
     fun baseRevision(group: String, key: String): Long = base(id("item", group, key))?.optLong("versao") ?: 0L
+    fun notificationRecord(event: String,done:(NotificationRoutes.Record?)->Unit) {
+        NotificationRoutes.resolveAsync(event,store.team,local.all) {record->handler.post {if(active()) done(record)}}
+    }
     fun canEdit(group: String, key: String): Boolean {
         if (access.manages) return true
         val record = base(id("item", group, key)) ?: return true
