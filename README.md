@@ -4,7 +4,7 @@ Android, ramificação de trabalho **dm-agro-login**. A `main` permanece intacta
 
 ## Versão 2.2.1
 
-[Correção da pintura por voz](docs/PINTURA-SIMPLES-2.2.1.md): talhão inteiro, curva inteira ou metade, com os exemplos reais do talhão 11 do K/39. Carreadores preservados, procura da parte correta do mapa e confirmação simplificada.
+[Atualização 2.2.1 publicada para todos](https://github.com/Diegomachadosl10/colheita-gps-oficial/releases/tag/v2.2.1), código 32, com APK público e assinatura verificados. [Correção da pintura por voz](docs/PINTURA-SIMPLES-2.2.1.md): talhão inteiro, curva inteira ou metade, com os exemplos reais do talhão 11 do K/39. Carreadores preservados, procura da parte correta do mapa e confirmação simplificada.
 
 ## Versão 2.2.0
 

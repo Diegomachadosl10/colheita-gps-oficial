@@ -23,3 +23,5 @@ O desenho é mostrado antes de pintar; talhão e curva mantêm as coordenadas or
 Os PDFs originais são usados apenas em testes locais e não acompanham o código ou o APK. Não há mudança nas regras Firebase, no serviço Cloudflare, na assinatura permanente ou nos planos gratuitos.
 
 Validação: 295 testes Android aprovados, incluindo os três comandos reais, talhão com duas partes, preservação do carreador, gravação única, meia área e leitura do cache; 7 testes do publicador aprovados. O reconhecimento de fala e a prévia nativa ainda precisam ser conferidos no aparelho em campo.
+
+[Versão estável 2.2.1 publicada para todos](https://github.com/Diegomachadosl10/colheita-gps-oficial/releases/tag/v2.2.1), código 32. Manifesto e APK de 22.319.398 bytes baixados publicamente e conferidos; SHA-256 `8555ce157d65202203d93dcb886aebe7f935d0d5effa4b12778df96647ceac92`. Assinatura permanente preservada e [publicador aprovado](https://github.com/Diegomachadosl10/colheita-gps-oficial/actions/runs/43829190117). Main preservada.
