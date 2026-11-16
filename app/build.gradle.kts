@@ -13,8 +13,8 @@ android {
         applicationId = "com.colheitagps.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 30
-        versionName = "2.1.1"
+        versionCode = 31
+        versionName = "2.2.0"
     }
 
     testOptions { unitTests.isIncludeAndroidResources = true }
@@ -39,6 +39,8 @@ dependencies {
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.activity:activity-ktx:1.9.3")
     implementation("com.google.android.material:material:1.12.0")
+    implementation("com.tom-roush:pdfbox-android:2.0.27.0")
+    implementation("org.locationtech.jts:jts-core:1.20.0")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.robolectric:robolectric:4.14.1")

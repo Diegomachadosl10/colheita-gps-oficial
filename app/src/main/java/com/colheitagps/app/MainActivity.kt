@@ -56,6 +56,133 @@ class MainActivity : Activity() {
     private var notificationResolving=false
     private var photoEditTarget:JSONObject?=null
     private var photoEditResult:Intent?=null
+    private var fieldVoice:FieldVoice?=null
+    private var voiceHomeButton:Button?=null
+    private var voiceStatus:TextView?=null
+    private val curveWorker=java.util.concurrent.Executors.newSingleThreadExecutor {r->Thread(r,"dm-agro-curves").apply {isDaemon=true}}
+    private val voiceCatalogs=mutableMapOf<String,CurveCatalog>()
+    private fun voz():FieldVoice {
+        fieldVoice?.let {return it}
+        val assistant=FieldVoice(this,{chaveSessao()},{acessoConfirmado&&teamAccess!=null&&!isFinishing&&!isDestroyed},{telaAtual=="inicio"&&mapa==null},
+            {draft,ui->pausarSincronizacao();voiceOperations.prepare(draft,ui)}, {message->
+                voiceStatus?.text=message
+                voiceHomeButton?.text=if(fieldVoice?.enabled==true) "🎙 Voz ativada • diga DM AGRO" else "🎙 Ativar comandos de voz"
+            })
+        fieldVoice=assistant;return assistant
+    }
+    private val voiceOperations by lazy {VoiceOperations(object:VoiceOperations.Host {
+        override val activity:Activity get()=this@MainActivity
+        override val access:TeamAccess? get()=teamAccess
+        override val store:TeamStore? get()=teamStore
+        override fun scope()=chaveSessao()
+        override fun active()=acessoConfirmado&&!isFinishing&&!isDestroyed
+        override fun read(group:String)=if(group=="pendencias") maintenanceCatalog() else todosRegistros(group)
+        override fun save(group:String,records:JSONArray) {
+            check(active());require(group in TeamPolicy.recordGroups)
+            require(podeGerenciar()||group in TeamPolicy.operatorGroups)
+            if(group=="pendencias") guardarCatalogoManutencao(MaintenanceRecords.merge(MaintenanceRecords.issues(records),records)) else guardar(group,records)
+        }
+        override fun canEdit(group:String,record:JSONObject)=!RecordArchive.archived(record)&&teamSync?.canEdit(group,record.optString("id"))!=false&&
+            (!PartsRecords.isPart(record)||podeEditarPeca(record))&&(!RainRecords.isRain(record)||podeEditarChuva(record))
+        override fun revision(group:String,id:String)=teamSync?.baseRevision(group,id)?:0L
+        override fun navigate(tool:String)=abrirFerramentaPorVoz(tool)
+        override fun share(tool:String,image:Boolean,photos:Boolean,filters:JSONObject)=compartilharPorVoz(tool,image,photos,filters)
+        override fun maps()=arquivos().map {VoiceOperations.VoiceMap(it.nameWithoutExtension,nome(it.nameWithoutExtension))}
+        override fun paintedMaps()=PaintedMapPicker.items(teamStore!!)
+        override fun currentMap()=chaveAtual.takeIf {mapa!=null}.orEmpty().ifBlank {getSharedPreferences("controle_colheita",0).getString("ultimo_mapa","").orEmpty().takeIf {prefs().contains(it)}.orEmpty()}
+        override fun curve(draft:VoiceCommands.Draft,ui:FieldVoice)=prepararCurvaPorVoz(draft,ui)
+        override fun closeOrder(map:String,number:String)=encerrarOrdemServico(map,number)
+    })}
+    private fun abrirFerramentaPorVoz(tool:String) {
+        when(tool) {
+            "inicio"->inicio();"mapas"->biblioteca();"pendencias"->pendencias();"pecas"->pecas();"chuva"->chuvas();"ocorrencias"->ocorrenciasCampo()
+            "estoque"->estoque();"caminhoes"->abrirCaminhoes();"passagem"->passagemTurno();"os"->paginaOrdens();"calendario"->{if(exigirGestor()) calendario()}
+            "previsao"->startActivity(Intent(this,WeatherActivity::class.java).putExtra("team",teamStore!!.team))
+            "atualizacao"->startActivity(Intent(this,UpdateActivity::class.java));"configuracoes"->configuracoes()
+            "usuarios"->{if(exigirGestor()) startActivity(Intent(this,AdminActivity::class.java))}
+            else->Toast.makeText(this,"Diga o nome da ferramenta que deseja abrir.",Toast.LENGTH_LONG).show()
+        }
+    }
+    private fun compartilharPorVoz(tool:String,image:Boolean,photos:Boolean,filters:JSONObject) {
+        when(tool) {
+            "pendencias"->{val all=maintenanceCatalog();val rows=FieldWorkflow.enrich(all,MaintenanceShareData.open(all,filters.optString("equipment").takeIf {it.isNotBlank()}).filter {(!filters.optBoolean("onlyUrgent")||MaintenanceRecords.urgent(it))&&(!filters.optBoolean("rainOnly")||it.optBoolean("paradaChuva"))});val session=chaveSessao()
+                if(rows.isEmpty()) Toast.makeText(this,"Nenhuma pendência aberta nesta equipe.",Toast.LENGTH_LONG).show()
+                else MaintenanceSharing.share(this,teamStore!!,rows,image,photos) {acessoConfirmado&&chaveSessao()==session}}
+            "estoque"->{if(exigirGestor()) {val rows=FieldReports.rows(listaEstoques());if(rows.isNotEmpty()) compartilharLotes(rows) else Toast.makeText(this,"Nenhum estoque salvo.",Toast.LENGTH_LONG).show()}}
+            "mapas"->{val id=voiceOperationsMap();if(id.isNotBlank()) compartilharImagemMapa(id) else biblioteca()}
+            "pecas"->compartilharRelatorio(relatorioGrupo("Peças a pedir","pendencias",FieldReports.rows(dadosPecas()).filter {!PartsRecords.historical(it)}))
+            "chuva"->compartilharRelatorio(relatorioGrupo("Registro de chuva","ocorrencias_campo",RainRecords.readings(dados("ocorrencias_campo"))))
+            "ocorrencias"->compartilharRelatorio(relatorioGrupo("Ocorrências de campo","ocorrencias_campo",FieldReports.rows(dados("ocorrencias_campo")).filter {!RainRecords.isRain(it)&&!it.optBoolean("concluida")}))
+            "passagem"->{if(exigirGestor()) {val team=teamStore!!.team;val now=java.time.LocalDateTime.now(relogioCaminhoes);compartilharRelatorio(ShiftHandover.build(team,ShiftHandover.latest(team.substringAfterLast('_'),now),now,maintenanceCatalog(),listaEstoques(),dados("caminhoes"),"").report)}}
+            "caminhoes","calendario","os"->{if(exigirGestor()) {abrirFerramentaPorVoz(tool);relatorioAtual?.invoke()?.let(::compartilharRelatorio)}}
+            else->abrirFerramentaPorVoz(tool)
+        }
+    }
+    private fun voiceOperationsMap()=chaveAtual.takeIf {mapa!=null}.orEmpty().ifBlank {getSharedPreferences("controle_colheita",0).getString("ultimo_mapa","").orEmpty().takeIf {prefs().contains(it)}.orEmpty()}
+    private fun prepararCurvaPorVoz(d:VoiceCommands.Draft,ui:FieldVoice) {
+        val f=d.fields;val maps=arquivos();val map=maps.firstOrNull {it.nameWithoutExtension==f.optString("map")}
+        if(map==null) {
+            val lot=FieldWorkflow.lot(f.optString("lot"))
+            val candidates=if(lot.isBlank()) maps else maps.filter {Regex(Regex.escape(lot)+"(?![0-9])").containsMatchIn(FieldWorkflow.lot(nome(it.nameWithoutExtension)))}
+            val current=candidates.firstOrNull {it.nameWithoutExtension==voiceOperationsMap()}
+            if(candidates.size==1||(lot.isBlank()&&current!=null)) {ui.replace(d,d.copyFields().put("map",(current?:candidates.single()).nameWithoutExtension));return}
+            ui.show(d,if(candidates.isEmpty()) "Não encontrei esse mapa na biblioteca deste usuário. Importe o PDF antes de pintar." else "Qual mapa deseja pintar?",options=candidates.map {file->FieldVoice.Choice(nome(file.nameWithoutExtension)) {ui.replace(d,d.copyFields().put("map",file.nameWithoutExtension))}});return
+        }
+        if(mapa?.edicaoEmAndamento()==true) {ui.show(d,"Conclua ou cancele a edição do mapa antes de iniciar outra curva por voz.");return}
+        val key=chaveSessao()+"/"+map.name+"/"+map.lastModified()+"/"+map.length()
+        val catalog=voiceCatalogs[key]
+        if(catalog==null) {
+            ui.show(d,"Lendo talhões, áreas e contornos deste PDF. A pintura só será feita após sua confirmação.")
+            val store=teamStore!!;val session=chaveSessao()
+            curveWorker.execute {
+                try {val found=CurveCatalog.load(applicationContext,map,store.cache);runOnUiThread {if(ui.isCurrent(d)&&chaveSessao()==session) {voiceCatalogs[key]=found;prepararCurvaPorVoz(d,ui)}}}
+                catch(e:Exception) {runOnUiThread {ui.show(d,e.message?:"Não foi possível reconhecer os contornos com segurança. Use a pintura manual.")}}
+                catch(_:OutOfMemoryError) {runOnUiThread {ui.show(d,"Memória insuficiente para analisar o PDF. Use a pintura manual neste aparelho.")}}
+            };return
+        }
+        val matches=catalog.matches(f.optString("plots"),f.optString("ha"))
+        if(matches.isEmpty()) {ui.show(d,"Não encontrei um contorno validado de ${f.optString("ha")} ha no talhão ${f.optString("plots")} deste mapa. Corrija o talhão/área ou confira no mapa.",options=listOf(FieldVoice.Choice("Abrir mapa para conferir") {ui.close();abrir(map.nameWithoutExtension)}));return}
+        var selected=matches.firstOrNull {it.id==f.optString("curveId")}?:matches.singleOrNull()
+        val reference=if(f.has("refX")&&f.has("refY")) org.locationtech.jts.geom.Coordinate(f.optDouble("refX"),f.optDouble("refY")) else null
+        if(selected==null&&reference!=null) selected=CurveGeometry.uniqueNearest(matches.map {it.polygon},reference,.35,catalog.width,catalog.height)?.let {matches[it]}
+        if(selected==null&&f.optString("side").isNotBlank()) {
+            val ordered=matches.sortedBy {when(f.getString("side")) {"esquerda"->it.polygon.centroid.x;"direita"->-it.polygon.centroid.x;"cima"->it.polygon.centroid.y;else->-it.polygon.centroid.y}}
+            fun position(curve:MapCurve)=when(f.getString("side")) {"esquerda"->curve.polygon.centroid.x;"direita"->-curve.polygon.centroid.x;"cima"->curve.polygon.centroid.y;else->-curve.polygon.centroid.y}
+            if(ordered.size==1||kotlin.math.abs(position(ordered[0])-position(ordered[1]))>.0005) selected=ordered.firstOrNull()
+        }
+        if(selected==null) {
+            val choices=matches.mapIndexed {index,curve->FieldVoice.Choice("Curva ${index+1} • ${curve.hectares} ha • talhão ${curve.plot}") {ui.replace(d,d.copyFields().put("curveId",curve.id))}}
+            mostrarPreviaCurvas(d,ui,map,matches.map {it.polygon},"Encontrei ${matches.size} curvas com essa área no talhão. Diga primeira/segunda, indique esquerda/direita ou toque no carreador de referência. A posição usa o mapa na orientação original.",choices,reference={point->ui.replace(d,d.copyFields().put("refX",point.x).put("refY",point.y))});return
+        }
+        val curve=selected;val half=f.optString("fraction")=="half"
+        var from=reference
+        if(from==null&&f.optString("side").isNotBlank()) {
+            val b=curve.polygon.envelopeInternal;val c=curve.polygon.centroid.coordinate
+            from=when(f.getString("side")) {"esquerda"->org.locationtech.jts.geom.Coordinate(b.minX-.01,c.y);"direita"->org.locationtech.jts.geom.Coordinate(b.maxX+.01,c.y);"cima"->org.locationtech.jts.geom.Coordinate(c.x,b.minY-.01);else->org.locationtech.jts.geom.Coordinate(c.x,b.maxY+.01)}
+        }
+        if(half&&from==null) {
+            mostrarPreviaCurvas(d,ui,map,listOf(curve.polygon),"Metade a partir de qual lado? Diga esquerda, direita, cima ou baixo, ou toque no carreador onde começa o trecho colhido.",reference={point->ui.replace(d,d.copyFields().put("refX",point.x).put("refY",point.y).put("curveId",curve.id))});return
+        }
+        val polygon=if(half) CurveGeometry.half(curve.polygon,from!!,catalog.width,catalog.height) else curve.polygon
+        if(polygon==null) {ui.show(d,"A divisão por esse lado separaria a curva em mais de um trecho. Indique outro lado ou faça a pintura manual.");return}
+        val session=chaveSessao();val mapId=map.nameWithoutExtension
+        mostrarPreviaCurvas(d,ui,map,listOf(polygon),"${nome(mapId)} • Talhão ${curve.plot}\nCurva ${curve.hectares} ha • ${if(half) "metade, a partir do lado indicado" else "inteira"}.\nConfira o contorno azul e diga Confirmar para pintar. Pode dizer Corrigir ou Cancelar.",action={
+            if(!acessoConfirmado||chaveSessao()!=session) return@mostrarPreviaCurvas
+            if(mapa==null||chaveAtual!=mapId) abrir(mapId)
+            val current=mapa
+            if(current==null||chaveAtual!=mapId) return@mostrarPreviaCurvas
+            try {current.pintarPorVoz(polygon.exteriorRing.coordinates.map {PointF(it.x.toFloat(),it.y.toFloat())});Toast.makeText(this,"Curva pintada e salva. O GPS e a orientação do mapa foram preservados.",Toast.LENGTH_LONG).show()}
+            catch(e:Exception) {Toast.makeText(this,e.message?:"Não foi possível salvar a pintura.",Toast.LENGTH_LONG).show()}
+        })
+    }
+    private fun mostrarPreviaCurvas(d:VoiceCommands.Draft,ui:FieldVoice,map:File,polygons:List<org.locationtech.jts.geom.Polygon>,text:String,choices:List<FieldVoice.Choice> = emptyList(),
+                                  reference:((org.locationtech.jts.geom.Coordinate)->Unit)?=null,action:(()->Unit)?=null) {
+        curveWorker.execute {
+            try {val preview=CurvePreview.render(map,polygons);runOnUiThread {ui.show(d,text,options=choices,preview=preview.bitmap,imageTap=reference?.let {callback->{x:Float,y:Float->callback(preview.point(x,y))}},action=action)}}
+            catch(_:Exception) {runOnUiThread {ui.show(d,"Não foi possível preparar a prévia. A pintura não foi alterada.")}}
+            catch(_:OutOfMemoryError) {runOnUiThread {ui.show(d,"Memória insuficiente para conferir a pintura. Tente pelo mapa manualmente.")}}
+        }
+    }
     private fun chaveSessao()="${teamAccess?.uid}|${teamStore?.team}"
     private fun rascunhos()=FieldDrafts(applicationContext,teamStore!!.team,teamAccess!!.uid)
     private fun registrarRascunho(key:String,fields:List<EditText>,capture:()->JSONObject):()->Unit {
@@ -104,6 +231,7 @@ class MainActivity : Activity() {
             .setNegativeButton("Voltar") { _, _ -> moveTaskToBack(true) }.show()
     }
     private fun openTeam(access: TeamAccess, id: String) {
+        fieldVoice?.close();voiceCatalogs.clear()
         notificationRoute=null;notificationResolving=false
         if(teamStore?.team!=id||teamAccess?.uid!=access.uid) {buscaEstoque="";buscaEquipamento="";buscaMapas="";filtroParadaChuva=false}
         salvarRascunhoAtivo?.invoke();salvarRascunhoAtivo=null;receberFotoEstoque=null
@@ -226,6 +354,7 @@ class MainActivity : Activity() {
             }
             if(telaAtual=="caminhoes"&&diaCaminhoes.isBlank()) atualizarTurnoCaminhoes.run()
         }
+        fieldVoice?.sync()
         teamSync?.available(hasFocus && mapa == null)
     }
     private fun pausarSincronizacao() {
@@ -822,6 +951,7 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         StartupUpdates.resume(this)
+        fieldVoice?.resume()
         if(acessoConfirmado&&teamStore!=null) {
             if(renderedNight!=AppTheme.night(this)) {AppTheme.apply(this);renderedNight=AppTheme.night(this);themeScreen();return}
             if(salvarRascunhoAtivo==null) {if(telaAtual=="inicio") inicio() else if(telaAtual=="caminhoes") caminhoes()}
@@ -966,6 +1096,7 @@ class MainActivity : Activity() {
         if(titulo=="DM AGRO") relatorioAtual=null
         returnToParent = if (titulo == "DM AGRO") null else parent
         telaAtual = if (titulo == "DM AGRO") "inicio" else "pagina"
+        fieldVoice?.sync()
         teamSync?.available(hasWindowFocus() && mapa == null)
         refreshList = when (titulo) {
             "DM AGRO" -> ({ inicio() })
@@ -995,6 +1126,10 @@ class MainActivity : Activity() {
             setPadding(dp(10), 0, 0, 0)
             setTypeface(null,Typeface.BOLD);textSize=20f
         }, LinearLayout.LayoutParams(0, -2, 1f))
+        topo.addView(TextView(this).apply {
+            text="🎙";textSize=23f;setTextColor(Color.WHITE);gravity=Gravity.CENTER;minimumWidth=dp(44);minimumHeight=dp(48);contentDescription="Comando de voz"
+            setOnClickListener {voz().open()}
+        })
         topo.addView(TextView(this).apply {
             text="?";textSize=20f;setTextColor(Color.WHITE);gravity=Gravity.CENTER;minimumWidth=dp(44);minimumHeight=dp(48)
             contentDescription="Ajuda desta tela"
@@ -1029,6 +1164,7 @@ class MainActivity : Activity() {
         coluna.addView(secao("Aplicativo"))
         coluna.addView(botao("Organizar início") {organizarInicio()})
         coluna.addView(botao("Verificar atualização") {startActivity(Intent(this,UpdateActivity::class.java))})
+        coluna.addView(botao(if(voz().enabled) "Desativar voz no início" else "Ativar DM AGRO por voz no início") {if(voz().enabled) voz().disable() else voz().enable();configuracoes()})
         if(podeGerenciar()) coluna.addView(botao("Notificações") {startActivity(Intent(this,NotificationSettingsActivity::class.java))})
         if(podeGerenciar()) {
             coluna.addView(secao("Registros"))
@@ -1066,6 +1202,10 @@ class MainActivity : Activity() {
             contentDescription = "Trocar equipe"; setOnClickListener { chooseTeam(access) }
         })
         coluna.addView(teamPanel, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
+        voiceHomeButton=botao(if(voz().enabled) "🎙 Voz ativada • diga DM AGRO" else "🎙 Ativar comandos de voz") {if(voz().enabled) voz().open() else voz().enable()}
+        voiceHomeButton!!.setOnLongClickListener {voz().open();true};coluna.addView(voiceHomeButton)
+        voiceStatus=texto(if(voz().enabled) "O microfone funciona enquanto o início estiver aberto. Toque para falar ou escrever." else "Ative uma vez para falar ao abrir o aplicativo. O microfone para ao sair do app.",13f,palette.muted).also {coluna.addView(it)}
+        voz().sync()
         if (access.primary && access.profile["nome"]?.toString().isNullOrBlank()) coluna.addView(botao("Definir meu nome") { definirNome() })
         val verse=DailyVerse.forDate()
         val overview=LinearLayout(this).apply {orientation=if(resources.configuration.fontScale>=1.45f||resources.configuration.screenWidthDp<360) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL;isBaselineAligned=false}
@@ -3746,7 +3886,7 @@ class MainActivity : Activity() {
             "Borracha", "Desfazer", "Excluir última pintura",
             "GPS", "Salvar mapa pintado", "Voltar aos mapas"
         )
-        val navigation=arrayOf("Compartilhar mapa pintado","Repor orientação original (0°)","Como girar o mapa","Ajuda do mapa")
+        val navigation=arrayOf("Compartilhar mapa pintado","Repor orientação original (0°)","Como girar o mapa","Ajuda do mapa","Comando de voz / pintar curva")
         AlertDialog.Builder(this).setTitle("Ferramentas")
             .setItems(opcoes+navigation) { _, i ->
                 if(i>=opcoes.size) {
@@ -3755,6 +3895,7 @@ class MainActivity : Activity() {
                         1->v.reporOrientacao()
                         2->AlertDialog.Builder(this).setTitle("Girar, aproximar e mover").setMessage("Coloque dois dedos no mapa e gire livremente. Afaste ou aproxime os dedos para mudar o zoom. Arraste com dois dedos para mover. O botão 0° repõe a orientação original do PDF; o GPS, as pinturas e as medidas acompanham o mapa.").setPositiveButton("Entendi",null).show()
                         3->AlertDialog.Builder(this).setTitle("Como usar o mapa").setMessage(ScreenHelp.text("Mapas")+"\n\nUse o menu + para escolher pintura, medida e GPS. Com a ferramenta ativa, use os controles para adicionar pontos e concluir. A georreferência pertence ao PDF; girar a visualização não altera as coordenadas.").setPositiveButton("Entendi",null).show()
+                        4->voz().open()
                     }
                     return@setItems
                 }
@@ -3909,6 +4050,7 @@ class MainActivity : Activity() {
         super.onRequestPermissionsResult(
             requestCode, permissions, grantResults
         )
+        if(requestCode==905) {fieldVoice?.permissionResult(grantResults.firstOrNull()==PackageManager.PERMISSION_GRANTED);return}
         if (
             requestCode == 100 &&
             grantResults.firstOrNull() ==
@@ -3941,6 +4083,7 @@ class MainActivity : Activity() {
     override fun onBackPressed() { voltarTela() }
 
     override fun onPause() {
+        fieldVoice?.pause()
         salvarRascunhoAtivo?.invoke()
         super.onPause()
         syncUiHandler.removeCallbacks(atualizarTurnoCaminhoes)
@@ -3948,6 +4091,7 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        fieldVoice?.destroy();curveWorker.shutdownNow()
         profileWatch?.remove()
         teamSync?.stop()
         syncUiHandler.removeCallbacksAndMessages(null)
@@ -4679,6 +4823,27 @@ class MapaView(context: Context) : View(context) {
     }
 
     fun pinturaEmAndamento():Boolean = areaEmEdicao>=0||(modo==7&&pontos.isNotEmpty())
+
+    fun edicaoEmAndamento():Boolean = pinturaEmAndamento()||pontos.isNotEmpty()||linhaAtual?.isNotEmpty()==true
+
+    fun pintarPorVoz(normalized:List<PointF>) {
+        check(!edicaoEmAndamento()) {"Conclua a edição do mapa antes de continuar."}
+        val bitmap=imagem?:error("Abra o mapa antes de pintar.")
+        require(normalized.size>=4&&normalized.all {it.x.isFinite()&&it.y.isFinite()&&it.x in 0f..1f&&it.y in 0f..1f}) {"Contorno de curva inválido."}
+        val polygon=normalized.map {PointF(it.x*bitmap.width,it.y*bitmap.height)}.toMutableList()
+        require(hectaresDaArea(polygon)?.let {it>0}==true) {"Não foi possível conferir a área desta curva."}
+        val preferences=context.getSharedPreferences("pinturas",0);val previous=preferences.getString(id,null)
+        val pending=dataPinturaPendente
+        areas.add(polygon);coresAreas.add(Color.argb(opacidade,Color.red(corPintura),Color.green(corPintura),Color.blue(corPintura)))
+        try {
+            check(salvar()) {"Não foi possível exportar a pintura. Confira o espaço do aparelho."}
+            invalidate()
+        } catch(error:Exception) {
+            areas.removeAt(areas.lastIndex);coresAreas.removeAt(coresAreas.lastIndex);dataPinturaPendente=pending
+            if(previous==null) preferences.edit().remove(id).commit() else preferences.edit().putString(id,previous).commit()
+            atualizarResumoMapa();aoAtualizarArea?.invoke();invalidate();throw error
+        }
+    }
 
     fun salvar():Boolean {
         if (id.isEmpty()) return false

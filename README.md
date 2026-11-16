@@ -2,6 +2,10 @@
 
 Android, ramificação de trabalho **dm-agro-login**. A `main` permanece intacta.
 
+## Versão 2.2.0
+
+[Comandos de voz e reconhecimento de curvas](docs/VOZ-E-CURVAS-2.2.0.md), com confirmação antes de salvar, correções na conversa, permissões por equipe e prévia de pintura preservando GPS/rotação. Sem novo serviço pago.
+
 ## Versão 2.1.1
 
 O botão da prévia de compartilhamento agora se chama **Enviar**. A [correção está publicada para todos](https://github.com/Diegomachadosl10/colheita-gps-oficial/releases/tag/v2.1.1), código 30, com download e assinatura verificados. [Detalhes e validação](docs/ENVIO-2.1.1.md).

@@ -95,6 +95,40 @@ class MapRotationTest {
         System.getenv("DM_AGRO_ROTATION_PREVIEW")?.let {File(it).outputStream().use {stream->bitmap.compress(Bitmap.CompressFormat.PNG,100,stream)}}
         bitmap.recycle()
     }
+    @Test fun aConfirmedVoicePolygonUsesOriginalCoordinatesAndKeepsGpsAndViewport() {
+        val (view,geo)=map();val viewport=ReflectionHelpers.getField<MapViewport>(view,"viewport")
+        viewport.gesture(300f,400f,280f,370f,1.4f,53f)
+        val before=viewport.toScreen(200f,200f);val scale=viewport.scale;val rotation=viewport.rotation
+        val gps=geo.gpsParaPixel(-21.25,-51.75,400,400)!!;view.atualizarGps(-21.25,-51.75)
+        val normalized=listOf(PointF(.1f,.2f),PointF(.3f,.2f),PointF(.3f,.4f),PointF(.1f,.4f),PointF(.1f,.2f))
+        view.pintarPorVoz(normalized)
+        val areas=ReflectionHelpers.getField<MutableList<MutableList<PointF>>>(view,"areas")
+        assertEquals(1,areas.size);close(PointF(40f,80f),areas.single().first())
+        close(before,viewport.toScreen(200f,200f));assertEquals(scale,viewport.scale,0f);assertEquals(rotation,viewport.rotation,0f)
+        close(gps,ReflectionHelpers.callInstanceMethod<PointF>(view,"gpsPixel"));assertTrue(view.hectaresPintados()!!>0)
+        val saved=RuntimeEnvironment.getApplication().getSharedPreferences("pinturas",0).getString("rotation-test","")
+        try {view.pintarPorVoz(listOf(PointF(-.1f,.2f),PointF(.3f,.2f),PointF(.3f,.4f),PointF(-.1f,.2f)));fail("Coordenadas inválidas devem ser recusadas")} catch(_:IllegalArgumentException) {}
+        assertEquals(saved,RuntimeEnvironment.getApplication().getSharedPreferences("pinturas",0).getString("rotation-test",""));assertEquals(1,areas.size)
+        view.iniciar(8);view.adicionarPontoCentral()
+        try {view.pintarPorVoz(normalized);fail("Uma medição em andamento deve ser preservada")} catch(_:IllegalStateException) {}
+        assertEquals(1,areas.size)
+    }
+    @Test fun aRealRecognizedHalfUsesTheOriginalPdfGeoreferenceWhenSaved() {
+        val path=System.getenv("DM_AGRO_CURVE_PDF")?:return
+        val context=RuntimeEnvironment.getApplication();val pdf=File(path)
+        val curve=CurveCatalog.load(context,pdf,File(context.cacheDir,"native-real-curves")).matches("8","3,15").single()
+        val bounds=curve.polygon.envelopeInternal
+        val half=CurveGeometry.half(curve.polygon,org.locationtech.jts.geom.Coordinate(bounds.minX-.01,curve.polygon.centroid.y),595.320007,841.919006)!!
+        assertEquals(curve.polygon.area/2,half.area,curve.polygon.area*.0001)
+        val geo=GeoPdf.ler(pdf)!!;val view=MapaView(context);view.layout(0,0,600,900)
+        view.carregar(Bitmap.createBitmap(595,842,Bitmap.Config.ARGB_8888),"real-half-test",geo)
+        shadowOf(Looper.getMainLooper()).idle()
+        view.pintarPorVoz(half.coordinates.map {PointF(it.x.toFloat(),it.y.toFloat())})
+        assertEquals(curve.measuredHa/2,view.hectaresEmDestaque()!!,.001)
+        val picture=CurvePreview.Picture(Bitmap.createBitmap(10,10,Bitmap.Config.ARGB_8888),android.graphics.RectF(.1f,.2f,.8f,.9f))
+        assertEquals(.1,picture.point(0f,0f).x,.000001);assertEquals(.9,picture.point(1f,1f).y,.000001)
+        picture.bitmap.recycle()
+    }
     @Test fun aTwoFingerGestureDoesNotEraseOrPaintAtItsFirstFingerAndOneFingerStillDrawsInMapCoordinates() {
         val (view,_)=map();val v=ReflectionHelpers.getField<MapViewport>(view,"viewport")
         val lines=ReflectionHelpers.getField<MutableList<MutableList<PointF>>>(view,"linhas")
