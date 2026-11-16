@@ -13,3 +13,5 @@ A implementação ativa da tela principal foi comparada com a versão anterior a
 Instale sobre a versão atual, sem desinstalar nem limpar dados.
 
 Validação local: 250 testes Android aprovados, incluindo início/configurações sem controles de voz com a preferência antiga ativada e leitura de pinturas existentes. O APK foi inspecionado: sem RECORD_AUDIO e sem a classe do assistente no DEX.
+
+[Versão estável 2.2.3 publicada para todos](https://github.com/Diegomachadosl10/colheita-gps-oficial/releases/tag/v2.2.3), código 34. Manifesto e APK de 12.572.736 bytes baixados publicamente e conferidos; SHA-256 `1a4bff9209001ab3a6a2d1090724a28278683bda810a4fea9753eb7e385c8359`. Assinatura permanente preservada; ausência de RECORD_AUDIO e FieldVoice confirmada no APK público. [Publicação aprovada](https://github.com/Diegomachadosl10/colheita-gps-oficial/actions/runs/43858939028); main preservada.

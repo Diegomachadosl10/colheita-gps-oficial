@@ -4,7 +4,7 @@ Android, ramificação de trabalho **dm-agro-login**. A `main` permanece intacta
 
 ## Versão 2.2.3
 
-[Comandos de voz retirados](docs/SEM-COMANDOS-DE-VOZ-2.2.3.md): início, cabeçalhos, configurações e ferramentas sem o assistente; escuta automática e permissão de áudio removidas. Mapas, GPS, pintura e cadastros manuais preservados.
+[Atualização 2.2.3 publicada para todos](https://github.com/Diegomachadosl10/colheita-gps-oficial/releases/tag/v2.2.3), código 34, com APK público, assinatura e ausência de permissão de áudio verificados. [Comandos de voz retirados](docs/SEM-COMANDOS-DE-VOZ-2.2.3.md): início, cabeçalhos, configurações e ferramentas sem o assistente; escuta automática e permissão de áudio removidas. Mapas, GPS, pintura e cadastros manuais preservados.
 
 ## Versão 2.2.2
 
