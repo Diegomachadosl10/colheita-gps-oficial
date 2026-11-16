@@ -1,0 +1,32 @@
+{
+  "version": "2.2.3",
+  "sourceCommit": "2f00c6e51faa1769d820b015a19bd91ee06828c7",
+  "releaseId": 446954658,
+  "files": {
+    "DM-AGRO-2.2.3-codigo.zip": {
+      "size": 1210053,
+      "sha256": "5b62f76f8c1b353b29a25caaaddcd283e5b110233aa99ce44a4d5fa3fa9dfbef",
+      "gitBlob": "607374bf16d5cf354c9db00eb3b08ec700456dd8"
+    },
+    "DM-AGRO-2.2.3-dm-agro-login.bundle": {
+      "size": 15288207,
+      "sha256": "91f6996cacd1583d471f34f37c64c7664f9cf13fbcefc2dd5eeef67116197386",
+      "gitBlob": "f13526c0af632dd8ee59d84088f3707e20bf832b"
+    },
+    "DM-AGRO-2.2.3.apk": {
+      "size": 12572736,
+      "sha256": "1a4bff9209001ab3a6a2d1090724a28278683bda810a4fea9753eb7e385c8359",
+      "gitBlob": "13228a8a27d1d338c1822dfefb5c18e8b3278af7"
+    },
+    "SHA256.txt": {
+      "size": 84,
+      "sha256": "2abe1eff5155ea7ba8483aa8bb1bfad80e927a7e67a0b382e114b762c39d50d9",
+      "gitBlob": "06aaabbe7328ea04187d5a92664aa57b67b6bb15"
+    },
+    "dm-agro-update.json": {
+      "size": 1024,
+      "sha256": "59cc864a5279434f9c71ef81ae5c22306f12ebb27751a6fcdd63f6a33ed5e29f",
+      "gitBlob": "4a7991b161eee70e88a6e12329e9833c25b05ba0"
+    }
+  }
+}
