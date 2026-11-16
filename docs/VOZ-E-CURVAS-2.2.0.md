@@ -43,3 +43,5 @@ Testes cobrem interpretação, correções, confirmação, permissões, conflito
 Atualize sobre a instalação atual, sem desinstalar nem limpar dados.
 
 Validação local: 290 testes completos aprovados e 49 verificações específicas aprovadas após o ajuste final das distâncias nas proporções originais do PDF; 7 testes do publicador aprovados.
+
+Publicada como estável para todos: [v2.2.0](https://github.com/Diegomachadosl10/colheita-gps-oficial/releases/tag/v2.2.0), código 31. O manifesto público e o APK de 22.912.564 bytes foram baixados sem autenticação e verificados; SHA-256 `78e990ed1bcf7ea1034790d7944473c387711db4bdcdc5a3b8e8c19d94780bfb`, certificado permanente preservado. [Publicador aprovado](https://github.com/Diegomachadosl10/colheita-gps-oficial/actions/runs/43824393686). Nenhuma alteração da main, do backend ou das regras Firebase.

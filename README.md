@@ -4,7 +4,7 @@ Android, ramificação de trabalho **dm-agro-login**. A `main` permanece intacta
 
 ## Versão 2.2.0
 
-[Comandos de voz e reconhecimento de curvas](docs/VOZ-E-CURVAS-2.2.0.md), com confirmação antes de salvar, correções na conversa, permissões por equipe e prévia de pintura preservando GPS/rotação. Sem novo serviço pago.
+[Atualização 2.2.0 publicada para todos](https://github.com/Diegomachadosl10/colheita-gps-oficial/releases/tag/v2.2.0), código 31, com manifesto público, APK baixado e assinatura verificados. [Comandos de voz e reconhecimento de curvas](docs/VOZ-E-CURVAS-2.2.0.md), com confirmação antes de salvar, correções na conversa, permissões por equipe e prévia de pintura preservando GPS/rotação. Sem novo serviço pago.
 
 ## Versão 2.1.1
 
