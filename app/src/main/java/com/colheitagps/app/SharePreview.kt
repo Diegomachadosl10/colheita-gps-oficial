@@ -48,7 +48,7 @@ internal object SharePreview {
         val text=intent.getStringExtra(Intent.EXTRA_TEXT).orEmpty()
         if(text.isNotBlank()) ui.add(body,ui.text(text,15f,ui.dark).apply {setTextIsSelectable(true)},12)
         val dialog=AlertDialog.Builder(activity).setTitle("Conferir envio").setView(ScrollView(activity).apply {addView(body)})
-            .setNegativeButton("Voltar",null).setPositiveButton("Escolher aplicativo") {_,_->if(allowed()&&!activity.isFinishing&&!activity.isDestroyed) send()}.create()
+            .setNegativeButton("Voltar",null).setPositiveButton("Enviar") {_,_->if(allowed()&&!activity.isFinishing&&!activity.isDestroyed) send()}.create()
         dialog.setOnDismissListener {image.setImageDrawable(null);bitmap?.recycle();bitmap=null};dialog.show()
     }
 }

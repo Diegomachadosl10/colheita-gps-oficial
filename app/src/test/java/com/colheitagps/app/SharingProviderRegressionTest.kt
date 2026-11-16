@@ -68,7 +68,7 @@ class SharingProviderRegressionTest {
         val deadline=System.nanoTime()+Duration.ofSeconds(15).toNanos()
         while(chooser==null&&System.nanoTime()<deadline) {
             Thread.sleep(25);shadowOf(Looper.getMainLooper()).idle()
-            ShadowAlertDialog.getLatestAlertDialog()?.takeIf {it.isShowing&&it.getButton(android.app.AlertDialog.BUTTON_POSITIVE)?.text=="Escolher aplicativo"}?.getButton(android.app.AlertDialog.BUTTON_POSITIVE)?.performClick()
+            ShadowAlertDialog.getLatestAlertDialog()?.takeIf {it.isShowing&&it.getButton(android.app.AlertDialog.BUTTON_POSITIVE)?.text=="Enviar"}?.getButton(android.app.AlertDialog.BUTTON_POSITIVE)?.performClick()
             chooser=shadowOf(a).nextStartedActivity
         }
         assertNotNull("O compartilhamento precisa abrir sem encerrar o aplicativo",chooser)
