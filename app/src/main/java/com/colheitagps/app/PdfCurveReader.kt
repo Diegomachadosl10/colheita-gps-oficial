@@ -18,7 +18,7 @@ import kotlin.math.*
 /** Extract text and cartographic paths locally. A raster-only PDF is left for manual selection. */
 internal class PdfCurveReader(page:PDPage,private val enabled:(String)->Boolean={true}):PDFGraphicsStreamEngine(page) {
     data class Label(val text:String,val at:Coordinate)
-    data class Outline(val layer:String,val points:List<Coordinate>,val red:Boolean,val black:Boolean)
+    data class Outline(val layer:String,val points:List<Coordinate>,val red:Boolean,val black:Boolean,val group:Int=0)
     val labels=mutableListOf<Label>();val outlines=mutableListOf<Outline>()
     private val height=page.cropBox.height.toDouble()
     private val left=page.cropBox.lowerLeftX.toDouble();private val bottom=page.cropBox.lowerLeftY.toDouble()
@@ -29,6 +29,7 @@ internal class PdfCurveReader(page:PDPage,private val enabled:(String)->Boolean=
     private var glyphText=StringBuilder();private var glyphStart:Coordinate?=null;private var glyphEnd:Coordinate?=null
     private var glyphCenter:Coordinate?=null;private var glyphSize=0.0
     private var operations=0
+    private var drawing=0
     private fun point(x:Float,y:Float)=Coordinate(x-left,height-(y-bottom))
     private fun guard() {check(++operations<500000) {"Mapa complexo demais para leitura automática neste aparelho."};check(!Thread.currentThread().isInterrupted)}
     override fun beginMarkedContentSequence(tag:COSName?,properties:COSDictionary?) {
@@ -49,11 +50,12 @@ internal class PdfCurveReader(page:PDPage,private val enabled:(String)->Boolean=
     override fun clip(windingRule:Path.FillType?) {}
     override fun endPath() {paths.clear();current.clear()}
     private fun store(stroked:Boolean) {
+        drawing++
         if(current.isNotEmpty()) paths.add(current)
         val rgb=try {graphicsState.strokingColor.toRGB()} catch(_:Exception) {0x777777}
         val red=((rgb shr 16) and 255)>180&&((rgb shr 8) and 255)<40&&(rgb and 255)<40
         val black=((rgb shr 16) and 255)<40&&((rgb shr 8) and 255)<40&&(rgb and 255)<40
-        if(stroked&&layers.all(enabled)) for(path in paths) if(path.size>1) outlines.add(Outline(layers.lastOrNull().orEmpty(),path.toList(),red,black))
+        if(stroked&&layers.all(enabled)) for(path in paths) if(path.size>1) outlines.add(Outline(layers.lastOrNull().orEmpty(),path.toList(),red,black,drawing))
         paths=mutableListOf();current=mutableListOf()
     }
     override fun strokePath()=store(true)

@@ -13,6 +13,16 @@ import java.time.LocalDateTime
 @Config(sdk=[28,35],manifest=Config.NONE,application=Application::class)
 class VoiceCommandsTest {
     private val now=LocalDateTime.of(2026,11,16,1,20)
+    @Test fun theThreeSpokenK39ExamplesDistinguishTheWholePlotFromOneCurveAndHalfACurve() {
+        val whole=VoiceCommands.parse("Deneago, quero que pinte o talhão 11 do K39 inteiro",now=now)
+        assertEquals("curve",whole.kind);assertEquals("plot",whole.fields.getString("paintTarget"));assertEquals("11",whole.fields.getString("plots"));assertEquals("K/39",whole.fields.getString("lot"));assertNull(VoiceCommands.missing(whole))
+        val full=VoiceCommands.parse("Dê-me água, quero que pinte a curva de 2,99 do talhão 11, do K39",now=now)
+        assertEquals("curve",full.fields.getString("paintTarget"));assertEquals("2,99",full.fields.getString("ha"));assertEquals("full",full.fields.getString("fraction"));assertEquals("11",full.fields.getString("plots"));assertEquals("K/39",full.fields.getString("lot"));assertNull(VoiceCommands.missing(full))
+        val half=VoiceCommands.parse("Dê-me água, quero que pinte metade da curva de 2,99 do talhão 11 do K39",now=now)
+        assertEquals("curve",half.fields.getString("paintTarget"));assertEquals("half",half.fields.getString("fraction"));assertEquals("2,99",half.fields.getString("ha"));assertEquals("11",half.fields.getString("plots"));assertNull(VoiceCommands.missing(half))
+        assertTrue(VoiceCommands.wakes("Deneago, quero que pinte o talhão 11"));assertTrue(VoiceCommands.wakes("Dê-me água, quero que pinte a curva"))
+        assertFalse(VoiceCommands.wakes("quero água para beber"))
+    }
     @Test fun defectsStayFaithfulAndRoutinesStayOutOfMaintenance() {
         for(text in listOf("DM AGRO, a colhedora 22282 deu problema no rolamento","Anota aí, a 22282 tá com problema no rolamento")) {
             val draft=VoiceCommands.parse(text,now=now)

@@ -10,7 +10,7 @@ internal object CurvePreview {
     data class Picture(val bitmap:Bitmap,val bounds:RectF) {
         fun point(x:Float,y:Float)=org.locationtech.jts.geom.Coordinate((bounds.left+x*bounds.width()).toDouble(),(bounds.top+y*bounds.height()).toDouble())
     }
-    fun render(pdf:File,polygons:List<Polygon>):Picture {
+    fun render(pdf:File,polygons:List<Polygon>,numbered:Boolean=true):Picture {
         val envelope=org.locationtech.jts.geom.Envelope();polygons.forEach {envelope.expandToInclude(it.envelopeInternal)}
         require(!envelope.isNull)
         envelope.expandBy(maxOf(envelope.width,envelope.height)*.18+.01)
@@ -30,7 +30,7 @@ internal object CurvePreview {
                     val path=Path();polygon.exteriorRing.coordinates.forEachIndexed {n,p->val x=(p.x-bounds.left)*page.width*scaleX;val y=(p.y-bounds.top)*page.height*scaleY;if(n==0) path.moveTo(x.toFloat(),y.toFloat()) else path.lineTo(x.toFloat(),y.toFloat())};path.close()
                     paint.color=Color.argb(65,0,110,240);paint.style=Paint.Style.FILL;canvas.drawPath(path,paint)
                     paint.color=Color.rgb(0,70,200);paint.style=Paint.Style.STROKE;paint.strokeWidth=3f;canvas.drawPath(path,paint)
-                    if(polygons.size>1) {
+                    if(numbered&&polygons.size>1) {
                         val c=polygon.interiorPoint.coordinate;val x=((c.x-bounds.left)*page.width*scaleX).toFloat();val y=((c.y-bounds.top)*page.height*scaleY).toFloat()
                         paint.style=Paint.Style.FILL;paint.color=Color.WHITE;canvas.drawCircle(x,y,20f,paint)
                         paint.color=Color.rgb(0,60,180);paint.textSize=28f;paint.typeface=Typeface.DEFAULT_BOLD;paint.textAlign=Paint.Align.CENTER;canvas.drawText((index+1).toString(),x,y+10,paint)

@@ -129,6 +129,19 @@ class MapRotationTest {
         assertEquals(.1,picture.point(0f,0f).x,.000001);assertEquals(.9,picture.point(1f,1f).y,.000001)
         picture.bitmap.recycle()
     }
+    @Test fun aWholePlotWithTwoPartsSavesOnceAndLeavesItsRoadUnpainted() {
+        val (view,_)=map();var saves=0;view.aoSalvar={saves++}
+        fun square(x:Float)=listOf(PointF(x,.2f),PointF(x+.15f,.2f),PointF(x+.15f,.4f),PointF(x,.4f),PointF(x,.2f))
+        view.pintarConjuntoPorVoz(listOf(square(.1f),square(.5f)))
+        assertEquals(1,saves)
+        val areas=ReflectionHelpers.getField<MutableList<MutableList<PointF>>>(view,"areas");assertEquals(2,areas.size)
+        val viewport=ReflectionHelpers.getField<MapViewport>(view,"viewport");val bitmap=Bitmap.createBitmap(600,800,Bitmap.Config.ARGB_8888);view.draw(Canvas(bitmap))
+        val road=viewport.toScreen(160f,120f);val field=viewport.toScreen(60f,120f)
+        assertEquals(Color.WHITE,bitmap.getPixel(road.x.toInt(),road.y.toInt()));assertNotEquals(Color.WHITE,bitmap.getPixel(field.x.toInt(),field.y.toInt()))
+        val saved=RuntimeEnvironment.getApplication().getSharedPreferences("pinturas",0).getString("rotation-test","")
+        try {view.pintarConjuntoPorVoz(listOf(square(.1f),square(1.2f)));fail("Uma parte inválida deve bloquear a operação inteira")} catch(_:IllegalArgumentException) {}
+        assertEquals(2,areas.size);assertEquals(1,saves);assertEquals(saved,RuntimeEnvironment.getApplication().getSharedPreferences("pinturas",0).getString("rotation-test",""));bitmap.recycle()
+    }
     @Test fun aTwoFingerGestureDoesNotEraseOrPaintAtItsFirstFingerAndOneFingerStillDrawsInMapCoordinates() {
         val (view,_)=map();val v=ReflectionHelpers.getField<MapViewport>(view,"viewport")
         val lines=ReflectionHelpers.getField<MutableList<MutableList<PointF>>>(view,"linhas")

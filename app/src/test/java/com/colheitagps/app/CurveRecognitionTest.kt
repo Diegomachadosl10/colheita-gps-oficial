@@ -20,6 +20,15 @@ class CurveRecognitionTest {
         val line=CurveGeometry.factory.createLineString(arrayOf(Coordinate(.01,50.0),Coordinate(100.0,50.0)))
         val cells=CurveGeometry.cells(plot,listOf(line));assertEquals(2,cells.size);assertTrue(cells.all {abs(it.area-5000)<1})
     }
+    @Test fun interruptedTerracesReconnectOnlyAcrossAlignedMutualEndpoints() {
+        fun line(vararg p:Coordinate)=CurveGeometry.factory.createLineString(p)
+        val a=line(Coordinate(0.0,0.0),Coordinate(0.0,10.0));val b=line(Coordinate(.1,12.5),Coordinate(.1,20.0))
+        assertEquals(3,CurveGeometry.connectTerraceEnds(listOf(a,b)).size)
+        val wrong=line(Coordinate(1.0,10.0),Coordinate(1.0,20.0))
+        assertEquals(2,CurveGeometry.connectTerraceEnds(listOf(a,wrong)).size)
+        val far=line(Coordinate(0.0,14.0),Coordinate(0.0,20.0))
+        assertEquals(2,CurveGeometry.connectTerraceEnds(listOf(a,far)).size)
+    }
     @Test fun oneAreaLabelPerCellAndAnIndependentAreaCheckAreRequiredBeforeRecognizingACurve() {
         val points=box(0.0,0.0,100.0,100.0).coordinates.toList()
         val parsed=PdfCurveReader.Companion.Result(100.0,100.0,listOf(PdfCurveReader.Label("9",Coordinate(20.0,20.0)),PdfCurveReader.Label("1,00",Coordinate(30.0,30.0)),PdfCurveReader.Label("1,00",Coordinate(30.0,70.0))),
@@ -27,6 +36,16 @@ class CurveRecognitionTest {
         val catalog=CurveCatalog.recognize(parsed) {it.area/5000}
         assertEquals(2,catalog.matches("9","1,00").size);assertNotEquals(catalog.curves[0].id,catalog.curves[1].id)
         assertTrue(CurveCatalog.recognize(parsed) {it.area/100}.curves.isEmpty())
+    }
+    @Test fun disjointPartsBelongTogetherOnlyWhenThePdfGroupsThemAndTheirTotalAreaAgrees() {
+        val a=box(0.0,0.0,40.0,100.0);val b=box(60.0,0.0,40.0,100.0)
+        val labels=listOf(PdfCurveReader.Label("11",Coordinate(80.0,50.0)),PdfCurveReader.Label("8,00",Coordinate(20.0,50.0)))
+        val paths=listOf(PdfCurveReader.Outline("Talhões",a.coordinates.toList(),false,true,7),PdfCurveReader.Outline("Talhões",b.coordinates.toList(),false,true,7))
+        val parsed=PdfCurveReader.Companion.Result(100.0,100.0,labels,paths)
+        val catalog=CurveCatalog.recognize(parsed) {it.area/1000}
+        assertEquals(2,catalog.plots.single().polygons.size);assertEquals(8.0,catalog.plots.single().measuredHa,.001)
+        assertTrue(CurveCatalog.recognize(parsed.copy(paths=listOf(paths[0],paths[1].copy(group=8)))) {it.area/1000}.plots.isEmpty())
+        assertTrue(CurveCatalog.recognize(parsed.copy(labels=labels+PdfCurveReader.Label("12",Coordinate(25.0,60.0)))) {it.area/1000}.plots.isEmpty())
     }
     @Test fun halfPaintingUsesAreaAndTheChosenSideAndSpatialTiesAreNotResolvedArbitrarily() {
         val polygon=box(0.0,0.0,100.0,30.0);val left=CurveGeometry.half(polygon,Coordinate(-10.0,15.0))!!
@@ -63,5 +82,24 @@ class CurveRecognitionTest {
         assertTrue("O talhão 8 precisa ser reconhecido",result.curves.any {it.plot=="8"})
         val target=result.matches("8","3,15");assertEquals("Curva real 3,15 do K39",1,target.size)
         assertTrue(abs(target.single().measuredHa-3.15)<.05)
+        val plot=result.plots.single {it.number=="11"}
+        assertEquals("Talhão 11 tem duas partes separadas por carreador",2,plot.polygons.size)
+        assertEquals("8,52",plot.printedHa);assertEquals(8.52,plot.measuredHa,.15)
+        assertEquals("Curva real 2,99 do talhão 11",1,result.matches("11","2,99").size)
+        val curve=result.matches("11","2,99").single()
+        assertEquals(2.49,curve.measuredHa,.08);assertFalse("A diferença entre a área impressa e o contorno deve ser informada",curve.areaAgrees)
+        assertTrue(result.contains(VoiceCommands.parse("Deneago, quero que pinte o talhão 11 do K39 inteiro")))
+        assertTrue(result.contains(VoiceCommands.parse("Dê-me água, quero que pinte a curva de 2,99 do talhão 11 do K39")))
+        assertTrue(result.contains(VoiceCommands.parse("Dê-me água, quero que pinte metade da curva de 2,99 do talhão 11 do K39")))
+        val half=CurveGeometry.half(curve.polygon,Coordinate(curve.polygon.envelopeInternal.minX-.01,curve.polygon.centroid.y),result.width,result.height)
+        assertNotNull("A curva 2,99 pode ser pintada pela metade",half)
+        assertEquals(curve.polygon.area/2,half!!.area,curve.polygon.area*.0001)
+        val cached=CurveCatalog.load(context,pdf,File(context.cacheDir,"real-map-check"));assertEquals(result.json().toString(),cached.json().toString())
+        System.getenv("DM_AGRO_CURVE_REPORT")?.let {report->
+            val examples=org.json.JSONObject().put("plot11",org.json.JSONArray(plot.polygons.map {p->org.json.JSONArray(p.coordinates.map {org.json.JSONArray().put(it.x).put(it.y)})}))
+                .put("curve299",org.json.JSONArray(curve.polygon.coordinates.map {org.json.JSONArray().put(it.x).put(it.y)}))
+                .put("half299",org.json.JSONArray(half.coordinates.map {org.json.JSONArray().put(it.x).put(it.y)}))
+            File(report+".examples.json").writeText(examples.toString(2))
+        }
     }
 }

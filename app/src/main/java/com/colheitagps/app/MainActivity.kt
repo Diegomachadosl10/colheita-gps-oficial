@@ -124,12 +124,30 @@ class MainActivity : Activity() {
         if(map==null) {
             val lot=FieldWorkflow.lot(f.optString("lot"))
             val candidates=if(lot.isBlank()) maps else maps.filter {Regex(Regex.escape(lot)+"(?![0-9])").containsMatchIn(FieldWorkflow.lot(nome(it.nameWithoutExtension)))}
+            if(candidates.isEmpty()&&maps.isNotEmpty()) {
+                ui.show(d,"Qual destes mapas é o ${f.optString("lot")}?",options=maps.map {file->FieldVoice.Choice(nome(file.nameWithoutExtension)) {ui.replace(d,d.copyFields().put("map",file.nameWithoutExtension))}});return
+            }
             val current=candidates.firstOrNull {it.nameWithoutExtension==voiceOperationsMap()}
             if(candidates.size==1||(lot.isBlank()&&current!=null)) {ui.replace(d,d.copyFields().put("map",(current?:candidates.single()).nameWithoutExtension));return}
-            ui.show(d,if(candidates.isEmpty()) "Não encontrei esse mapa na biblioteca deste usuário. Importe o PDF antes de pintar." else "Qual mapa deseja pintar?",options=candidates.map {file->FieldVoice.Choice(nome(file.nameWithoutExtension)) {ui.replace(d,d.copyFields().put("map",file.nameWithoutExtension))}});return
+            if(candidates.size>1) {
+                ui.show(d,"Procurando o talhão ${f.optString("plots")} nos mapas do ${f.optString("lot")}…")
+                val store=teamStore!!;val session=chaveSessao()
+                curveWorker.execute {
+                    val found=candidates.mapNotNull {file->try {file to CurveCatalog.load(applicationContext,file,store.cache)} catch(_:Exception) {null} catch(_:OutOfMemoryError) {null}}
+                    runOnUiThread {
+                        if(ui.isCurrent(d)&&chaveSessao()==session) {
+                            found.forEach {(file,catalog)->voiceCatalogs[voiceMapKey(file)]=catalog}
+                            val matching=found.filter {it.second.contains(d)}.map {it.first}
+                            if(matching.size==1) ui.replace(d,d.copyFields().put("map",matching.single().nameWithoutExtension))
+                            else ui.show(d,if(matching.isEmpty()) "Não consegui localizar esse contorno. Qual mapa deseja conferir?" else "Encontrei esse talhão em mais de um mapa. Qual usar?",options=matching.ifEmpty {candidates}.map {file->FieldVoice.Choice(nome(file.nameWithoutExtension)) {ui.replace(d,d.copyFields().put("map",file.nameWithoutExtension))}})
+                        }
+                    }
+                };return
+            }
+            ui.show(d,"Não encontrei esse mapa na biblioteca. Adicione o PDF para continuar.");return
         }
         if(mapa?.edicaoEmAndamento()==true) {ui.show(d,"Conclua ou cancele a edição do mapa antes de iniciar outra curva por voz.");return}
-        val key=chaveSessao()+"/"+map.name+"/"+map.lastModified()+"/"+map.length()
+        val key=voiceMapKey(map)
         val catalog=voiceCatalogs[key]
         if(catalog==null) {
             ui.show(d,"Lendo talhões, áreas e contornos deste PDF. A pintura só será feita após sua confirmação.")
@@ -139,6 +157,13 @@ class MainActivity : Activity() {
                 catch(e:Exception) {runOnUiThread {ui.show(d,e.message?:"Não foi possível reconhecer os contornos com segurança. Use a pintura manual.")}}
                 catch(_:OutOfMemoryError) {runOnUiThread {ui.show(d,"Memória insuficiente para analisar o PDF. Use a pintura manual neste aparelho.")}}
             };return
+        }
+        if(f.optString("paintTarget")=="plot") {
+            if(f.optString("fraction")=="half") {ui.show(d,"Para pintar metade de uma curva, diga também a área dela. Exemplo: metade da curva de 2,99 do talhão 11.");return}
+            val choices=catalog.plots.filter {it.number==f.optString("plots")}
+            val plot=choices.firstOrNull {it.id==f.optString("curveId")}?:choices.singleOrNull()
+            if(plot==null) {ui.show(d,if(choices.isEmpty()) "Não consegui conferir o contorno completo do talhão ${f.optString("plots")}. Abra o mapa para conferir." else "Qual contorno do talhão deseja pintar?",options=choices.mapIndexed {i,p->FieldVoice.Choice("Contorno ${i+1} • ${p.printedHa} ha") {ui.replace(d,d.copyFields().put("curveId",p.id))}});return}
+            confirmarPinturaPorVoz(d,ui,map,plot.polygons,"${nome(map.nameWithoutExtension)} • Talhão ${plot.number} inteiro\nConfira a área azul e diga Confirmar para pintar.");return
         }
         val matches=catalog.matches(f.optString("plots"),f.optString("ha"))
         if(matches.isEmpty()) {ui.show(d,"Não encontrei um contorno validado de ${f.optString("ha")} ha no talhão ${f.optString("plots")} deste mapa. Corrija o talhão/área ou confira no mapa.",options=listOf(FieldVoice.Choice("Abrir mapa para conferir") {ui.close();abrir(map.nameWithoutExtension)}));return}
@@ -152,7 +177,7 @@ class MainActivity : Activity() {
         }
         if(selected==null) {
             val choices=matches.mapIndexed {index,curve->FieldVoice.Choice("Curva ${index+1} • ${curve.hectares} ha • talhão ${curve.plot}") {ui.replace(d,d.copyFields().put("curveId",curve.id))}}
-            mostrarPreviaCurvas(d,ui,map,matches.map {it.polygon},"Encontrei ${matches.size} curvas com essa área no talhão. Diga primeira/segunda, indique esquerda/direita ou toque no carreador de referência. A posição usa o mapa na orientação original.",choices,reference={point->ui.replace(d,d.copyFields().put("refX",point.x).put("refY",point.y))});return
+            mostrarPreviaCurvas(d,ui,map,matches.map {it.polygon},"Há ${matches.size} curvas de ${f.optString("ha")} ha. Qual delas? Escolha pelo número ou toque perto da curva desejada.",choices,reference={point->ui.replace(d,d.copyFields().put("refX",point.x).put("refY",point.y))});return
         }
         val curve=selected;val half=f.optString("fraction")=="half"
         var from=reference
@@ -161,24 +186,30 @@ class MainActivity : Activity() {
             from=when(f.getString("side")) {"esquerda"->org.locationtech.jts.geom.Coordinate(b.minX-.01,c.y);"direita"->org.locationtech.jts.geom.Coordinate(b.maxX+.01,c.y);"cima"->org.locationtech.jts.geom.Coordinate(c.x,b.minY-.01);else->org.locationtech.jts.geom.Coordinate(c.x,b.maxY+.01)}
         }
         if(half&&from==null) {
-            mostrarPreviaCurvas(d,ui,map,listOf(curve.polygon),"Metade a partir de qual lado? Diga esquerda, direita, cima ou baixo, ou toque no carreador onde começa o trecho colhido.",reference={point->ui.replace(d,d.copyFields().put("refX",point.x).put("refY",point.y).put("curveId",curve.id))});return
+            val sides=listOf("esquerda","direita","cima","baixo").map {side->FieldVoice.Choice(side.replaceFirstChar {it.uppercase()}) {ui.replace(d,d.copyFields().put("side",side).put("curveId",curve.id))}}
+            mostrarPreviaCurvas(d,ui,map,listOf(curve.polygon),"Qual metade? Diga esquerda, direita, cima ou baixo. Você também pode tocar no lado desejado da curva.",sides,reference={point->ui.replace(d,d.copyFields().put("refX",point.x).put("refY",point.y).put("curveId",curve.id))});return
         }
         val polygon=if(half) CurveGeometry.half(curve.polygon,from!!,catalog.width,catalog.height) else curve.polygon
         if(polygon==null) {ui.show(d,"A divisão por esse lado separaria a curva em mais de um trecho. Indique outro lado ou faça a pintura manual.");return}
+        val warning=if(curve.areaAgrees) "" else "\nO contorno mede aproximadamente ${String.format(Locale("pt","BR"),"%.2f",curve.measuredHa)} ha; o mapa indica ${curve.hectares}. Confira a área azul."
+        confirmarPinturaPorVoz(d,ui,map,listOf(polygon),"${nome(map.nameWithoutExtension)} • Talhão ${curve.plot}\nCurva ${curve.hectares} ha • ${if(half) "metade" else "inteira"}$warning\nDiga Confirmar para pintar.")
+    }
+    private fun voiceMapKey(map:File)=chaveSessao()+"/"+map.name+"/"+map.lastModified()+"/"+map.length()
+    private fun confirmarPinturaPorVoz(d:VoiceCommands.Draft,ui:FieldVoice,map:File,polygons:List<org.locationtech.jts.geom.Polygon>,text:String) {
         val session=chaveSessao();val mapId=map.nameWithoutExtension
-        mostrarPreviaCurvas(d,ui,map,listOf(polygon),"${nome(mapId)} • Talhão ${curve.plot}\nCurva ${curve.hectares} ha • ${if(half) "metade, a partir do lado indicado" else "inteira"}.\nConfira o contorno azul e diga Confirmar para pintar. Pode dizer Corrigir ou Cancelar.",action={
+        mostrarPreviaCurvas(d,ui,map,polygons,text,numbered=false,action={
             if(!acessoConfirmado||chaveSessao()!=session) return@mostrarPreviaCurvas
             if(mapa==null||chaveAtual!=mapId) abrir(mapId)
             val current=mapa
             if(current==null||chaveAtual!=mapId) return@mostrarPreviaCurvas
-            try {current.pintarPorVoz(polygon.exteriorRing.coordinates.map {PointF(it.x.toFloat(),it.y.toFloat())});Toast.makeText(this,"Curva pintada e salva. O GPS e a orientação do mapa foram preservados.",Toast.LENGTH_LONG).show()}
+            try {current.pintarConjuntoPorVoz(polygons.map {polygon->polygon.exteriorRing.coordinates.map {PointF(it.x.toFloat(),it.y.toFloat())}});Toast.makeText(this,"Pintura salva.",Toast.LENGTH_LONG).show()}
             catch(e:Exception) {Toast.makeText(this,e.message?:"Não foi possível salvar a pintura.",Toast.LENGTH_LONG).show()}
         })
     }
     private fun mostrarPreviaCurvas(d:VoiceCommands.Draft,ui:FieldVoice,map:File,polygons:List<org.locationtech.jts.geom.Polygon>,text:String,choices:List<FieldVoice.Choice> = emptyList(),
-                                  reference:((org.locationtech.jts.geom.Coordinate)->Unit)?=null,action:(()->Unit)?=null) {
+                                  reference:((org.locationtech.jts.geom.Coordinate)->Unit)?=null,numbered:Boolean=true,action:(()->Unit)?=null) {
         curveWorker.execute {
-            try {val preview=CurvePreview.render(map,polygons);runOnUiThread {ui.show(d,text,options=choices,preview=preview.bitmap,imageTap=reference?.let {callback->{x:Float,y:Float->callback(preview.point(x,y))}},action=action)}}
+            try {val preview=CurvePreview.render(map,polygons,numbered);runOnUiThread {ui.show(d,text,options=choices,preview=preview.bitmap,imageTap=reference?.let {callback->{x:Float,y:Float->callback(preview.point(x,y))}},action=action)}}
             catch(_:Exception) {runOnUiThread {ui.show(d,"Não foi possível preparar a prévia. A pintura não foi alterada.")}}
             catch(_:OutOfMemoryError) {runOnUiThread {ui.show(d,"Memória insuficiente para conferir a pintura. Tente pelo mapa manualmente.")}}
         }
@@ -4826,20 +4857,23 @@ class MapaView(context: Context) : View(context) {
 
     fun edicaoEmAndamento():Boolean = pinturaEmAndamento()||pontos.isNotEmpty()||linhaAtual?.isNotEmpty()==true
 
-    fun pintarPorVoz(normalized:List<PointF>) {
+    fun pintarPorVoz(normalized:List<PointF>)=pintarConjuntoPorVoz(listOf(normalized))
+
+    fun pintarConjuntoPorVoz(contours:List<List<PointF>>) {
         check(!edicaoEmAndamento()) {"Conclua a edição do mapa antes de continuar."}
         val bitmap=imagem?:error("Abra o mapa antes de pintar.")
-        require(normalized.size>=4&&normalized.all {it.x.isFinite()&&it.y.isFinite()&&it.x in 0f..1f&&it.y in 0f..1f}) {"Contorno de curva inválido."}
-        val polygon=normalized.map {PointF(it.x*bitmap.width,it.y*bitmap.height)}.toMutableList()
-        require(hectaresDaArea(polygon)?.let {it>0}==true) {"Não foi possível conferir a área desta curva."}
+        require(contours.isNotEmpty()&&contours.all {normalized->normalized.size>=4&&normalized.all {it.x.isFinite()&&it.y.isFinite()&&it.x in 0f..1f&&it.y in 0f..1f}}) {"Contorno inválido."}
+        val polygons=contours.map {normalized->normalized.map {PointF(it.x*bitmap.width,it.y*bitmap.height)}.toMutableList()}
+        require(polygons.all {hectaresDaArea(it)?.let {ha->ha>0}==true}) {"Não foi possível conferir a área."}
         val preferences=context.getSharedPreferences("pinturas",0);val previous=preferences.getString(id,null)
         val pending=dataPinturaPendente
-        areas.add(polygon);coresAreas.add(Color.argb(opacidade,Color.red(corPintura),Color.green(corPintura),Color.blue(corPintura)))
+        val previousCount=areas.size
+        polygons.forEach {polygon->areas.add(polygon);coresAreas.add(Color.argb(opacidade,Color.red(corPintura),Color.green(corPintura),Color.blue(corPintura)))}
         try {
             check(salvar()) {"Não foi possível exportar a pintura. Confira o espaço do aparelho."}
             invalidate()
         } catch(error:Exception) {
-            areas.removeAt(areas.lastIndex);coresAreas.removeAt(coresAreas.lastIndex);dataPinturaPendente=pending
+            while(areas.size>previousCount) {areas.removeAt(areas.lastIndex);coresAreas.removeAt(coresAreas.lastIndex)};dataPinturaPendente=pending
             if(previous==null) preferences.edit().remove(id).commit() else preferences.edit().putString(id,previous).commit()
             atualizarResumoMapa();aoAtualizarArea?.invoke();invalidate();throw error
         }

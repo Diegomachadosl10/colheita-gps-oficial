@@ -5,7 +5,7 @@ import org.locationtech.jts.operation.linemerge.LineMerger
 import org.locationtech.jts.operation.polygonize.Polygonizer
 import org.locationtech.jts.operation.distance.DistanceOp
 import org.locationtech.jts.operation.union.UnaryUnionOp
-import org.locationtech.jts.precision.GeometryPrecisionReducer
+import org.locationtech.jts.operation.overlayng.UnaryUnionNG
 import kotlin.math.*
 
 /** Geometry remains in PDF coordinates. Viewport rotation and GPS transforms are never changed. */
@@ -14,11 +14,44 @@ internal object CurveGeometry {
     fun polygon(points:List<Coordinate>):Polygon? = try {
         if(points.size<3) null else factory.createPolygon((points+if(!points.first().equals2D(points.last())) listOf(points.first()) else emptyList()).toTypedArray()).takeIf {it.isValid&&it.area>0}
     } catch(_:Exception) {null}
+    /** Rejoin small interruptions in a terrace line only when both ends face each
+     * other and uniquely select each other. Plot/road boundaries are never moved. */
+    fun connectTerraceEnds(lines:List<LineString>):List<LineString> {
+        data class End(val line:Int,val at:Coordinate,val dx:Double,val dy:Double)
+        val ends=mutableListOf<End>()
+        for((index,line) in lines.withIndex()) {
+            if(line.length<5||line.isClosed) continue
+            val points=line.coordinates
+            for(ordered in listOf(points.toList(),points.reversed())) {
+                val point=ordered.first();val inner=ordered.drop(1).firstOrNull {it.distance(point)>=1.0}?:continue
+                val d=inner.distance(point);ends.add(End(index,point,(point.x-inner.x)/d,(point.y-inner.y)/d))
+            }
+        }
+        fun compatible(a:End,b:End):Double? {
+            if(a.line==b.line) return null
+            val d=a.at.distance(b.at);if(d<.001||d>3.0) return null
+            val x=(b.at.x-a.at.x)/d;val y=(b.at.y-a.at.y)/d
+            return d.takeIf {a.dx*x+a.dy*y>.7&&b.dx*(-x)+b.dy*(-y)>.7}
+        }
+        val nearest=ends.mapIndexed {i,a->
+            val choices=ends.indices.filter {it!=i}.mapNotNull {j->compatible(a,ends[j])?.let {j to it}}.sortedBy {it.second}
+            choices.firstOrNull()?.takeIf {choices.size==1||choices[1].second-it.second>.1}?.first
+        }
+        val result=lines.toMutableList()
+        for(i in ends.indices) {
+            val j=nearest[i]?:continue
+            if(j<=i||nearest[j]!=i) continue
+            val bridge=factory.createLineString(arrayOf(ends[i].at,ends[j].at))
+            if(lines.any {it.crosses(bridge)}) continue
+            result.add(bridge)
+        }
+        return result
+    }
     fun cells(plot:Polygon,lines:List<LineString>):List<Polygon> {
         if(lines.isEmpty()) return emptyList()
         val clipped=UnaryUnionOp.union(lines).intersection(plot)
-        var network=UnaryUnionOp.union(listOf(clipped,plot.boundary))
-        network=UnaryUnionOp.union(GeometryPrecisionReducer.reduce(network,PrecisionModel(1000.0)))
+        val precision=PrecisionModel(1000.0)
+        var network=UnaryUnionNG.union(factory.buildGeometry(listOf(clipped,plot.boundary)),precision)
         // Repair only small cartographic gaps: at most 0.35 PDF point. Every result is
         // separately validated against one printed label and the georeferenced area.
         for(tolerance in listOf(.05,.15,.35)) {
@@ -37,7 +70,7 @@ internal object CurveGeometry {
                 }
                 nearest?.let {links.add(factory.createLineString(arrayOf(point.coordinate,it)))}
             }
-            if(links.isNotEmpty()) network=UnaryUnionOp.union(listOf(network)+links)
+            if(links.isNotEmpty()) network=UnaryUnionNG.union(factory.buildGeometry(listOf(network)+links),precision)
         }
         val polygonizer=Polygonizer();polygonizer.add(network)
         return polygonizer.polygons.filterIsInstance<Polygon>().filter {plot.covers(it.interiorPoint)&&it.area>1}

@@ -16,7 +16,7 @@ internal object VoiceCommands {
         "mapas" to listOf("mapa","biblioteca"),"previsao" to listOf("previsao","tempo"),"atualizacao" to listOf("atualizacao","atualizar aplicativo"),
         "usuarios" to listOf("usuario","aprovar equipe"),"configuracoes" to listOf("configuracoes"),"inicio" to listOf("inicio","tela inicial"))
     fun norm(value:String)=Normalizer.normalize(value,Normalizer.Form.NFD).replace(Regex("\\p{M}"),"").lowercase(java.util.Locale.ROOT)
-    private val wake=Regex("^(?:d\\s*m\\s*agro|dmagro|de\\s+eme\\s+agro|deme\\s+agro)[,.:;!\\s-]*")
+    private val wake=Regex("^(?:d\\s*m\\s*agro|dmagro|de\\s+eme\\s+agro|deme\\s+agro|deneago|de[\\s-]*me\\s+agua)[,.:;!\\s-]*")
     fun wakes(text:String)=wake.containsMatchIn(norm(text).trim())
     fun withoutWake(text:String):String {val value=text.trim();val match=wake.find(norm(value));return if(match!=null) value.drop(match.value.length).trim() else value}
     fun confirms(text:String)=norm(text).trim().trim('.','!') in setOf("sim","confirma","confirmar","confirmo","pode salvar","salvar","pode registrar","registrar","pode pintar","pintar","isso mesmo","correto","enviar")
@@ -66,7 +66,7 @@ internal object VoiceCommands {
             for(key in listOf("recordId","map","curveId","photo","refX","refY")) fields.remove(key)
             for(key in listOf("plots","area","yield")) if(fields.optBoolean(key+"_derived")) {fields.remove(key);fields.remove(key+"_derived")}
         }
-        if(old.optString("plots")!=fields.optString("plots")||old.optString("ha")!=fields.optString("ha")||old.optString("map")!=fields.optString("map")) for(key in listOf("curveId","refX","refY")) fields.remove(key)
+        if(old.optString("plots")!=fields.optString("plots")||old.optString("ha")!=fields.optString("ha")||old.optString("map")!=fields.optString("map")||old.optString("paintTarget")!=fields.optString("paintTarget")) for(key in listOf("curveId","refX","refY")) fields.remove(key)
         if(old.optString("equipment")!=fields.optString("equipment")||old.optString("number")!=fields.optString("number")) {
             fields.remove("recordId")
             for(key in listOf("service","serviceDate","currentHours","nextHours")) if(fields.optBoolean(key+"_derived")) {fields.remove(key);fields.remove(key+"_derived")}
@@ -135,6 +135,8 @@ internal object VoiceCommands {
         amount(n,"produtividade|producao por hectare").takeIf {it.isNotBlank()}?.let {f.put("yield",it);f.remove("yield_derived")}
         amount(n,"talhao|talhoes").takeIf {it.isNotBlank()}?.let {f.put("plots",it);f.remove("plots_derived")}
         if(kind=="curve") {
+            if(text.contains("curva")) f.put("paintTarget","curve")
+            else if(painting||Regex("talhao.{0,15}(?:inteiro|todo|completo)").containsMatchIn(text)) {f.put("paintTarget","plot");f.remove("ha")}
             amount(n,"curva(?: de| com)?").takeIf {it.isNotBlank()}?.let {f.put("ha",it)}
             if(text.contains("metade")||text.contains("50%")||n.contains("50 %")) f.put("fraction","half") else if(Regex("inteir|toda|completa").containsMatchIn(text)||!f.has("fraction")) f.put("fraction","full")
             for(side in listOf("esquerda","direita","cima","baixo")) if(text.contains(side)) f.put("side",side)
@@ -201,7 +203,7 @@ internal object VoiceCommands {
                 (if(d.fields.optString("serviceDate").isBlank()) absent("nextHours","A revisão será em qual horímetro? Você também pode informar a data, por exemplo dia 20/11/2026.") else null)?:
                 (if(d.fields.optString("nextHours").isNotBlank()) absent("currentHours","Qual é a leitura atual do horímetro?") else null)
             "occurrence"->absent("description","O que aconteceu e onde?")
-            "curve"->absent("plots","Qual é o talhão?")?:absent("ha","Qual é a área em hectares escrita na curva?")
+            "curve"->absent("plots","Qual é o talhão?")?:if(d.fields.optString("paintTarget")=="plot") null else absent("ha","Qual é a área em hectares escrita na curva?")
             "order_close"->absent("order","Qual é o número da ordem de serviço?")
             "navigate","share"->absent("tool","Qual ferramenta deseja abrir?")
             else->"command" to "Diga o equipamento e o problema, um caminhão chegando ou saindo, um estoque ou a ferramenta que deseja abrir."
