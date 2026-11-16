@@ -5,6 +5,7 @@ The runner's release upload uses its own short-lived GitHub token. No signing ke
 is copied to the repository or required to publish an APK that is already signed.
 """
 import hashlib
+import base64
 import json
 import os
 import re
@@ -14,7 +15,7 @@ from pathlib import Path
 REPO = 'Diegomachadosl10/colheita-gps-oficial'
 
 
-def checked_files(folder):
+def checked_files(folder, download_blobs=False):
     meta = json.loads((folder / 'publication.json').read_text())
     version = meta['version']
     if not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', version):
@@ -27,6 +28,18 @@ def checked_files(folder):
         raise ValueError('O pacote contém arquivos não autorizados')
     for name, info in meta['files'].items():
         path = folder / name
+        if not path.exists() and download_blobs:
+            blob = info.get('gitBlob', '')
+            if not re.fullmatch(r'[0-9a-f]{40}', blob) or not 0 < info['size'] <= 100 * 1024 * 1024:
+                raise ValueError(f'Objeto Git ou tamanho inválido: {name}')
+            payload = api(f'repos/{REPO}/git/blobs/{blob}')
+            if payload.get('encoding') != 'base64' or payload.get('size') != info['size']:
+                raise ValueError(f'Objeto Git incompatível: {name}')
+            data = base64.b64decode(''.join(payload['content'].split()), validate=True)
+            git_hash = hashlib.sha1(f'blob {len(data)}\0'.encode() + data).hexdigest()
+            if git_hash != blob or len(data) != info['size'] or hashlib.sha256(data).hexdigest() != info['sha256']:
+                raise ValueError(f'Conteúdo do objeto Git diferente: {name}')
+            path.write_bytes(data)
         if not path.is_file() or path.stat().st_size != info['size']:
             raise ValueError(f'Tamanho diferente: {name}')
         if hashlib.sha256(path.read_bytes()).hexdigest() != info['sha256']:
@@ -45,7 +58,7 @@ def main():
     if not (folder / 'publication.json').is_file():
         print('Nenhum pacote pré-assinado para publicar.')
         return
-    meta = checked_files(folder)
+    meta = checked_files(folder, download_blobs=True)
     source = meta['sourceCommit']
     subprocess.run(['git', 'merge-base', '--is-ancestor', source, 'HEAD'], check=True)
     # Publishing helpers may change, but the app must match the tested source commit.
