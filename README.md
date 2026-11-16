@@ -2,6 +2,10 @@
 
 Android, ramificação de trabalho **dm-agro-login**. A `main` permanece intacta.
 
+## Versão 2.1.1
+
+O botão da prévia de compartilhamento agora se chama **Enviar**. A [correção está publicada para todos](https://github.com/Diegomachadosl10/colheita-gps-oficial/releases/tag/v2.1.1), código 30, com download e assinatura verificados. [Detalhes e validação](docs/ENVIO-2.1.1.md).
+
 ## Versão 2.1.0
 
 As [cinco melhorias para passagem de turno, preventiva, notificações, fotos e ajuda](docs/EVOLUCAO-2.1.0.md) estão disponíveis na [atualização estável 2.1.0](https://github.com/Diegomachadosl10/colheita-gps-oficial/releases/tag/v2.1.0). O manifesto público e o APK baixado foram verificados; o atualizador já entrega a versão 2.1.0, código 29.
