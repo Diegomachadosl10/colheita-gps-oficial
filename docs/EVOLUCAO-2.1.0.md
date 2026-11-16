@@ -23,3 +23,9 @@ Instale a atualização sobre o aplicativo existente, sem desinstalar nem limpar
 `testDebugUnitTest assembleDebug` foi concluído com **246 testes, zero falhas**, incluindo as APIs 28 e 35; os cinco testes dos scripts de publicação também passaram. A assinatura permanente do APK e as prévias claro/noturno foram verificadas.
 
 Os testes cobrem passagem do turno C à meia-noite, cortes de caminhões, exclusão de registros arquivados/concluídos, prévia e confirmação do envio, limites da preventiva, decimais brasileiros, preservação ao corrigir/restaurar equipamento e bloqueio de gravação após troca de equipe. Notificações são verificadas com metadados fictícios do protocolo do Worker existente, incluindo abertura real das opções da pendência e recusa de outra conta. Fotos são verificadas com gráficos nativos: posicionamento com margens, desfazer, orientação de câmera, hash da original, reedição e uma única imagem por pendência. O recebimento real no WhatsApp e a entrega de um aviso em aparelhos físicos continuam sujeitos à conferência de uso.
+
+## Publicação confirmada
+
+A [release estável v2.1.0](https://github.com/Diegomachadosl10/colheita-gps-oficial/releases/tag/v2.1.0) foi publicada em 16/11/2026, marcada como mais recente, com os cinco anexos conferidos por tamanho e SHA-256. A tag aponta para `01045a17107710495beeea47453632bc799525af`. O manifesto público usado pelos aplicativos já entrega o código 29, versão 2.1.0; o APK público foi baixado e teve seu hash e certificado permanente confirmados.
+
+A publicação foi concluída pelo [workflow de pacote previamente assinado](https://github.com/Diegomachadosl10/colheita-gps-oficial/actions/runs/43778025811). Os sete testes dos scripts passaram. A transferência dos anexos usa objetos Git conferidos, sem adicionar binários ao histórico da branch e sem enviar a chave privada de assinatura. Não houve implantação Firebase/Cloudflare nem alteração na main.
