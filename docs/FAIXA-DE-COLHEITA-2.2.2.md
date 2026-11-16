@@ -29,3 +29,5 @@ A primeira leitura de um mapa ainda depende de seu tamanho e da capacidade do ce
 Nenhum serviço pago novo, mudança de Firebase/Cloudflare ou alteração da assinatura permanente. A atualização preserva os dados instalados e as permissões por conta/equipe.
 
 Validação local: 303 testes Android aprovados e 7 testes do publicador aprovados. Inclui a curva 2,52 do talhão 15 do PDF original, faixas complementares ao longo do arco, gravação georreferenciada, cache de leitura compartilhado, prévia com bitmap e confirmação antes do término da fala.
+
+[Versão estável 2.2.2 publicada para todos](https://github.com/Diegomachadosl10/colheita-gps-oficial/releases/tag/v2.2.2), código 33. Manifesto público e APK de 22.961.797 bytes conferidos por download; SHA-256 `e7a9c73de861a2a10529c62765e4510864deee6eb35840fec5137cc6d3482ec7`, assinatura permanente mantida. [Publicação aprovada](https://github.com/Diegomachadosl10/colheita-gps-oficial/actions/runs/43855062189); main preservada.
