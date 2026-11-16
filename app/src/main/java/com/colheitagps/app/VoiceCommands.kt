@@ -140,6 +140,18 @@ internal object VoiceCommands {
             amount(n,"curva(?: de| com)?").takeIf {it.isNotBlank()}?.let {f.put("ha",it)}
             if(text.contains("metade")||text.contains("50%")||n.contains("50 %")) f.put("fraction","half") else if(Regex("inteir|toda|completa").containsMatchIn(text)||!f.has("fraction")) f.put("fraction","full")
             for(side in listOf("esquerda","direita","cima","baixo")) if(text.contains(side)) f.put("side",side)
+            val topDown=Regex("\\b(?:de\\s+)?cima\\s+(?:para|pra|p|a)\\s+baixo\\b").containsMatchIn(text)
+            val bottomUp=Regex("\\b(?:de\\s+)?baixo\\s+(?:para|pra|p|a)\\s+cima\\b").containsMatchIn(text)
+            val top=Regex("\\b(?:cima|superior)\\b").containsMatchIn(text)
+            val bottom=Regex("\\b(?:baixo|inferior)\\b").containsMatchIn(text)
+            when {
+                topDown&&!bottomUp->f.put("harvestDirection","top_down")
+                bottomUp&&!topDown->f.put("harvestDirection","bottom_up")
+                top&&!bottom->f.put("harvestDirection","top_down")
+                bottom&&!top->f.put("harvestDirection","bottom_up")
+                top||bottom||Regex("\\b(?:esquerd[ao]|direit[ao])\\b").containsMatchIn(text)->f.remove("harvestDirection")
+            }
+            if(topDown||bottomUp||(f.optString("fraction")=="half"&&(top||bottom))) {if(f.optString("side") in setOf("cima","baixo")) f.remove("side")}
             if(text.contains("carreador")) f.put("road",true)
         }
         if(kind=="navigate"||kind=="share") {f.put("tool",tool);f.put("photos",!text.contains("sem foto"));f.put("image",text.contains("imagem"));f.put("all",text.contains("todas")||text.contains("todos"))}

@@ -123,9 +123,10 @@ internal class FieldVoice(private val activity:Activity,private val scope:()->St
         ui.add(body,row,8)
         val created=AlertDialog.Builder(activity).setTitle("Comandos do DM AGRO").setView(ScrollView(activity).apply {addView(body)})
             .setNegativeButton("Cancelar") {_,_->close()}.setNeutralButton("Escrever",null).setPositiveButton("Confirmar",null).create()
-        dialog=created;created.setOnShowListener {created.getButton(AlertDialog.BUTTON_POSITIVE).apply {isEnabled=false;setOnClickListener {execute()}};created.window?.decorView?.viewTreeObserver?.addOnWindowFocusChangeListener {sync()};retries=0;sync()}
+        dialog=created;created.setOnShowListener {created.window?.decorView?.viewTreeObserver?.addOnWindowFocusChangeListener {sync()};retries=0;sync()}
         created.setOnDismissListener {stop();tts?.stop();speaking=false;image?.setImageDrawable(null);bitmap?.recycle();bitmap=null;dialog=null;draft=null;confirm=null;choices=emptyList();onImageTap=null;status(if(enabled) "Voz ativada • diga DM AGRO no início" else "Voz desativada");sync()}
         created.show()
+        created.getButton(AlertDialog.BUTTON_POSITIVE).apply {isEnabled=false;setOnClickListener {execute()}}
         created.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {commandInput?.visibility=View.VISIBLE;interpretButton?.visibility=View.VISIBLE;commandInput?.requestFocus()}
         commandInput?.visibility=View.GONE;interpretButton?.visibility=View.GONE
         if(initial!=null) receive(initial)
@@ -142,7 +143,7 @@ internal class FieldVoice(private val activity:Activity,private val scope:()->St
             val said=words(text)
             val found=choices.filter {said.isNotEmpty()&&words(it.label).containsAll(said)}
             if(found.size==1) {found.single().action();return}
-            val spatial=draft?.kind=="curve"&&Regex("\\b(?:esquerda|direita|cima|baixo)\\b").containsMatchIn(VoiceCommands.norm(text))
+            val spatial=draft?.kind=="curve"&&Regex("\\b(?:esquerda|direita|cima|baixo|superior|inferior)\\b").containsMatchIn(VoiceCommands.norm(text))
             if(!spatial&&!VoiceCommands.wakes(text)&&!Regex("^(?:nao|corrig|na verdade|mude|troqu|coloc|abr|ir para)").containsMatchIn(VoiceCommands.norm(text).trim())) {
                 speak("Qual opção? Diga primeira, segunda ou escolha na tela.");return
             }
@@ -162,7 +163,8 @@ internal class FieldVoice(private val activity:Activity,private val scope:()->St
         image?.visibility=if(preview==null) View.GONE else View.VISIBLE;image?.setImageBitmap(preview)
         choiceColumn?.removeAllViews();for((i,option) in options.withIndex()) choiceColumn?.addView(Button(activity).apply {this.text="${i+1}. ${option.label}";AppTheme.action(this);setOnClickListener {if(isCurrent(value)) option.action()}})
         dialog?.getButton(AlertDialog.BUTTON_POSITIVE)?.isEnabled=action!=null
-        speak(if(value.kind=="curve") text.take(230) else if(options.isNotEmpty()) "${options.size} opções encontradas. Diga primeira, segunda ou escolha na tela." else text.take(230))
+        speak(if(value.kind=="curve"&&action!=null) {if(text.contains("mapa indica")) "Confira a pintura e o aviso de área na tela. Pode confirmar." else "Confira a pintura. Pode confirmar."}
+            else if(value.kind=="curve") text.take(230) else if(options.isNotEmpty()) "${options.size} opções encontradas. Diga primeira, segunda ou escolha na tela." else text.take(230))
     }
     private fun execute() {val action=confirm?:return;if(!authorized()||scope()!=capturedScope) {close();return};confirm=null;close();action()}
     private fun speak(text:String) {

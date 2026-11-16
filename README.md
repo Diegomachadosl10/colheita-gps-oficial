@@ -2,6 +2,10 @@
 
 Android, ramificação de trabalho **dm-agro-login**. A `main` permanece intacta.
 
+## Versão 2.2.2
+
+[Metade como faixa de colheita](docs/FAIXA-DE-COLHEITA-2.2.2.md), acompanhando toda a curva de cima para baixo ou de baixo para cima, com prévia reutilizando o mapa aberto e confirmação falada mais curta.
+
 ## Versão 2.2.1
 
 [Atualização 2.2.1 publicada para todos](https://github.com/Diegomachadosl10/colheita-gps-oficial/releases/tag/v2.2.1), código 32, com APK público e assinatura verificados. [Correção da pintura por voz](docs/PINTURA-SIMPLES-2.2.1.md): talhão inteiro, curva inteira ou metade, com os exemplos reais do talhão 11 do K/39. Carreadores preservados, procura da parte correta do mapa e confirmação simplificada.

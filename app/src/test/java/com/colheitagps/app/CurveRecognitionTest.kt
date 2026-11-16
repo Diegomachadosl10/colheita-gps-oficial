@@ -15,6 +15,20 @@ import kotlin.math.abs
 @Config(sdk=[28],manifest=Config.NONE,application=Application::class)
 class CurveRecognitionTest {
     private fun box(x:Double,y:Double,w:Double,h:Double)=CurveGeometry.polygon(listOf(Coordinate(x,y),Coordinate(x+w,y),Coordinate(x+w,y+h),Coordinate(x,y+h)))!!
+    @Test fun harvestingHalfFollowsBothCurvedBordersAcrossTheEntireLength() {
+        val top=listOf(Coordinate(0.0,20.0),Coordinate(25.0,0.0),Coordinate(50.0,40.0),Coordinate(75.0,10.0),Coordinate(100.0,30.0))
+        val polygon=CurveGeometry.polygon(top+top.reversed().map {Coordinate(it.x,it.y+20)})!!
+        val upper=org.locationtech.jts.operation.union.UnaryUnionOp.union(CurveGeometry.harvestHalf(polygon,true,1.0,1.0))
+        val lower=org.locationtech.jts.operation.union.UnaryUnionOp.union(CurveGeometry.harvestHalf(polygon,false,1.0,1.0))
+        assertEquals(polygon.area/2,upper.area,.00001);assertEquals(polygon.area/2,lower.area,.00001)
+        assertEquals(0.0,upper.intersection(lower).area,.00001);assertEquals(0.0,upper.union(lower).symDifference(polygon).area,.00001)
+        for(i in 0 until top.lastIndex) {
+            val a=top[i];val b=top[i+1];val x=(a.x+b.x)/2;val y=(a.y+b.y)/2
+            val high=CurveGeometry.factory.createPoint(Coordinate(x,y+5));val low=CurveGeometry.factory.createPoint(Coordinate(x,y+15))
+            assertTrue("A faixa superior deve chegar a toda a curva",upper.covers(high));assertFalse(upper.covers(low))
+            assertTrue(lower.covers(low));assertFalse(lower.covers(high))
+        }
+    }
     @Test fun smallVectorGapsCanBeRepairedWithoutMergingTheAdjacentTerraces() {
         val plot=box(0.0,0.0,100.0,100.0)
         val line=CurveGeometry.factory.createLineString(arrayOf(Coordinate(.01,50.0),Coordinate(100.0,50.0)))
@@ -47,9 +61,7 @@ class CurveRecognitionTest {
         assertTrue(CurveCatalog.recognize(parsed.copy(paths=listOf(paths[0],paths[1].copy(group=8)))) {it.area/1000}.plots.isEmpty())
         assertTrue(CurveCatalog.recognize(parsed.copy(labels=labels+PdfCurveReader.Label("12",Coordinate(25.0,60.0)))) {it.area/1000}.plots.isEmpty())
     }
-    @Test fun halfPaintingUsesAreaAndTheChosenSideAndSpatialTiesAreNotResolvedArbitrarily() {
-        val polygon=box(0.0,0.0,100.0,30.0);val left=CurveGeometry.half(polygon,Coordinate(-10.0,15.0))!!
-        assertEquals(polygon.area/2,left.area,.01);assertTrue(left.envelopeInternal.maxX<50.01)
+    @Test fun spatialTiesAreNotResolvedArbitrarilyAndDistanceUsesOriginalMapProportions() {
         val a=box(0.0,0.0,1.0,1.0);val b=box(2.0,0.0,1.0,1.0)
         assertNull(CurveGeometry.uniqueNearest(listOf(a,b),Coordinate(1.5,.5),.01))
         assertEquals(0,CurveGeometry.uniqueNearest(listOf(a,b),Coordinate(-1.0,.5),.01))
@@ -91,14 +103,27 @@ class CurveRecognitionTest {
         assertTrue(result.contains(VoiceCommands.parse("Deneago, quero que pinte o talhão 11 do K39 inteiro")))
         assertTrue(result.contains(VoiceCommands.parse("Dê-me água, quero que pinte a curva de 2,99 do talhão 11 do K39")))
         assertTrue(result.contains(VoiceCommands.parse("Dê-me água, quero que pinte metade da curva de 2,99 do talhão 11 do K39")))
-        val half=CurveGeometry.half(curve.polygon,Coordinate(curve.polygon.envelopeInternal.minX-.01,curve.polygon.centroid.y),result.width,result.height)
-        assertNotNull("A curva 2,99 pode ser pintada pela metade",half)
-        assertEquals(curve.polygon.area/2,half!!.area,curve.polygon.area*.0001)
+        val halves=CurveGeometry.harvestHalf(curve.polygon,true,result.width,result.height)
+        assertTrue("A curva 2,99 pode ser pintada pela metade",halves.isNotEmpty())
+        assertEquals(curve.polygon.area/2,halves.sumOf {it.area},curve.polygon.area*.0001)
+        val photographed=result.matches("15","2,52").single()
+        val high=CurveGeometry.harvestHalf(photographed.polygon,true,result.width,result.height)
+        val low=CurveGeometry.harvestHalf(photographed.polygon,false,result.width,result.height)
+        assertEquals(photographed.polygon.area/2,high.sumOf {it.area},photographed.polygon.area*.00001)
+        assertEquals(photographed.polygon.area/2,low.sumOf {it.area},photographed.polygon.area*.00001)
+        val united=org.locationtech.jts.operation.union.UnaryUnionOp.union(high+low)
+        assertEquals(0.0,united.symDifference(photographed.polygon).area,photographed.polygon.area*.00001)
+        assertEquals(photographed.polygon.envelopeInternal.minX,high.minOf {it.envelopeInternal.minX},.000001)
+        assertEquals(photographed.polygon.envelopeInternal.maxX,high.maxOf {it.envelopeInternal.maxX},.000001)
+        System.getenv("DM_AGRO_CURVE_REPORT")?.let {report->
+            fun points(polygons:List<Polygon>)=org.json.JSONArray(polygons.map {p->org.json.JSONArray(p.coordinates.map {org.json.JSONArray().put(it.x).put(it.y)})})
+            File(report+".harvest.json").writeText(org.json.JSONObject().put("original",points(listOf(photographed.polygon))).put("top",points(high)).put("bottom",points(low)).toString(2))
+        }
         val cached=CurveCatalog.load(context,pdf,File(context.cacheDir,"real-map-check"));assertEquals(result.json().toString(),cached.json().toString())
         System.getenv("DM_AGRO_CURVE_REPORT")?.let {report->
             val examples=org.json.JSONObject().put("plot11",org.json.JSONArray(plot.polygons.map {p->org.json.JSONArray(p.coordinates.map {org.json.JSONArray().put(it.x).put(it.y)})}))
                 .put("curve299",org.json.JSONArray(curve.polygon.coordinates.map {org.json.JSONArray().put(it.x).put(it.y)}))
-                .put("half299",org.json.JSONArray(half.coordinates.map {org.json.JSONArray().put(it.x).put(it.y)}))
+                .put("half299",org.json.JSONArray(halves.map {p->org.json.JSONArray(p.coordinates.map {org.json.JSONArray().put(it.x).put(it.y)})}))
             File(report+".examples.json").writeText(examples.toString(2))
         }
     }

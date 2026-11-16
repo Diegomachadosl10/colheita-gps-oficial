@@ -13,6 +13,21 @@ import java.time.LocalDateTime
 @Config(sdk=[28,35],manifest=Config.NONE,application=Application::class)
 class VoiceCommandsTest {
     private val now=LocalDateTime.of(2026,11,16,1,20)
+    @Test fun harvestDirectionUsesTheStartOfThePhraseAndNeverTreatsLeftOrRightAsHalfPainting() {
+        val original=VoiceCommands.parse("DM AGRO pinte metade da curva de 2,52 do talhão 15 do K39",now=now)
+        for((said,direction) in listOf("de cima para baixo" to "top_down","de cima pra baixo" to "top_down","de baixo para cima" to "bottom_up","metade superior" to "top_down","pela parte inferior" to "bottom_up")) {
+            val result=VoiceCommands.parse(said,original,now=now)
+            assertEquals(said,direction,result.fields.getString("harvestDirection"));assertEquals("2,52",result.fields.getString("ha"));assertEquals("15",result.fields.getString("plots"))
+        }
+        val corrected=VoiceCommands.parse("20 metade da curva de cima para baixo",original,now=now)
+        assertEquals("top_down",corrected.fields.getString("harvestDirection"));assertEquals("2,52",corrected.fields.getString("ha"));assertFalse(corrected.fields.has("side"))
+        val reverse=VoiceCommands.parse("não, de baixo para cima",corrected,now=now)
+        assertEquals("bottom_up",reverse.fields.getString("harvestDirection"))
+        assertFalse(VoiceCommands.parse("pela esquerda",reverse,now=now).fields.has("harvestDirection"))
+        assertFalse(VoiceCommands.parse("da direita para a esquerda",reverse,now=now).fields.has("harvestDirection"))
+        val fromAbove=VoiceCommands.parse("DM AGRO pinte metade da curva de 2,52 do talhão 15 começando por cima",now=now)
+        assertEquals("top_down",fromAbove.fields.getString("harvestDirection"));assertFalse("O sentido de colheita não escolhe uma curva diferente",fromAbove.fields.has("side"))
+    }
     @Test fun theThreeSpokenK39ExamplesDistinguishTheWholePlotFromOneCurveAndHalfACurve() {
         val whole=VoiceCommands.parse("Deneago, quero que pinte o talhão 11 do K39 inteiro",now=now)
         assertEquals("curve",whole.kind);assertEquals("plot",whole.fields.getString("paintTarget"));assertEquals("11",whole.fields.getString("plots"));assertEquals("K/39",whole.fields.getString("lot"));assertNull(VoiceCommands.missing(whole))

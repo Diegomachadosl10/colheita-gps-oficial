@@ -75,31 +75,45 @@ internal object CurveGeometry {
         val polygonizer=Polygonizer();polygonizer.add(network)
         return polygonizer.polygons.filterIsInstance<Polygon>().filter {plot.covers(it.interiorPoint)&&it.area>1}
     }
-    /** Sweep from the indicated road/side until exactly half the polygon area is reached. */
-    fun half(polygon:Polygon,reference:Coordinate,scaleX:Double=1.0,scaleY:Double=1.0):Polygon? {
-        if(scaleX!=1.0||scaleY!=1.0) {
-            require(scaleX.isFinite()&&scaleY.isFinite()&&scaleX>0&&scaleY>0)
-            val transform=org.locationtech.jts.geom.util.AffineTransformation.scaleInstance(scaleX,scaleY)
-            val result=half(transform.transform(polygon) as Polygon,Coordinate(reference.x*scaleX,reference.y*scaleY))?:return null
-            return transform.inverse.transform(result) as? Polygon
+    /** Half of every vertical cross-section, following both curved borders across
+     * the entire strip. PDF Y grows downward; this never means left/right progress. */
+    fun harvestHalf(polygon:Polygon,fromTop:Boolean,width:Double,height:Double):List<Polygon> {
+        require(width.isFinite()&&height.isFinite()&&width>0&&height>0)
+        require(polygon.isValid&&polygon.numInteriorRing==0&&polygon.numPoints<=10000)
+        val transform=org.locationtech.jts.geom.util.AffineTransformation.scaleInstance(width,height)
+        val original=transform.transform(polygon) as Polygon
+        val coordinates=original.exteriorRing.coordinates
+        val edges=coordinates.toList().zipWithNext().filter {abs(it.first.x-it.second.x)>1e-12}
+        val xs=coordinates.map {it.x}.distinct().sorted()
+        val pieces=mutableListOf<Polygon>()
+        fun y(edge:Pair<Coordinate,Coordinate>,x:Double):Double {
+            val (a,b)=edge;return a.y+(x-a.x)*(b.y-a.y)/(b.x-a.x)
         }
-        val center=polygon.centroid.coordinate;val distance=center.distance(reference)
-        if(distance<1e-8) return null
-        val ux=(center.x-reference.x)/distance;val uy=(center.y-reference.y)/distance
-        val vx=-uy;val vy=ux
-        val coords=polygon.exteriorRing.coordinates
-        val projections=coords.map {(it.x-reference.x)*ux+(it.y-reference.y)*uy}
-        val across=coords.map {(it.x-reference.x)*vx+(it.y-reference.y)*vy}
-        val margin=max(polygon.envelopeInternal.width,polygon.envelopeInternal.height)+1
-        val start=projections.min()-margin;val lowV=across.min()-margin;val highV=across.max()+margin
-        fun point(u:Double,v:Double)=Coordinate(reference.x+u*ux+v*vx,reference.y+u*uy+v*vy)
-        fun cut(end:Double):Geometry {
-            val box=factory.createPolygon(arrayOf(point(start,lowV),point(end,lowV),point(end,highV),point(start,highV),point(start,lowV)))
-            return polygon.intersection(box)
+        for(i in 0 until xs.lastIndex) {
+            val left=xs[i];val right=xs[i+1];val middle=(left+right)/2
+            if(right-left<1e-10) continue
+            val crossed=edges.filter {middle>min(it.first.x,it.second.x)&&middle<max(it.first.x,it.second.x)}.sortedBy {y(it,middle)}
+            check(crossed.size%2==0) {"Não foi possível conferir a faixa desta curva."}
+            for(j in crossed.indices step 2) {
+                val upper=crossed[j];val lower=crossed[j+1]
+                val ul=y(upper,left);val ur=y(upper,right);val ll=y(lower,left);val lr=y(lower,right)
+                val ml=(ul+ll)/2;val mr=(ur+lr)/2
+                val points=if(fromTop) listOf(Coordinate(left,ul),Coordinate(right,ur),Coordinate(right,mr),Coordinate(left,ml))
+                    else listOf(Coordinate(left,ml),Coordinate(right,mr),Coordinate(right,lr),Coordinate(left,ll))
+                CurveGeometry.polygon(points)?.let(pieces::add)
+            }
         }
-        var low=projections.min();var high=projections.max()
-        repeat(48) {val mid=(low+high)/2;if(cut(mid).area<polygon.area/2) low=mid else high=mid}
-        return (cut((low+high)/2) as? Polygon)?.takeIf {it.isValid&&abs(it.area/polygon.area-.5)<.0001}
+        if(pieces.isEmpty()) return emptyList()
+        val precision=PrecisionModel(10000000.0)
+        val union=UnaryUnionNG.union(factory.buildGeometry(pieces),precision)
+        val result=org.locationtech.jts.operation.overlayng.OverlayNG.overlay(union,original,org.locationtech.jts.operation.overlayng.OverlayNG.INTERSECTION,precision)
+        check(result.isValid&&abs(result.area/original.area-.5)<.00001) {"Não foi possível conferir a metade desta curva."}
+        // Discard only numerical dust that would collapse to zero when Android
+        // stores pixels as Float; retain small, genuine pieces of the band.
+        val parts=(0 until result.numGeometries).map {result.getGeometryN(it)}.filterIsInstance<Polygon>().filter {it.area>maxOf(1e-8,original.area*1e-8)}.sortedBy {it.area}
+        check(abs(parts.sumOf {it.area}-result.area)<original.area*.000001) {"Não foi possível conferir todos os trechos da faixa."}
+        check(parts.isNotEmpty()&&parts.all {it.numInteriorRing==0}) {"Confira a curva manualmente antes de pintar."}
+        return parts.map {transform.inverse.transform(it) as Polygon}
     }
     fun uniqueNearest(curves:List<Polygon>,reference:Coordinate,tieDistance:Double,scaleX:Double=1.0,scaleY:Double=1.0):Int? {
         if(scaleX!=1.0||scaleY!=1.0) {

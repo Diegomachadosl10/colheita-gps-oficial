@@ -61,6 +61,20 @@ class MainActivity : Activity() {
     private var voiceStatus:TextView?=null
     private val curveWorker=java.util.concurrent.Executors.newSingleThreadExecutor {r->Thread(r,"dm-agro-curves").apply {isDaemon=true}}
     private val voiceCatalogs=mutableMapOf<String,CurveCatalog>()
+    private val voiceLoads=mutableMapOf<String,java.util.concurrent.CompletableFuture<CurveCatalog>>()
+    private fun solicitarCatalogoVoz(file:File):java.util.concurrent.CompletableFuture<CurveCatalog> {
+        val key=voiceMapKey(file)
+        voiceCatalogs[key]?.let {return java.util.concurrent.CompletableFuture.completedFuture(it)}
+        voiceLoads[key]?.let {return it}
+        val store=teamStore!!
+        val future=java.util.concurrent.CompletableFuture.supplyAsync({CurveCatalog.load(applicationContext,file,store.cache)},curveWorker)
+        voiceLoads[key]=future
+        future.whenComplete {catalog,_->runOnUiThread {
+            if(voiceLoads[key]===future) voiceLoads.remove(key)
+            if(!isDestroyed&&voiceMapKey(file)==key&&catalog!=null) voiceCatalogs[key]=catalog
+        }}
+        return future
+    }
     private fun voz():FieldVoice {
         fieldVoice?.let {return it}
         val assistant=FieldVoice(this,{chaveSessao()},{acessoConfirmado&&teamAccess!=null&&!isFinishing&&!isDestroyed},{telaAtual=="inicio"&&mapa==null},
@@ -131,9 +145,13 @@ class MainActivity : Activity() {
             if(candidates.size==1||(lot.isBlank()&&current!=null)) {ui.replace(d,d.copyFields().put("map",(current?:candidates.single()).nameWithoutExtension));return}
             if(candidates.size>1) {
                 ui.show(d,"Procurando o talhão ${f.optString("plots")} nos mapas do ${f.optString("lot")}…")
-                val store=teamStore!!;val session=chaveSessao()
-                curveWorker.execute {
-                    val found=candidates.mapNotNull {file->try {file to CurveCatalog.load(applicationContext,file,store.cache)} catch(_:Exception) {null} catch(_:OutOfMemoryError) {null}}
+                val session=chaveSessao()
+                val pending=candidates.map {file->file to solicitarCatalogoVoz(file)}
+                pending.firstOrNull {it.first==current}?.second?.whenComplete {catalog,_->runOnUiThread {
+                    if(catalog?.contains(d)==true&&ui.isCurrent(d)&&chaveSessao()==session) ui.replace(d,d.copyFields().put("map",current!!.nameWithoutExtension))
+                }}
+                java.util.concurrent.CompletableFuture.allOf(*pending.map {it.second}.toTypedArray()).whenComplete {_,_->
+                    val found=pending.mapNotNull {(file,future)->try {future.getNow(null)?.let {file to it}} catch(_:Exception) {null}}
                     runOnUiThread {
                         if(ui.isCurrent(d)&&chaveSessao()==session) {
                             found.forEach {(file,catalog)->voiceCatalogs[voiceMapKey(file)]=catalog}
@@ -151,12 +169,13 @@ class MainActivity : Activity() {
         val catalog=voiceCatalogs[key]
         if(catalog==null) {
             ui.show(d,"Lendo talhões, áreas e contornos deste PDF. A pintura só será feita após sua confirmação.")
-            val store=teamStore!!;val session=chaveSessao()
-            curveWorker.execute {
-                try {val found=CurveCatalog.load(applicationContext,map,store.cache);runOnUiThread {if(ui.isCurrent(d)&&chaveSessao()==session) {voiceCatalogs[key]=found;prepararCurvaPorVoz(d,ui)}}}
-                catch(e:Exception) {runOnUiThread {ui.show(d,e.message?:"Não foi possível reconhecer os contornos com segurança. Use a pintura manual.")}}
-                catch(_:OutOfMemoryError) {runOnUiThread {ui.show(d,"Memória insuficiente para analisar o PDF. Use a pintura manual neste aparelho.")}}
-            };return
+            val session=chaveSessao()
+            solicitarCatalogoVoz(map).whenComplete {found,error->runOnUiThread {
+                if(ui.isCurrent(d)&&chaveSessao()==session) {
+                    if(found!=null) {voiceCatalogs[key]=found;prepararCurvaPorVoz(d,ui)}
+                    else ui.show(d,error?.cause?.message?:"Não foi possível reconhecer este mapa. Confira o PDF antes de pintar.")
+                }
+            }};return
         }
         if(f.optString("paintTarget")=="plot") {
             if(f.optString("fraction")=="half") {ui.show(d,"Para pintar metade de uma curva, diga também a área dela. Exemplo: metade da curva de 2,99 do talhão 11.");return}
@@ -180,19 +199,17 @@ class MainActivity : Activity() {
             mostrarPreviaCurvas(d,ui,map,matches.map {it.polygon},"Há ${matches.size} curvas de ${f.optString("ha")} ha. Qual delas? Escolha pelo número ou toque perto da curva desejada.",choices,reference={point->ui.replace(d,d.copyFields().put("refX",point.x).put("refY",point.y))});return
         }
         val curve=selected;val half=f.optString("fraction")=="half"
-        var from=reference
-        if(from==null&&f.optString("side").isNotBlank()) {
-            val b=curve.polygon.envelopeInternal;val c=curve.polygon.centroid.coordinate
-            from=when(f.getString("side")) {"esquerda"->org.locationtech.jts.geom.Coordinate(b.minX-.01,c.y);"direita"->org.locationtech.jts.geom.Coordinate(b.maxX+.01,c.y);"cima"->org.locationtech.jts.geom.Coordinate(c.x,b.minY-.01);else->org.locationtech.jts.geom.Coordinate(c.x,b.maxY+.01)}
+        val direction=f.optString("harvestDirection")
+        if(half&&direction !in setOf("top_down","bottom_up")) {
+            val directions=listOf("top_down" to "De cima para baixo","bottom_up" to "De baixo para cima").map {(value,label)->FieldVoice.Choice(label) {ui.replace(d,d.copyFields().put("harvestDirection",value).put("curveId",curve.id))}}
+            mostrarPreviaCurvas(d,ui,map,listOf(curve.polygon),"De cima para baixo ou de baixo para cima? A faixa acompanha a curva inteira.",directions);return
         }
-        if(half&&from==null) {
-            val sides=listOf("esquerda","direita","cima","baixo").map {side->FieldVoice.Choice(side.replaceFirstChar {it.uppercase()}) {ui.replace(d,d.copyFields().put("side",side).put("curveId",curve.id))}}
-            mostrarPreviaCurvas(d,ui,map,listOf(curve.polygon),"Qual metade? Diga esquerda, direita, cima ou baixo. Você também pode tocar no lado desejado da curva.",sides,reference={point->ui.replace(d,d.copyFields().put("refX",point.x).put("refY",point.y).put("curveId",curve.id))});return
-        }
-        val polygon=if(half) CurveGeometry.half(curve.polygon,from!!,catalog.width,catalog.height) else curve.polygon
-        if(polygon==null) {ui.show(d,"A divisão por esse lado separaria a curva em mais de um trecho. Indique outro lado ou faça a pintura manual.");return}
+        val polygons=try {if(half) CurveGeometry.harvestHalf(curve.polygon,direction=="top_down",catalog.width,catalog.height) else listOf(curve.polygon)}
+            catch(_:Exception) {ui.show(d,"Não consegui conferir a faixa desta curva. A pintura não foi alterada.");return}
+        if(polygons.isEmpty()) {ui.show(d,"Não consegui conferir a faixa desta curva. A pintura não foi alterada.");return}
         val warning=if(curve.areaAgrees) "" else "\nO contorno mede aproximadamente ${String.format(Locale("pt","BR"),"%.2f",curve.measuredHa)} ha; o mapa indica ${curve.hectares}. Confira a área azul."
-        confirmarPinturaPorVoz(d,ui,map,listOf(polygon),"${nome(map.nameWithoutExtension)} • Talhão ${curve.plot}\nCurva ${curve.hectares} ha • ${if(half) "metade" else "inteira"}$warning\nDiga Confirmar para pintar.")
+        val progress=if(!half) "inteira" else if(direction=="top_down") "metade • de cima para baixo" else "metade • de baixo para cima"
+        confirmarPinturaPorVoz(d,ui,map,polygons,"${nome(map.nameWithoutExtension)} • Talhão ${curve.plot}\nCurva ${curve.hectares} ha • $progress$warning\nDiga Confirmar para pintar.")
     }
     private fun voiceMapKey(map:File)=chaveSessao()+"/"+map.name+"/"+map.lastModified()+"/"+map.length()
     private fun confirmarPinturaPorVoz(d:VoiceCommands.Draft,ui:FieldVoice,map:File,polygons:List<org.locationtech.jts.geom.Polygon>,text:String) {
@@ -208,8 +225,9 @@ class MainActivity : Activity() {
     }
     private fun mostrarPreviaCurvas(d:VoiceCommands.Draft,ui:FieldVoice,map:File,polygons:List<org.locationtech.jts.geom.Polygon>,text:String,choices:List<FieldVoice.Choice> = emptyList(),
                                   reference:((org.locationtech.jts.geom.Coordinate)->Unit)?=null,numbered:Boolean=true,action:(()->Unit)?=null) {
+        val background=if(chaveAtual==map.nameWithoutExtension) mapa?.imagemParaPrevia() else null
         curveWorker.execute {
-            try {val preview=CurvePreview.render(map,polygons,numbered);runOnUiThread {ui.show(d,text,options=choices,preview=preview.bitmap,imageTap=reference?.let {callback->{x:Float,y:Float->callback(preview.point(x,y))}},action=action)}}
+            try {val preview=if(background!=null&&!background.isRecycled) CurvePreview.render(background,polygons,numbered) else CurvePreview.render(map,polygons,numbered);runOnUiThread {ui.show(d,text,options=choices,preview=preview.bitmap,imageTap=reference?.let {callback->{x:Float,y:Float->callback(preview.point(x,y))}},action=action)}}
             catch(_:Exception) {runOnUiThread {ui.show(d,"Não foi possível preparar a prévia. A pintura não foi alterada.")}}
             catch(_:OutOfMemoryError) {runOnUiThread {ui.show(d,"Memória insuficiente para conferir a pintura. Tente pelo mapa manualmente.")}}
         }
@@ -262,7 +280,7 @@ class MainActivity : Activity() {
             .setNegativeButton("Voltar") { _, _ -> moveTaskToBack(true) }.show()
     }
     private fun openTeam(access: TeamAccess, id: String) {
-        fieldVoice?.close();voiceCatalogs.clear()
+        fieldVoice?.close();voiceCatalogs.clear();voiceLoads.clear()
         notificationRoute=null;notificationResolving=false
         if(teamStore?.team!=id||teamAccess?.uid!=access.uid) {buscaEstoque="";buscaEquipamento="";buscaMapas="";filtroParadaChuva=false}
         salvarRascunhoAtivo?.invoke();salvarRascunhoAtivo=null;receberFotoEstoque=null
@@ -3766,6 +3784,8 @@ class MainActivity : Activity() {
         visual.aoSalvar={changed->if(changed&&teamStore?.team==savedTeam&&teamAccess?.uid==savedUid) getSharedPreferences("datas_mapas_${savedTeam}_${savedUid}",0).edit().putString(id,archiveDate()).apply()}
         mapa = visual
         telaAtual = "mapa"
+        val source=File(pasta(),"$id.pdf")
+        if(fieldVoice?.enabled==true&&source.isFile) solicitarCatalogoVoz(source)
         returnToParent = { biblioteca() }
         pausarSincronizacao()
         visual.aoEditarArea = { ferramenta(7, manterPontos = true) }
@@ -4854,6 +4874,8 @@ class MapaView(context: Context) : View(context) {
     }
 
     fun pinturaEmAndamento():Boolean = areaEmEdicao>=0||(modo==7&&pontos.isNotEmpty())
+
+    fun imagemParaPrevia():Bitmap?=imagem?.takeUnless {it.isRecycled}
 
     fun edicaoEmAndamento():Boolean = pinturaEmAndamento()||pontos.isNotEmpty()||linhaAtual?.isNotEmpty()==true
 

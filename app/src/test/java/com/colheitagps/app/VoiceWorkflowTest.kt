@@ -41,6 +41,34 @@ class VoiceWorkflowTest {
         return FieldVoice(host.activity,{host.scope()},{host.active()},{false},{d,ui->operations.prepare(d,ui)},{ }).also {it.open()}
     }
     private fun rows(h:Workspace,group:String)=FieldReports.rows(h.records[group]?:JSONArray())
+    @Test fun paintingCanBeConfirmedImmediatelyWithoutWaitingForALongSpokenExplanation() {
+        val h=Workspace();var confirmed=0
+        val voice=FieldVoice(h.activity,{h.scope()},{h.active()},{false},{draft,ui->
+            ui.show(draft,"Curva 2,52 • metade de cima para baixo. "+"Detalhes visíveis na tela. ".repeat(20),action={confirmed++})
+        },{})
+        voice.open("DM AGRO pinte metade da curva de 2,52 do talhão 15 de cima para baixo")
+        val dialog=ShadowAlertDialog.getLatestAlertDialog()
+        assertTrue(dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).isEnabled)
+        assertTrue("A resposta falada precisa ser curta",ReflectionHelpers.getField<String>(voice,"pendingSpeech").length<80)
+        Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+        assertTrue("A abertura da janela não pode desativar uma confirmação já pronta",dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).isEnabled)
+        dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick()
+        assertEquals(1,confirmed);voice.destroy()
+    }
+    @Test fun preparingTheSameOpenMapTwiceSharesOneBackgroundRead() {
+        val pdf=System.getenv("DM_AGRO_CURVE_PDF")?.let(::File)?:return
+        val main=Robolectric.buildActivity(MainActivity::class.java).get()
+        ReflectionHelpers.setField(main,"teamAccess",TeamAccess("op",mapOf("papel" to "operador","status" to "aprovado","frenteId" to "santo_inacio","turno" to "C")))
+        ReflectionHelpers.setField(main,"teamStore",TeamStore(main.applicationContext,"santo_inacio_C"))
+        val worker=ReflectionHelpers.getField<java.util.concurrent.ExecutorService>(main,"curveWorker")
+        val gate=java.util.concurrent.CountDownLatch(1)
+        worker.execute {gate.await(10,java.util.concurrent.TimeUnit.SECONDS)}
+        val method=main.javaClass.getDeclaredMethod("solicitarCatalogoVoz",File::class.java).apply {isAccessible=true}
+        val a=method.invoke(main,pdf) as java.util.concurrent.CompletableFuture<*>
+        val b=method.invoke(main,pdf) as java.util.concurrent.CompletableFuture<*>
+        try {assertSame(a,b)} finally {gate.countDown()}
+        assertTrue((a.get(30,java.util.concurrent.TimeUnit.SECONDS) as CurveCatalog).matches("15","2,52").isNotEmpty());worker.shutdownNow()
+    }
     @Test fun homeListeningIsOptInScopedToTheAccountAndStopsWhenTheAppPauses() {
         val h=Workspace();val voice=conversation(h)
         assertFalse(voice.enabled)
