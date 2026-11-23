@@ -15,3 +15,5 @@ Instale sobre a versão atual, sem desinstalar nem limpar dados.
 Validação: 38 testes relevantes aprovados nas APIs 28 e 35, incluindo o modelo enviado pelo usuário (com identificadores fictícios nos testes públicos), listas com vários equipamentos, histórico misto, códigos com zeros iniciais, dados privados omitidos, texto com/sem fotos, envio por imagem e a permanência da remoção da voz.
 
 Os 2 casos finais com identificadores fictícios também foram conferidos antes da publicação. Os 7 testes dos scripts de publicação passaram.
+
+[Versão estável 2.2.4 publicada para todos](https://github.com/Diegomachadosl10/colheita-gps-oficial/releases/tag/v2.2.4), código 35. Manifesto e APK público de 12574436 bytes baixados e conferidos; SHA-256 `c2430d72e7189ac5eba9c9847745cdac62de157b787c3b32d79fc56c14dac3a0`. Assinatura permanente e remoção da voz preservadas. [Publicador aprovado](https://github.com/Diegomachadosl10/colheita-gps-oficial/actions/runs/45113190156). A main foi preservada. O recebimento em um WhatsApp físico ainda depende da conferência no aparelho.
