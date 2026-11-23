@@ -3,6 +3,7 @@ package com.colheitagps.app
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.util.Locale
 
 /** Whitelisted business fields only; exporting never changes the stored records. */
 internal object MaintenanceShareData {
@@ -38,13 +39,31 @@ internal object MaintenanceShareData {
     fun message(rows:List<JSONObject>,team:String,date:String):String {
         val ordered=ordered(rows);require(ordered.isNotEmpty())
         val allOpen=ordered.all {!RecordArchive.archived(it)&&!it.optBoolean("concluida")}
+        val groups=ordered.groupBy {MaintenanceRecords.number(it.optString("equipamento")).ifBlank {"Não informado"}}
+        val urgent=ordered.count {MaintenanceRecords.urgent(it)}
+        val sentAt=Regex("^([0-9]{2}/[0-9]{2}/[0-9]{4})\\s+([0-9]{2}:[0-9]{2})$").matchEntire(date.trim())
+            ?.let {"${it.groupValues[1]} às ${it.groupValues[2]}"}?:date.trim()
         return buildString {
-            append("DM AGRO • ${if(allOpen) "PENDÊNCIAS EM ABERTO" else "PENDÊNCIAS DE MANUTENÇÃO"}\n$team\nEnviado em: $date\n")
-            append("${ordered.size} pendência${if(ordered.size==1) "" else "s"}\n")
+            append("*DM AGRO • ${if(allOpen) "PENDÊNCIAS EM ABERTO" else "PENDÊNCIAS DE MANUTENÇÃO"}*\n*$team*\nEnviado em: $sentAt\n")
+            append("${ordered.size} pendência${if(ordered.size==1) "" else "s"} • ${groups.size} equipamento${if(groups.size==1) "" else "s"}")
+            if(urgent>0) append(" • $urgent urgente${if(urgent==1) "" else "s"}")
+            append("\n")
             var index=0
-            for((equipment,records) in ordered.groupBy {MaintenanceRecords.number(it.optString("equipamento")).ifBlank {"Não informado"}}) {
-                append("\nEQUIPAMENTO $equipment\n")
-                for(record in records) {append("\n${++index}. ${details(record)}\n")}
+            for((equipment,records) in groups) {
+                append("\n*EQUIPAMENTO $equipment*\n")
+                for(record in records) {
+                    val description=record.optString("descricao").trim().ifBlank {"Sem descrição"}
+                        .replaceFirstChar {if(it.isLowerCase()) it.titlecase(Locale("pt","BR")) else it.toString()}
+                    append("\n*${++index}.* $description\n")
+                    if(record.optBoolean("urgente")) append(if(MaintenanceRecords.urgent(record)) "🔴 *URGENTE*\n" else "*Prioridade:* Urgente\n")
+                    record.optString("osPendencia").takeIf {it.isNotBlank()}?.let {append("*O.S.:* $it\n")}
+                    record.optString("dataCadastro").takeIf {it.isNotBlank()}?.let {append("*Registrada em:* $it\n")}
+                    record.optString("situacaoPecas").takeIf {it.isNotBlank()}?.let {append("*Peças:* $it\n")}
+                    if(record.optBoolean("paradaChuva")) append("*Parada de chuva:* Pode ser feito\n")
+                    if(!allOpen) append("*Situação:* ${status(record)}\n")
+                    record.optString("dataConclusao").takeIf {it.isNotBlank()&&record.optBoolean("concluida")}?.let {append("*Concluída em:* $it\n")}
+                    record.optString("arquivadoEm").takeIf {it.isNotBlank()&&RecordArchive.archived(record)}?.let {append("*Excluída em:* $it\n")}
+                }
             }
         }.trimEnd()
     }

@@ -2,6 +2,10 @@
 
 Android, ramificação de trabalho **dm-agro-login**. A `main` permanece intacta.
 
+## Versão 2.2.4
+
+[Mensagens das pendências para WhatsApp](docs/WHATSAPP-PENDENCIAS-2.2.4.md), com hierarquia em negrito, resumo de equipamentos, destaque de urgência e menos repetição.
+
 ## Versão 2.2.3
 
 [Atualização 2.2.3 publicada para todos](https://github.com/Diegomachadosl10/colheita-gps-oficial/releases/tag/v2.2.3), código 34, com APK público, assinatura e ausência de permissão de áudio verificados. [Comandos de voz retirados](docs/SEM-COMANDOS-DE-VOZ-2.2.3.md): início, cabeçalhos, configurações e ferramentas sem o assistente; escuta automática e permissão de áudio removidas. Mapas, GPS, pintura e cadastros manuais preservados.
