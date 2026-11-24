@@ -77,7 +77,7 @@ class MaintenanceSharingTest {
         error("O seletor de compartilhamento não abriu")
     }
     private fun bytes(uri:Uri)=app.contentResolver.openInputStream(uri)!!.use {it.readBytes()}
-    @Test fun allOpenIssuesExcludeEquipmentPartsCompletedDeletedAndDeletedEquipmentAndTextKeepsTheBusinessFields() {
+    @Test fun allOpenIssuesExcludeEquipmentPartsCompletedDeletedAndDeletedEquipmentAndTextKeepsTheRequestedFields() {
         val rows=JSONArray().put(issue("normal")).put(issue("urgent","22071","Mangueira rompida").put("urgente",true))
             .put(issue("done").put("concluida",true)).put(issue("deleted").put("__arquivado",true))
             .put(JSONObject().put("id","eq").put("categoriaRegistro","equipamento").put("equipamento","21571"))
@@ -89,7 +89,7 @@ class MaintenanceSharingTest {
         assertEquals(listOf("urgent"),MaintenanceShareData.open(rows,"22071").map {it.getString("id")})
         open.first().put("autorUid","PRIVATE-UID").put("foto","/private/secret.jpg").put("__syncBase",42)
         val text=MaintenanceShareData.message(open,"Santo Inácio • Turno C","14/11/2026 14:00")
-        for(s in listOf("*DM AGRO • PENDÊNCIAS EM ABERTO*","*EQUIPAMENTO 21571*","*EQUIPAMENTO 22071*","Braço do trator quebrado","Mangueira rompida","🔴 *URGENTE*","*O.S.:* 12345","*Registrada em:* 14/11/2026","2 pendências • 2 equipamentos • 1 urgente")) assertTrue(s,text.contains(s))
+        for(s in listOf("PENDÊNCIAS:","EQUIPAMENTO - 21571","EQUIPAMENTO - 22071","Braço do trator quebrado","Mangueira rompida","Prioridade: URGENTE","O.S.: 12345")) assertTrue(s,text.contains(s))
         for(s in listOf("PRIVATE-UID","/private","__syncBase","999","P001")) assertFalse(s,text.contains(s))
         assertEquals(before,rows.toString())
     }
@@ -99,18 +99,22 @@ class MaintenanceSharingTest {
         val intent=MaintenanceSharing.prepare(app,store,listOf(row),false,false,"22/11/2026 08:45")
         assertEquals("text/plain",intent.type)
         assertEquals("""
-            *DM AGRO • PENDÊNCIAS EM ABERTO*
-            *Santo Inácio • Turno C*
+            PENDÊNCIAS:
+
+            Santo Inácio • Turno C
+
             Enviado em: 22/11/2026 às 08:45
-            1 pendência • 1 equipamento
 
-            *EQUIPAMENTO 73018*
+            EQUIPAMENTO - 73018
 
-            *1.* Vazamento no motor do rolo
-            *O.S.:* 987654321
-            *Registrada em:* 22/11/2026
+            Pendências:
+            Vazamento no motor do rolo
+
+            O.S.: 987654321
         """.trimIndent(),intent.getStringExtra(Intent.EXTRA_TEXT))
         assertEquals(before,row.toString());assertFalse(intent.hasExtra(Intent.EXTRA_STREAM))
+        assertFalse(intent.getStringExtra(Intent.EXTRA_TEXT)!!.contains("Registrada em"))
+        assertTrue(MaintenanceShareData.details(row).contains("Data: 22/11/2026"))
     }
     @Test fun mixedHistoryKeepsEachStatusCodesAndMultilineDescriptionsWithoutExposingPrivateMetadata() {
         val open=issue("a","0022071","vazamento no motor\nConferir conexão *sem alterar o código*.").put("osPendencia","00987654321")
@@ -119,7 +123,7 @@ class MaintenanceSharingTest {
         val archived=issue("c","0022071","Registro antigo").put("__arquivado",true).put("arquivadoEm","21/11/2026")
         val rows=listOf(open,done,archived);val before=rows.map {it.toString()}
         val text=MaintenanceShareData.message(rows,"Santo Inácio • Turno C","23/11/2026")
-        for(s in listOf("PENDÊNCIAS DE MANUTENÇÃO","3 pendências • 1 equipamento","*O.S.:* 00987654321","*EQUIPAMENTO 0022071*","Conferir conexão *sem alterar o código*.","*Situação:* Em aberto","*Situação:* Concluída","*Situação:* Excluída","*Concluída em:* 22/11/2026","*Excluída em:* 21/11/2026","*Peças:* 1 pedida","*Parada de chuva:* Pode ser feito")) assertTrue(s,text.contains(s))
+        for(s in listOf("PENDÊNCIAS:","O.S.: 00987654321","EQUIPAMENTO - 0022071","Conferir conexão *sem alterar o código*.","Situação: Em aberto","Situação: Concluída","Situação: Excluída","Concluída em: 22/11/2026","Excluída em: 21/11/2026","Peças: 1 pedida","Parada de chuva: Pode ser feito")) assertTrue(s,text.contains(s))
         assertFalse(text.contains("/private"));assertFalse(text.contains("__syncBase"));assertEquals(before,rows.map {it.toString()})
     }
     @Test fun aTextOnlyShipmentContainsEveryOpenIssueWithoutPhotoStreamsOrFilePermissionsAndKeepsStoredAttachments() {

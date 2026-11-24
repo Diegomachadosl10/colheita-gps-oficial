@@ -40,30 +40,27 @@ internal object MaintenanceShareData {
         val ordered=ordered(rows);require(ordered.isNotEmpty())
         val allOpen=ordered.all {!RecordArchive.archived(it)&&!it.optBoolean("concluida")}
         val groups=ordered.groupBy {MaintenanceRecords.number(it.optString("equipamento")).ifBlank {"Não informado"}}
-        val urgent=ordered.count {MaintenanceRecords.urgent(it)}
         val sentAt=Regex("^([0-9]{2}/[0-9]{2}/[0-9]{4})\\s+([0-9]{2}:[0-9]{2})$").matchEntire(date.trim())
             ?.let {"${it.groupValues[1]} às ${it.groupValues[2]}"}?:date.trim()
         return buildString {
-            append("*DM AGRO • ${if(allOpen) "PENDÊNCIAS EM ABERTO" else "PENDÊNCIAS DE MANUTENÇÃO"}*\n*$team*\nEnviado em: $sentAt\n")
-            append("${ordered.size} pendência${if(ordered.size==1) "" else "s"} • ${groups.size} equipamento${if(groups.size==1) "" else "s"}")
-            if(urgent>0) append(" • $urgent urgente${if(urgent==1) "" else "s"}")
-            append("\n")
-            var index=0
-            for((equipment,records) in groups) {
-                append("\n*EQUIPAMENTO $equipment*\n")
-                for(record in records) {
+            append("PENDÊNCIAS:\n\n$team\n\nEnviado em: $sentAt")
+            for((groupIndex,group) in groups.entries.withIndex()) {
+                val (equipment,records)=group
+                append(if(groupIndex==0) "\n\n" else "\n\n\n")
+                append("EQUIPAMENTO - $equipment\n\nPendências:\n")
+                append(records.joinToString("\n\n\n") {record->
                     val description=record.optString("descricao").trim().ifBlank {"Sem descrição"}
                         .replaceFirstChar {if(it.isLowerCase()) it.titlecase(Locale("pt","BR")) else it.toString()}
-                    append("\n*${++index}.* $description\n")
-                    if(record.optBoolean("urgente")) append(if(MaintenanceRecords.urgent(record)) "🔴 *URGENTE*\n" else "*Prioridade:* Urgente\n")
-                    record.optString("osPendencia").takeIf {it.isNotBlank()}?.let {append("*O.S.:* $it\n")}
-                    record.optString("dataCadastro").takeIf {it.isNotBlank()}?.let {append("*Registrada em:* $it\n")}
-                    record.optString("situacaoPecas").takeIf {it.isNotBlank()}?.let {append("*Peças:* $it\n")}
-                    if(record.optBoolean("paradaChuva")) append("*Parada de chuva:* Pode ser feito\n")
-                    if(!allOpen) append("*Situação:* ${status(record)}\n")
-                    record.optString("dataConclusao").takeIf {it.isNotBlank()&&record.optBoolean("concluida")}?.let {append("*Concluída em:* $it\n")}
-                    record.optString("arquivadoEm").takeIf {it.isNotBlank()&&RecordArchive.archived(record)}?.let {append("*Excluída em:* $it\n")}
-                }
+                    val fields=mutableListOf(description)
+                    if(record.optBoolean("urgente")) fields.add("Prioridade: URGENTE")
+                    record.optString("osPendencia").takeIf {it.isNotBlank()}?.let {fields.add("O.S.: $it")}
+                    record.optString("situacaoPecas").takeIf {it.isNotBlank()}?.let {fields.add("Peças: $it")}
+                    if(record.optBoolean("paradaChuva")) fields.add("Parada de chuva: Pode ser feito")
+                    if(!allOpen) fields.add("Situação: ${status(record)}")
+                    record.optString("dataConclusao").takeIf {it.isNotBlank()&&record.optBoolean("concluida")}?.let {fields.add("Concluída em: $it")}
+                    record.optString("arquivadoEm").takeIf {it.isNotBlank()&&RecordArchive.archived(record)}?.let {fields.add("Excluída em: $it")}
+                    fields.joinToString("\n\n")
+                })
             }
         }.trimEnd()
     }

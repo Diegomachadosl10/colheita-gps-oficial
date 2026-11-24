@@ -2,6 +2,10 @@
 
 Android, ramificação de trabalho **dm-agro-login**. A `main` permanece intacta.
 
+## Versão 2.2.5
+
+[Espaçamento das mensagens de pendências](docs/ESPACAMENTO-PENDENCIAS-2.2.5.md), seguindo o modelo solicitado, sem numeração e com linha em branco entre descrição e O.S.
+
 ## Versão 2.2.4
 
 [Atualização 2.2.4 publicada para todos](https://github.com/Diegomachadosl10/colheita-gps-oficial/releases/tag/v2.2.4), código 35, com manifesto público, download e assinatura verificados. [Mensagens das pendências para WhatsApp](docs/WHATSAPP-PENDENCIAS-2.2.4.md), com hierarquia em negrito, resumo de equipamentos, destaque de urgência e menos repetição.
