@@ -26,3 +26,5 @@ A mudança não remove datas nem outros dados dos registros: a data de cadastro 
 Instale sobre a versão atual, sem desinstalar nem limpar dados.
 
 Validação: 18 testes de compartilhamento nas APIs 28 e 35 aprovados, incluindo o texto completo no modelo solicitado, mensagens com/sem fotos, histórico e preservação dos registros. Os 7 testes do publicador também passaram.
+
+[Versão estável 2.2.5 publicada para todos](https://github.com/Diegomachadosl10/colheita-gps-oficial/releases/tag/v2.2.5), código 36. Manifesto e APK público de 12573956 bytes baixados e conferidos; SHA-256 `11579e5cbecfde37de92896f7c04999f35155345add049a2fd793c631c0ef4f8`. Assinatura permanente e remoção da voz preservadas. [Publicador aprovado](https://github.com/Diegomachadosl10/colheita-gps-oficial/actions/runs/45360715536). Main preservada.
