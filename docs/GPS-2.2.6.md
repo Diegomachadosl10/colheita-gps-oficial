@@ -15,3 +15,5 @@ A precisão física depende do receptor, da visibilidade dos satélites e do apa
 Instale a atualização sobre o aplicativo atual, sem desinstalar nem limpar os dados.
 
 Validação: 44 testes Android aprovados, incluindo filtragem e recuperação do GPS nas APIs 28 e 35, posições em cache, aparelho parado, cancelamento ao pausar, perda/retorno do provedor, zoom/rotação, pinturas preservadas e compartilhamento de pendências. Compilação do APK concluída. Os 7 testes do publicador também passaram.
+
+[Versão estável 2.2.6 publicada para todos](https://github.com/Diegomachadosl10/colheita-gps-oficial/releases/tag/v2.2.6), código 37. Manifesto e APK público de 13110606 bytes baixados e conferidos; SHA-256 `b2586f4021cd22e8963ed030b23970b09581d58ab847de4b8caa914a24cd5cbd`. Assinatura permanente e ausência de permissão de áudio verificadas. [Publicador aprovado](https://github.com/Diegomachadosl10/colheita-gps-oficial/actions/runs/45529802841). Main preservada.
