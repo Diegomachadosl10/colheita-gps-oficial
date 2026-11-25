@@ -11,3 +11,5 @@ A navegação entre a abertura discreta e uma tela de cadastro, bloqueio ou erro
 Atualize sobre a versão instalada, sem desinstalar nem limpar dados. As ideias de responsável/prazo, fotos antes/depois, aviso de estoque antigo e checklist foram apenas propostas; não fazem parte desta correção.
 
 Validação: 43 testes Android aprovados, incluindo reaproveitamento e descarte de sessão nas APIs 28 e 35, isolamento de contas, expiração e recusa do servidor, interface de abertura/erro, políticas de acesso, GPS e consulta discreta de atualizações. Compilação do APK concluída; 7 testes do publicador aprovados. Não foi realizado teste com uma conta de produção nem em celular físico nesta sessão.
+
+[Versão estável 2.2.7 publicada para todos](https://github.com/Diegomachadosl10/colheita-gps-oficial/releases/tag/v2.2.7), código 38. Manifesto e APK público de 13120586 bytes baixados e conferidos; SHA-256 `c01f7fdcdbd4aa74382b5755972413b3f5a801ae9010a197b122c99337399177`. Assinatura permanente e ausência de permissão de áudio verificadas. [Publicador aprovado](https://github.com/Diegomachadosl10/colheita-gps-oficial/actions/runs/45549098065). Main preservada.

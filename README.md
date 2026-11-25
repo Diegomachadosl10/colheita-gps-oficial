@@ -4,7 +4,7 @@ Android, ramificação de trabalho **dm-agro-login**. A `main` permanece intacta
 
 ## Versão 2.2.7
 
-[Entrada sem verificação repetida](docs/ENTRADA-2.2.7.md): sessão aprovada reaproveitada entre entrada e início, abertura discreta, administrador direto no aplicativo e acompanhamento das permissões em segundo plano.
+[Atualização 2.2.7 publicada para todos](https://github.com/Diegomachadosl10/colheita-gps-oficial/releases/tag/v2.2.7), código 38, com manifesto público, download e assinatura verificados. [Entrada sem verificação repetida](docs/ENTRADA-2.2.7.md): sessão aprovada reaproveitada entre entrada e início, abertura discreta, administrador direto no aplicativo e acompanhamento das permissões em segundo plano.
 
 ## Versão 2.2.6
 
