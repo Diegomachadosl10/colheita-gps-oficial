@@ -36,7 +36,7 @@ class StockShareActivity:Activity() {
     private fun notice(text:String) {if(!isDestroyed&&!isFinishing) AlertDialog.Builder(this).setMessage(text).setPositiveButton("OK",null).show()}
     private fun load() {
         val token=++generation
-        ui.page("Preparar envio de estoques","Conferindo seu acesso…")
+        ui.page("Preparar envio de estoques","Preparando os lotes…")
         AccessRepository.loadTeamAccess(this,{ a->
             if(token!=generation||isDestroyed||isFinishing) return@loadTeamAccess
             val team=intent.getStringExtra("team").orEmpty()

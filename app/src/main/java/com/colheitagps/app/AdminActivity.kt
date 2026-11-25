@@ -25,7 +25,7 @@ class AdminActivity : Activity() {
     }
     private fun load() {
         busy = true
-        ui.page("Aprovações da equipe", "Verificando seu acesso…")
+        ui.page("Aprovações da equipe", "Carregando usuários…")
         AccessRepository.loadTeamAccess(this, { access ->
             if (!access.manages) { busy = false; denied("Seu perfil não permite aprovar usuários."); return@loadTeamAccess }
             val query = if (access.primary) db.collection("usuarios") else db.collection("usuarios")

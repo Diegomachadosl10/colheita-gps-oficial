@@ -31,6 +31,7 @@ class LoginActivity : Activity() {
     private var onLoginPage = false
     private var onWelcomePage = false
     private var waiting = false
+    private var opening = false
     private var listener: ListenerRegistration? = null
     private var attempt = 0
     private val waitHandler=Handler(Looper.getMainLooper())
@@ -80,7 +81,8 @@ class LoginActivity : Activity() {
     override fun onDestroy() {attempt++;listener?.remove();waitHandler.removeCallbacksAndMessages(null);super.onDestroy()}
 
     private fun page(title: String, description: String): LinearLayout {
-        if(onWelcomePage) ui=AccessUi(this)
+        if(onWelcomePage || opening) ui=AccessUi(this)
+        opening = false
         waitHandler.removeCallbacks(slowSignIn)
         observedSignIn=null
         waiting = false
@@ -93,6 +95,7 @@ class LoginActivity : Activity() {
         attempt++; busy = false
         AgroNotifications.logout(this)
         SignInAttempts.requests.current?.let {SignInAttempts.requests.consume(it)}
+        AccessRepository.forgetEntry()
         auth.signOut(); login()
     }
     private fun errorMessage(error: Exception, registering: Boolean = false): String = when {
@@ -236,9 +239,15 @@ class LoginActivity : Activity() {
     private fun verify() {
         if (auth.currentUser == null) { login(); return }
         val token = ++attempt
-        page("Verificando acesso", "Consultando sua autorização no servidor…")
-        AccessRepository.load(this, { data ->
-            if (token != attempt || isDestroyed) return@load
+        if (AccessRepository.recentEntry() != null) { openApp(); return }
+        waitHandler.removeCallbacks(slowSignIn)
+        observedSignIn = null; waiting = false; onLoginPage = false; onWelcomePage = false
+        listener?.remove(); listener = null
+        opening = true; busy = true
+        EntryLoading.show(this)
+        AccessRepository.loadEntry(this, { data ->
+            if (token != attempt || isDestroyed) return@loadEntry
+            busy = false
             when {
                 data == null -> {
                     if (auth.currentUser?.email?.matches(Regex("matricula\\.[0-9]{1,20}@acesso\\.dm-agro\\.app")) == true) {
@@ -252,7 +261,7 @@ class LoginActivity : Activity() {
                     }
                     else status("Cadastro não localizado", "O administrador precisa conferir o documento usuarios com o UID desta conta. A sessão sozinha não autoriza acesso.")
                 }
-                TeamPolicy.allowed(auth.currentUser?.uid.orEmpty(), data) -> if (TeamPolicy.primary(auth.currentUser?.uid.orEmpty())) adminPanel(data) else openApp()
+                TeamPolicy.allowed(auth.currentUser?.uid.orEmpty(), data) -> openApp()
                 AccessPolicy.normalized(data["status"]) == "excluido" -> status("Acesso encerrado", "Seu acesso foi excluído pelo administrador principal. Procure o administrador para esclarecer seu cadastro.")
                 AccessPolicy.normalized(data["status"]) == "bloqueado" -> status("Acesso bloqueado", "Procure o administrador principal para revisar seu acesso.")
                 AccessPolicy.normalized(data["status"]) == "aprovado" -> status("Perfil precisa de revisão", "Sua conta foi aprovada, mas o perfil está ausente ou inválido. Peça ao administrador para conferir o cadastro.")
@@ -262,7 +271,7 @@ class LoginActivity : Activity() {
                 }
             }
         }, {
-            if(token==attempt&&!isDestroyed) status("Não foi possível verificar",AccessFailures.description(it))
+            if(token==attempt&&!isDestroyed) { busy = false; status("Não foi possível entrar",AccessFailures.description(it)) }
         })
     }
     private fun watchApproval() {
@@ -275,13 +284,6 @@ class LoginActivity : Activity() {
     }
     private fun openApp() {
         startActivity(Intent(this, MainActivity::class.java)); finish()
-    }
-    private fun adminPanel(data: Map<String, Any>) {
-        val name = data["nome"]?.toString()?.trim().orEmpty().ifBlank { "Administrador" }
-        val card = page("Painel do administrador", "Olá, $name. Gerencie os acessos ou abra o aplicativo.")
-        ui.button(card, "Abrir aplicativo") { openApp() }
-        ui.button(card, "Gerenciar usuários", true) { startActivity(Intent(this, AdminActivity::class.java)) }
-        ui.button(card, "Sair da conta", true) { logout() }
     }
     private fun status(title: String, message: String) {
         val card = page(title, message)

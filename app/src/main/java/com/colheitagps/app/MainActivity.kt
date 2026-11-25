@@ -129,7 +129,8 @@ class MainActivity : Activity() {
         }, { message -> syncMessage = message; syncLabel?.text = "● ${DashboardUi.status(message)}" })
         teamSync!!.start()
         if (!access.primary) profileWatch = FirebaseFirestore.getInstance().collection("usuarios").document(access.uid)
-            .addSnapshotListener { document, _ ->
+            .addSnapshotListener(com.google.firebase.firestore.MetadataChanges.INCLUDE) { document, _ ->
+                if (document != null && !document.metadata.isFromCache) AccessRepository.observeProfile(access.uid, document.data)
                 if (document != null && !document.metadata.isFromCache && !isFinishing && !isDestroyed &&
                     (!TeamPolicy.allowed(access.uid, document.data) || TeamPolicy.team(document.data) != access.team || AccessPolicy.role(document.data) != access.role)) {
                     profileWatch?.remove(); profileWatch = null
@@ -137,7 +138,7 @@ class MainActivity : Activity() {
                     mapa?.salvar(); mapa = null
                     teamSync?.stop(); teamSync = null
                     acessoConfirmado = false
-                    startActivity(Intent(this, MainActivity::class.java).apply {
+                    startActivity(Intent(this, LoginActivity::class.java).apply {
                         flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
                     })
                     finish()
@@ -249,12 +250,9 @@ class MainActivity : Activity() {
             return
         }
         sessionName = usuario.displayName.orEmpty()
-        val espera = tela()
-        espera.addView(texto("Verificando permissões...", 18f).apply {
-            gravity = Gravity.CENTER
-        }, FrameLayout.LayoutParams(-1, -1))
-        setContentView(espera)
-        AccessRepository.loadTeamAccess(this, { access ->
+        AccessRepository.recentEntry()?.let { access -> chooseTeam(access); return }
+        EntryLoading.show(this)
+        AccessRepository.loadEntryTeamAccess(this, { access ->
             if (TeamPolicy.allowed(access.uid, access.profile)) {
                 chooseTeam(access)
             } else {
@@ -266,7 +264,7 @@ class MainActivity : Activity() {
                     }.show()
             }
         }, {error->
-            AlertDialog.Builder(this).setTitle("Sem verificação de acesso")
+            AlertDialog.Builder(this).setTitle("Não foi possível abrir o aplicativo")
                 .setMessage(AccessFailures.description(error))
                 .setCancelable(false).setPositiveButton("Tentar novamente") { _, _ ->
                     carregarPermissoes()
