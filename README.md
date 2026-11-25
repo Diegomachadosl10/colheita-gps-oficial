@@ -2,6 +2,10 @@
 
 Android, ramificação de trabalho **dm-agro-login**. A `main` permanece intacta.
 
+## Versão 2.2.6
+
+[Melhorias de localização no mapa](docs/GPS-2.2.6.md): atualizações frequentes, filtros contra posições antigas e saltos, retomada automática no primeiro plano e marcador azul maior.
+
 ## Versão 2.2.5
 
 [Atualização 2.2.5 publicada para todos](https://github.com/Diegomachadosl10/colheita-gps-oficial/releases/tag/v2.2.5), código 36, com manifesto público, download e assinatura verificados. [Espaçamento das mensagens de pendências](docs/ESPACAMENTO-PENDENCIAS-2.2.5.md), seguindo o modelo solicitado, sem numeração e com linha em branco entre descrição e O.S.

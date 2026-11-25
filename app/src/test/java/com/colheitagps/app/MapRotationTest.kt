@@ -95,6 +95,24 @@ class MapRotationTest {
         System.getenv("DM_AGRO_ROTATION_PREVIEW")?.let {File(it).outputStream().use {stream->bitmap.compress(Bitmap.CompressFormat.PNG,100,stream)}}
         bitmap.recycle()
     }
+    @Test fun theLargerGpsMarkerKeepsItsScreenSizeAndCenterAtDifferentZoomsAndFlagsOldPositions() {
+        val (view,geo)=map();val v=ReflectionHelpers.getField<MapViewport>(view,"viewport")
+        val p=geo.gpsParaPixel(-21.5,-51.5,400,400)!!
+        view.atualizarGps(-21.5,-51.5)
+        for(factor in listOf(1f,2f,0.25f)) {
+            v.gesture(300f,400f,300f,400f,factor,35f)
+            view.centrarGps()
+            val bitmap=Bitmap.createBitmap(600,800,Bitmap.Config.ARGB_8888)
+            view.draw(Canvas(bitmap))
+            close(PointF(300f,400f),v.toScreen(p.x,p.y))
+            assertEquals(0xFF1674E8.toInt(),bitmap.getPixel(300,400))
+            assertEquals("The blue center is larger than the previous 9 px radius",0xFF1674E8.toInt(),bitmap.getPixel(310,400))
+            bitmap.recycle()
+        }
+        view.atualizarGps(-21.5,-51.5,false)
+        val bitmap=Bitmap.createBitmap(600,800,Bitmap.Config.ARGB_8888);view.draw(Canvas(bitmap))
+        assertEquals(0xFF7D8B98.toInt(),bitmap.getPixel(300,400));bitmap.recycle()
+    }
     @Test fun aTwoFingerGestureDoesNotEraseOrPaintAtItsFirstFingerAndOneFingerStillDrawsInMapCoordinates() {
         val (view,_)=map();val v=ReflectionHelpers.getField<MapViewport>(view,"viewport")
         val lines=ReflectionHelpers.getField<MutableList<MutableList<PointF>>>(view,"linhas")

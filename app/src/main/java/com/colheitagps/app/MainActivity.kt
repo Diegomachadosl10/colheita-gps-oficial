@@ -106,6 +106,7 @@ class MainActivity : Activity() {
         notificationRoute=null;notificationResolving=false
         if(teamStore?.team!=id||teamAccess?.uid!=access.uid) {buscaEstoque="";buscaEquipamento="";buscaMapas="";filtroParadaChuva=false}
         salvarRascunhoAtivo?.invoke();salvarRascunhoAtivo=null;receberFotoEstoque=null
+        gpsTracker?.stop()
         mapa?.salvar(); mapa = null; chaveAtual = ""
         teamSync?.stop()
         profileWatch?.remove()
@@ -132,6 +133,7 @@ class MainActivity : Activity() {
                 if (document != null && !document.metadata.isFromCache && !isFinishing && !isDestroyed &&
                     (!TeamPolicy.allowed(access.uid, document.data) || TeamPolicy.team(document.data) != access.team || AccessPolicy.role(document.data) != access.role)) {
                     profileWatch?.remove(); profileWatch = null
+                    gpsTracker?.stop()
                     mapa?.salvar(); mapa = null
                     teamSync?.stop(); teamSync = null
                     acessoConfirmado = false
@@ -283,8 +285,7 @@ class MainActivity : Activity() {
     private var mapa: MapaView? = null
     private var chaveAtual = ""
     private var nomeAtual = ""
-    private var gpsManager: LocationManager? = null
-    private var gpsListener: LocationListener? = null
+    private var gpsTracker: MapLocationTracker? = null
     private var local: Location? = null
     private var status: TextView? = null
     private var telaAtual = "inicio"
@@ -803,6 +804,7 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         StartupUpdates.resume(this)
+        if (mapa != null) iniciarGps(solicitarPermissao = false)
         if(acessoConfirmado&&teamStore!=null) {
             if(renderedNight!=AppTheme.night(this)) {AppTheme.apply(this);renderedNight=AppTheme.night(this);themeScreen();return}
             if(salvarRascunhoAtivo==null) {if(telaAtual=="inicio") inicio() else if(telaAtual=="caminhoes") caminhoes()}
@@ -1024,6 +1026,7 @@ class MainActivity : Activity() {
     }
 
     private fun inicio() {
+        gpsTracker?.stop()
         mapa?.salvar(); mapa = null; status = null
         val access = teamAccess ?: return
         val store = teamStore ?: return
@@ -2943,6 +2946,7 @@ class MainActivity : Activity() {
             if(!opened.salvar()) {Toast.makeText(this,"Não foi possível salvar a pintura. Confira o espaço do celular e tente novamente.",Toast.LENGTH_LONG).show();return}
             Toast.makeText(this,"Pintura salva neste celular",Toast.LENGTH_SHORT).show()
         }
+        gpsTracker?.stop()
         themeScreen={biblioteca()}
         refreshList = { biblioteca() }
         telaAtual = "biblioteca"
@@ -3563,6 +3567,7 @@ class MainActivity : Activity() {
     ) {
         val base = tela()
         val visual = MapaView(this).apply {
+            keepScreenOn = true
             carregar(imagem, id, geo)
         }
         val savedTeam=teamStore!!.team;val savedUid=teamAccess!!.uid
@@ -3702,9 +3707,6 @@ class MainActivity : Activity() {
         setContentView(base)
         base.requestApplyInsets()
 
-        local?.let {
-            visual.atualizarGps(it.latitude, it.longitude)
-        }
         iniciarGps()
     }
 
@@ -3819,60 +3821,23 @@ class MainActivity : Activity() {
             }.show()
     }
 
-    private fun iniciarGps() {
-        if (
-            checkSelfPermission(
-                Manifest.permission.ACCESS_FINE_LOCATION
-            ) != PackageManager.PERMISSION_GRANTED
-        ) {
-            requestPermissions(
-                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION),
-                100
-            )
+    private fun iniciarGps(solicitarPermissao: Boolean = true) {
+        if (mapa == null) return
+        if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            gpsTracker?.stop()
+            local = null
+            status?.text = "Permita a localização precisa do aplicativo"
+            if (solicitarPermissao) requestPermissions(arrayOf(
+                Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION
+            ), 100)
             return
         }
-
-        gpsManager = getSystemService(
-            Context.LOCATION_SERVICE
-        ) as LocationManager
-
-        if (
-            gpsManager?.isProviderEnabled(
-                LocationManager.GPS_PROVIDER
-            ) != true
-        ) {
-            status?.text = "Ative o GPS do celular"
-            return
-        }
-
-        gpsListener?.let {
-            gpsManager?.removeUpdates(it)
-        }
-
-        gpsListener = LocationListener { p: Location ->
-            local = p
-            mapa?.atualizarGps(p.latitude, p.longitude)
-
-            status?.text = String.format(
-                Locale("pt", "BR"),
-                "GPS ±%.0f m • %.5f, %.5f",
-                p.accuracy,
-                p.latitude,
-                p.longitude
-            )
-        }
-
-        try {
-            gpsManager?.requestLocationUpdates(
-                LocationManager.GPS_PROVIDER,
-                2000L,
-                1f,
-                gpsListener!!
-            )
-            status?.text = "Buscando sinal GPS..."
-        } catch (_: SecurityException) {
-            status?.text = "Permissão de localização necessária"
-        }
+        val tracker = gpsTracker ?: MapLocationTracker(this) { location, fresh, message ->
+            local = location?.takeIf { fresh }
+            location?.let { mapa?.atualizarGps(it.latitude, it.longitude, fresh) }
+            status?.text = message
+        }.also { gpsTracker = it }
+        tracker.start()
     }
 
     override fun onRequestPermissionsResult(
@@ -3893,6 +3858,7 @@ class MainActivity : Activity() {
     }
 
     private fun sairDaConta() {
+        gpsTracker?.stop()
         profileWatch?.remove(); profileWatch = null
         mapa?.salvar()
         teamSync?.stop()
@@ -3915,6 +3881,7 @@ class MainActivity : Activity() {
     override fun onBackPressed() { voltarTela() }
 
     override fun onPause() {
+        gpsTracker?.stop()
         salvarRascunhoAtivo?.invoke()
         super.onPause()
         syncUiHandler.removeCallbacks(atualizarTurnoCaminhoes)
@@ -3925,9 +3892,7 @@ class MainActivity : Activity() {
         profileWatch?.remove()
         teamSync?.stop()
         syncUiHandler.removeCallbacksAndMessages(null)
-        gpsListener?.let {
-            gpsManager?.removeUpdates(it)
-        }
+        gpsTracker?.stop()
         super.onDestroy()
     }
 }
@@ -3964,6 +3929,7 @@ class MapaView(context: Context) : View(context) {
 
     private var gpsLat: Double? = null
     private var gpsLon: Double? = null
+    private var gpsFresh = true
 
     private val pontos = mutableListOf<PointF>()
     private val areas = mutableListOf<MutableList<PointF>>()
@@ -4180,9 +4146,10 @@ class MapaView(context: Context) : View(context) {
             .show()
     }
 
-    fun atualizarGps(lat: Double, lon: Double) {
+    fun atualizarGps(lat: Double, lon: Double, fresh: Boolean = true) {
         gpsLat = lat
         gpsLon = lon
+        gpsFresh = fresh
         invalidate()
     }
 
@@ -4347,13 +4314,13 @@ class MapaView(context: Context) : View(context) {
 
         gpsPixel()?.let { p ->
             c.drawCircle(
-                p.x, p.y, 13f / escala,
+                p.x, p.y, max(16f, 8f * resources.displayMetrics.density) / escala,
                 Paint(3).apply { color = Color.WHITE }
             )
             c.drawCircle(
-                p.x, p.y, 9f / escala,
+                p.x, p.y, max(12f, 6f * resources.displayMetrics.density) / escala,
                 Paint(3).apply {
-                    color = 0xFF1674E8.toInt()
+                    color = if (gpsFresh) 0xFF1674E8.toInt() else 0xFF7D8B98.toInt()
                 }
             )
         }
