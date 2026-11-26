@@ -6,6 +6,8 @@ Android nativo. Produção em **dm-agro-login**; desenvolvimento em **dm-agro-pr
 
 Desenvolvimento isolado em **dm-agro-professional-beta**, somente para nossa equipe/empresa por enquanto. [Auditoria de 26/11/2026](docs/beta/AUDITORIA-2026-11-26.md), [plano técnico por etapas](docs/beta/PLANO-TECNICO.md) e [primeira implementação de isolamento e permissões](docs/beta/ETAPA-1-EQUIPE.md). A versão interna 2.3.0/código 39 ainda não foi distribuída; servidor, notificações e canal Beta dependem de preparação/homologação. A produção permanece 2.2.7, sem implantação de regras/Worker ou migração de dados reais.
 
+[Entrega 2 — estoque livre e PDF opcional](docs/beta/ENTREGA-2-ESTOQUE-PDF.md): observações por lote, preservação do texto original nas mensagens, fotos escolhidas por lote e PDF separado com confirmação de envio. Relatórios de turno, novos indicadores e a revisão visual completa continuam pendentes.
+
 ## Versão 2.2.7
 
 [Atualização 2.2.7 publicada para todos](https://github.com/Diegomachadosl10/colheita-gps-oficial/releases/tag/v2.2.7), código 38, com manifesto público, download e assinatura verificados. [Entrada sem verificação repetida](docs/ENTRADA-2.2.7.md): sessão aprovada reaproveitada entre entrada e início, abertura discreta, administrador direto no aplicativo e acompanhamento das permissões em segundo plano.

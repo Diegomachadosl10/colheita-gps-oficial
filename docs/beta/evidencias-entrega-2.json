@@ -1,0 +1,105 @@
+{
+  "date": "2026-11-26",
+  "branch": "dm-agro-professional-beta",
+  "scope": "somente nossa equipe; estoque livre e PDF opcional",
+  "sourceCommit": "367456c87f1e100b002f77d5f91ec77650aa911a",
+  "internalVersion": {
+    "name": "2.3.0",
+    "code": 39
+  },
+  "android": {
+    "tests": 305,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "lint": {
+    "Error": 0,
+    "Fatal": 0,
+    "Warning": 128
+  },
+  "protectedFilesSha256": {
+    "app/build.gradle.kts": "f5725077799b4cf15450cd2c60627230ad5e507e313fd3ad295e379ec78a6417",
+    "firebase/firestore.rules": "768ab2f6456d28bcdb9ced7eaa0c3d9f3c87a1d74e8f739ef0d7d0dba34a54aa",
+    "firebase/firestore.beta.rules": "5d2010d1a5fbdb3b95ec072ca33083a031cd2e74e088541c774ec17f379d8269",
+    "firebase/storage.rules": "fd0d47306348145ca739fc5fba372285965cf5b0c28c5dd730d10b315c5f5df0",
+    "firebase.json": "9a645ae5edb5d42d9820b1556367b0a1d00aaea1a159bb0fa280c3bd09445675",
+    "backend/worker.js": "4849aa9b21bb044b606906af65bad12c546c78029b3f6ae5229c7f204d3e50ed",
+    "scripts/android-signing.sha256": "adadb906dd04fb717bf6aa179c2f3783abf35e3773d2ea40c225f2872b949f95",
+    ".github/workflows/beta-audit.yml": "5fb88380d27137262a7e1b7fc36bd78f89c5008fd25455dd43b6ef4f91543e27"
+  },
+  "localApk": {
+    "applicationId": "com.colheitagps.app",
+    "certificateSha256": "d6bff2432575da5928e07127ef565b19c8148f53c2c0047de3f2bb7ce003b3a6",
+    "sha256": "464b2df9c21b22a8f337b20e5f2d6ac66ebad7edb40998bff9855c15b5f9ac6e",
+    "distributed": false
+  },
+  "visualPreview": {
+    "file": "docs/beta/imagens/exemplo-exportacao.png",
+    "syntheticDataOnly": true,
+    "nativePdfWriterVerified": false,
+    "sha256": "b38d0b90a2f2cf8ce04666f89f13a9437a5032eef1b8c6be947a953fcdb5b597"
+  },
+  "githubActions": {
+    "runId": 45806031339,
+    "url": "https://github.com/Diegomachadosl10/colheita-gps-oficial/actions/runs/45806031339",
+    "conclusion": "success",
+    "jobs": [
+      {
+        "id": 139861404844,
+        "name": "Compilacao, testes e lint - sem distribuicao",
+        "conclusion": "success"
+      },
+      {
+        "id": 139861405210,
+        "name": "Servico gratuito e publicador",
+        "conclusion": "success"
+      },
+      {
+        "id": 139861405377,
+        "name": "Regras em emuladores isolados",
+        "conclusion": "success"
+      }
+    ],
+    "reportArtifact": {
+      "id": 15110401291,
+      "name": "DM-AGRO-Beta-Auditoria",
+      "size": 193543,
+      "containsApk": false
+    }
+  },
+  "production": {
+    "branch": "dm-agro-login",
+    "head": "e07aee322d9cbb9f74129bebc171ceb5cca27b7f",
+    "release": "v2.2.7",
+    "manifestSha256": "7a1b55ecf080d47ffc84fc8c979cc755f38ba66465a10a7100cb78b9ac0d7467",
+    "backendDeploymentPerformed": false,
+    "dataMigrationPerformed": false,
+    "newApkDistributed": false
+  },
+  "limitations": [
+    "Sem homologação no Android físico, leitor de PDF ou WhatsApp real",
+    "Robolectric testa composição e URI com PDF sintético; não executa o gravador PDF nativo",
+    "Servidor e notificações Beta ainda precisam ser preparados",
+    "Persistência transacional, migração, catálogo editável, relatórios de turno e IA ainda pendentes",
+    "Exportação de GeoPDF pintado com metadados preservados ainda pendente"
+  ],
+  "firebaseRules": {
+    "project": "demo-dm-agro",
+    "stable": 28,
+    "stableWithCompositeBetaRules": 28,
+    "beta": 10,
+    "failures": 0,
+    "verifiedFromJobLog": 139861405377
+  },
+  "worker": {
+    "tests": 18,
+    "failures": 0,
+    "verifiedFromJobLog": 139861405210
+  },
+  "publisher": {
+    "tests": 7,
+    "failures": 0,
+    "verifiedFromJobLog": 139861405210
+  }
+}

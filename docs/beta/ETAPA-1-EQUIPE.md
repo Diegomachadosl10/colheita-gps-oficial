@@ -2,6 +2,8 @@
 
 Escopo autorizado em 26/11/2026: continuar o desenvolvimento somente para nossa equipe/empresa, deixando outras empresas para depois. Branch `dm-agro-professional-beta`, baseada na produção 2.2.7. Versão interna em desenvolvimento: **2.3.0, código 39**. Não é uma atualização publicada.
 
+Este documento registra a primeira etapa. A continuação de estoque com texto livre/observações e PDF opcional está na [entrega 2](ENTREGA-2-ESTOQUE-PDF.md); as pendências abaixo refletem o momento desta primeira entrega.
+
 ## Implementado no código
 
 - Identificação DM AGRO, Gestão Operacional Agrícola, Beta gratuita e autoria nas configurações. O início informa que os dados de teste estão separados. Não existe seletor de empresa nem cobrança.
