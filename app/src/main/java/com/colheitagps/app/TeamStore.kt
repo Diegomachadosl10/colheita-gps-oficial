@@ -13,12 +13,12 @@ internal class TeamStore(context: Context, val team: String) {
     val lock = locks.computeIfAbsent(team) { Any() }
     companion object { private val locks=java.util.concurrent.ConcurrentHashMap<String,Any>() }
     init { require(team in TeamPolicy.fronts.keys.flatMap { f -> TeamPolicy.shifts.map { "${f}_$it" } }) }
-    val files = File(app.filesDir, "equipes/$team").apply { mkdirs() }
-    val cache = File(app.cacheDir, "equipes/$team").apply { mkdirs() }
+    val files = File(app.filesDir, "${BetaWorkspace.LOCAL}/equipes/$team").apply { mkdirs() }
+    val cache = File(app.cacheDir, "${BetaWorkspace.LOCAL}/equipes/$team").apply { mkdirs() }
     fun privateMapPrefs(name: String, uid: String): SharedPreferences {
         require(name in setOf("mapas", "pinturas"))
         val owner = java.security.MessageDigest.getInstance("SHA-256").digest(uid.toByteArray()).joinToString("") { "%02x".format(it) }
-        return app.getSharedPreferences("mapa_privado_${team}_${owner}_$name", Context.MODE_PRIVATE)
+        return app.getSharedPreferences(BetaWorkspace.prefs("mapa_privado_${team}_${owner}_$name"), Context.MODE_PRIVATE)
     }
     fun preservePreviousMaps(uid: String) {
         val target = privateMapPrefs("mapas", uid)
@@ -33,7 +33,7 @@ internal class TeamStore(context: Context, val team: String) {
         }
         drawings.commit(); names.putBoolean("_migrado", true).commit()
     }
-    fun prefs(name: String): SharedPreferences = app.getSharedPreferences("equipe_${team}_$name", Context.MODE_PRIVATE)
+    fun prefs(name: String): SharedPreferences = app.getSharedPreferences(BetaWorkspace.prefs("equipe_${team}_$name"), Context.MODE_PRIVATE)
     fun encode(value: String): String = codec(value, true)
     fun decode(value: String): String = codec(value, false)
     fun decodeLegacy(value: String): String = codec(value, false, true)
@@ -99,7 +99,7 @@ internal class TeamStore(context: Context, val team: String) {
             }
             check(edit.commit())
         }
-        app.filesDir.walkTopDown().onEnter { it != File(app.filesDir, "equipes") }.filter { it.isFile }.forEach { source ->
+        app.filesDir.walkTopDown().onEnter { it != File(app.filesDir, "equipes") && it != File(app.filesDir, BetaWorkspace.LOCAL) }.filter { it.isFile }.forEach { source ->
             if (source.extension.lowercase() in setOf("jpg", "jpeg", "png", "pdf")) {
                 val target = file(source.relativeTo(app.filesDir).invariantSeparatorsPath)
                 target.parentFile?.mkdirs()

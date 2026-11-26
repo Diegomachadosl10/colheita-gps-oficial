@@ -14,7 +14,7 @@ const record = (uid='opA', group='pendencias', revision=1, data={}) => ({equipeI
 const pending = (requested='operador', shift='A', front='santo_inacio') => ({...profile('operador',shift,front,'pendente'), solicitacaoPerfil:requested});
 
 before(async () => {
-  env = await initializeTestEnvironment({projectId:'demo-dm-agro', firestore:{rules:readFileSync('../../firebase/firestore.rules','utf8')}, storage:{rules:readFileSync('../../firebase/storage.rules','utf8')}});
+  env = await initializeTestEnvironment({projectId:'demo-dm-agro', firestore:{rules:readFileSync(process.env.FIRESTORE_RULES_PATH||'../../firebase/firestore.rules','utf8')}, storage:{rules:readFileSync('../../firebase/storage.rules','utf8')}});
 });
 after(async () => { await env?.cleanup(); });
 beforeEach(async () => {

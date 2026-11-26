@@ -31,7 +31,8 @@ class NotificationRoutingTest {
     @Test fun openingANotificationRechecksAccountRoleAndTeam() {
         assertTrue(NotificationRoutes.authorized(supervisor,"sup","santo_inacio_C"))
         assertFalse(NotificationRoutes.authorized(supervisor,"outro","santo_inacio_C"))
-        assertFalse(NotificationRoutes.authorized(supervisor,"sup","santo_inacio_A"))
+        assertTrue(NotificationRoutes.authorized(supervisor,"sup","santo_inacio_A"))
+        assertFalse(NotificationRoutes.authorized(supervisor,"sup","colorado_A"))
         assertFalse(NotificationRoutes.authorized(supervisor.copy(profile=supervisor.profile+("status" to "bloqueado")),"sup","santo_inacio_C"))
         assertFalse(NotificationRoutes.authorized(supervisor.copy(profile=supervisor.profile+("papel" to "operador")),"sup","santo_inacio_C"))
         assertFalse(NotificationRoutes.authorized(TeamAccess(TeamPolicy.PRIMARY_ADMIN_UID,emptyMap()),TeamPolicy.PRIMARY_ADMIN_UID,"inventada_C"))

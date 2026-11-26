@@ -17,7 +17,9 @@ import android.widget.TextView
 internal class ProfileChoice(context:Context):LinearLayout(context) {
     enum class Profile(val label:String,val requested:String,val description:String,val icon:FieldIcon) {
         OPERATOR("Operador","operador","Registrar atividades no campo",FieldIcon.EQUIPMENT),
-        SUPERVISOR("Supervisor","supervisor","Acompanhar a própria equipe",FieldIcon.PEOPLE)
+        SUPERVISOR("Supervisor","supervisor","Acompanhar a própria equipe",FieldIcon.PEOPLE),
+        TRACTOR("Tratorista","tratorista","Registrar atividades com o trator",FieldIcon.EQUIPMENT),
+        HELPER("Ajudante","ajudante","Registrar pendências e ocorrências",FieldIcon.PENDING)
     }
     private val palette=AppTheme.colors(context)
     private val green=palette.accent
@@ -81,6 +83,6 @@ internal class ProfileChoice(context:Context):LinearLayout(context) {
     }
     override fun onInitializeAccessibilityNodeInfo(info:AccessibilityNodeInfo) {
         super.onInitializeAccessibilityNodeInfo(info)
-        info.collectionInfo=AccessibilityNodeInfo.CollectionInfo.obtain(2,1,false,AccessibilityNodeInfo.CollectionInfo.SELECTION_MODE_SINGLE)
+        info.collectionInfo=AccessibilityNodeInfo.CollectionInfo.obtain(Profile.entries.size,1,false,AccessibilityNodeInfo.CollectionInfo.SELECTION_MODE_SINGLE)
     }
 }

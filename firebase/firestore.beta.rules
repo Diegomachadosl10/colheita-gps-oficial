@@ -1,0 +1,211 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function logado() { return request.auth != null; }
+    function principal() { return logado() && request.auth.uid == 'Z8zjZP3iWjRSD6imwiDO4VLboOY2'; }
+    function cadastro() { return get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data; }
+    function aprovado() { return logado() && cadastro().status == 'aprovado'; }
+    function supervisor() { return aprovado() && cadastro().papel == 'supervisor'; }
+    function frenteValida(f) { return f in ['santo_inacio','santa_ines','itororo','cafeara','lupionopolis','colorado','sandovalina','jardim_olinda','itaguaje']; }
+    function turnoValido(t) { return t in ['A','B','C']; }
+    function membro(equipe) { return aprovado() && cadastro().papel in ['supervisor','operador','funcionario','tratorista'] && equipe == cadastro().frenteId + '_' + cadastro().turno; }
+    function gestor(equipe) { return principal() || (supervisor() && membro(equipe)); }
+    function folha(papel) { return papel in ['operador','funcionario','tratorista']; }
+    function supervisorDoUsuario(d) {
+      return supervisor() && d.frenteId == cadastro().frenteId && d.turno == cadastro().turno
+        && folha(d.papel) && d.solicitacaoPerfil in ['operador','tratorista'];
+    }
+    match /usuarios/{uid} {
+      allow create: if principal() && uid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['nome'])
+        && request.resource.data.nome is string && request.resource.data.nome.size() >= 3 && request.resource.data.nome.size() <= 100;
+      allow update: if principal() && uid == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['nome'])
+        && request.resource.data.nome is string && request.resource.data.nome.size() >= 3 && request.resource.data.nome.size() <= 100;
+      allow create: if logado() && request.auth.uid == uid
+        && !exists(/databases/$(database)/documents/contasEncerradas/$(uid))
+        && request.resource.data.keys().hasOnly(['nome','matricula','frenteId','turno','funcao','papel','perfil','solicitacaoPerfil','status','criadoEm'])
+        && request.resource.data.keys().hasAll(['nome','matricula','frenteId','turno','funcao','papel','perfil','solicitacaoPerfil','status'])
+        && request.resource.data.nome is string && request.resource.data.nome.size() >= 3
+        && request.resource.data.matricula is string && request.resource.data.matricula.matches('^[0-9]{1,20}$')
+        && request.auth.token.email == 'matricula.' + request.resource.data.matricula + '@acesso.dm-agro.app'
+        && frenteValida(request.resource.data.frenteId) && turnoValido(request.resource.data.turno)
+        && (
+          (request.resource.data.solicitacaoPerfil == 'supervisor'
+            && request.resource.data.papel == 'supervisor' && request.resource.data.perfil == 'supervisor'
+            && request.resource.data.status == 'aprovado')
+          || (request.resource.data.papel == 'operador' && request.resource.data.perfil == 'operador'
+            && request.resource.data.solicitacaoPerfil in ['operador','tratorista','supervisor']
+            && request.resource.data.status == 'pendente')
+        );
+      // Existing supervisor requests may activate only their own pending profile.
+      // No team change, operator promotion, or unblock/delete bypass is allowed.
+      allow update: if logado() && request.auth.uid == uid && !principal()
+        && !exists(/databases/$(database)/documents/contasEncerradas/$(uid))
+        && resource.data.status == 'pendente' && resource.data.solicitacaoPerfil == 'supervisor'
+        && resource.data.papel == 'operador' && resource.data.perfil == 'operador'
+        && resource.data.matricula is string && resource.data.matricula.matches('^[0-9]{1,20}$')
+        && request.auth.token.email == 'matricula.' + resource.data.matricula + '@acesso.dm-agro.app'
+        && frenteValida(resource.data.frenteId) && turnoValido(resource.data.turno)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['papel','perfil','status'])
+        && request.resource.data.papel == 'supervisor' && request.resource.data.perfil == 'supervisor'
+        && request.resource.data.status == 'aprovado';
+      allow get: if logado() && (uid == request.auth.uid || principal() || supervisorDoUsuario(resource.data));
+      allow list: if principal() || supervisorDoUsuario(resource.data);
+      allow update: if uid != 'Z8zjZP3iWjRSD6imwiDO4VLboOY2' && uid != request.auth.uid && (
+        (principal() && request.resource.data.papel in ['operador','funcionario','tratorista','supervisor']
+          && request.resource.data.perfil == request.resource.data.papel
+          && frenteValida(request.resource.data.frenteId) && turnoValido(request.resource.data.turno))
+        || (supervisorDoUsuario(resource.data)
+          && resource.data.status != 'excluido'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['papel','perfil','status'])
+          && request.resource.data.papel == resource.data.solicitacaoPerfil
+          && request.resource.data.perfil == request.resource.data.papel
+          && request.resource.data.status in ['aprovado','bloqueado'])
+      );
+      allow delete: if false;
+    }
+    match /configuracao/exclusaoUsuarios { allow get: if principal(); allow list, write: if false; }
+    // Readiness probe. No document needs to be created and clients cannot change it.
+    match /configuracao/equipes { allow get: if logado(); allow list, write: if false; }
+    match /configuracao/servico {
+      allow get: if logado();
+      allow create, update: if principal() && request.resource.data.keys().hasOnly(['url'])
+        && request.resource.data.url is string
+        && request.resource.data.url.matches('https://[a-z0-9-]+[.][a-z0-9-]+[.]workers[.]dev/?');
+      allow list, delete: if false;
+    }
+    function grupoOperador(g) { return g in ['pendencias','ocorrencias_campo','mapas','pinturas','arquivos']; }
+    function leRegistro(equipe, d) { return gestor(equipe) || (membro(equipe) && grupoOperador(d.grupo)); }
+    function escreveRegistro(equipe, d) {
+      return gestor(equipe) || (membro(equipe) && grupoOperador(d.grupo)
+        && (d.autorUid == request.auth.uid || d.grupo == 'pinturas'
+          || (d.grupo == 'arquivos' && d.chave.matches('^mapa_relatorio_[0-9a-f]{64}[.]png$'))));
+    }
+    match /equipes/{equipe}/registros/{id} {
+      allow get: if (principal() || membro(equipe)) && (!exists(/databases/$(database)/documents/equipes/$(equipe)/registros/$(id)) || leRegistro(equipe, resource.data));
+      allow list: if leRegistro(equipe, resource.data);
+      allow create: if escreveRegistro(equipe, request.resource.data)
+        && request.resource.data.autorUid == request.auth.uid && valido(equipe, request.resource.data)
+        && (request.resource.data.tipo != 'item' || !request.resource.data.excluido || gestor(equipe))
+        && request.resource.data.versao == 1;
+      allow update: if escreveRegistro(equipe, resource.data) && valido(equipe, request.resource.data)
+        && (gestor(equipe) || (!resource.data.excluido && !request.resource.data.excluido)
+          || (resource.data.tipo != 'item' && resource.data.autorUid == request.auth.uid))
+        && request.resource.data.autorUid == resource.data.autorUid
+        && request.resource.data.grupo == resource.data.grupo && request.resource.data.chave == resource.data.chave
+        && request.resource.data.tipo == resource.data.tipo
+        && request.resource.data.versao == resource.data.versao + 1;
+      allow delete: if false; // Tombstones synchronize deletions without reviving stale offline copies.
+    }
+    function valido(equipe, d) {
+      return d.keys().hasOnly(['equipeId','frenteId','turno','tipo','grupo','chave','conteudo','autorUid','editadoPor','versao','atualizadoEm','excluido'])
+        && d.keys().hasAll(['equipeId','frenteId','turno','tipo','grupo','chave','conteudo','autorUid','editadoPor','versao','atualizadoEm','excluido'])
+        && d.equipeId == equipe && frenteValida(d.frenteId) && turnoValido(d.turno)
+        && equipe == d.frenteId + '_' + d.turno && d.editadoPor == request.auth.uid
+        && d.autorUid is string && d.versao is int && d.excluido is bool
+        && d.atualizadoEm == request.time && d.conteudo is string && d.conteudo.size() < 750000
+        && d.chave is string && d.chave.size() < 250
+        && ((d.tipo == 'item' && d.grupo in ['pendencias','ocorrencias_campo','estoques_salvos','historico_estoque','relatorios_turno','caminhoes','movimentos','historico_os'])
+          || (d.tipo == 'preferencia' && d.grupo in ['mapas','pinturas','ordens_servico','talhoes_por_os'])
+          || (d.tipo == 'arquivo' && d.grupo == 'arquivos'))
+        && d.grupo in ['pendencias','ocorrencias_campo','estoques_salvos','historico_estoque','relatorios_turno','caminhoes','movimentos','historico_os','mapas','pinturas','ordens_servico','talhoes_por_os','arquivos'];
+    }
+    // Legacy collection is kept; documents without trustworthy team metadata are owner-only.
+    match /pendencias/{id} {
+      allow read: if principal() || (aprovado() && resource.data.autorId == request.auth.uid);
+      allow create, update, delete: if principal();
+    }
+    // Single-organisation Beta namespace. No production profile confers Beta approval.
+    match /ambientes/beta {
+      function betaProfile() { return get(/databases/$(database)/documents/ambientes/beta/usuarios/$(request.auth.uid)).data; }
+      function betaApproved() { return logado() && betaProfile().status == 'aprovado'
+        && betaProfile().papel in ['supervisor','operador','funcionario','tratorista','ajudante']; }
+      function betaMember(e) { return betaApproved() && e == betaProfile().frenteId + '_' + betaProfile().turno; }
+      function betaManager(e) { return principal() || (betaApproved() && betaProfile().papel == 'supervisor'
+        && e in [betaProfile().frenteId + '_A', betaProfile().frenteId + '_B', betaProfile().frenteId + '_C']); }
+      function betaLeaf(p) { return p in ['operador','funcionario','tratorista','ajudante']; }
+      function betaApprover(d) { return betaApproved() && betaProfile().papel == 'supervisor'
+        && d.frenteId == betaProfile().frenteId && betaLeaf(d.papel)
+        && d.solicitacaoPerfil in ['operador','tratorista','ajudante']; }
+      match /usuarios/{uid} {
+        allow get: if logado() && (request.auth.uid == uid || principal() || betaApprover(resource.data));
+        allow list: if principal() || betaApprover(resource.data);
+        allow create: if principal() && request.auth.uid == uid
+          && request.resource.data.keys().hasOnly(['nome']) && request.resource.data.nome is string
+          && request.resource.data.nome.size() >= 3 && request.resource.data.nome.size() <= 100;
+        allow create: if logado() && request.auth.uid == uid && !principal()
+          && request.resource.data.keys().hasOnly(['nome','matricula','frenteId','turno','funcao','papel','perfil','solicitacaoPerfil','status','criadoEm'])
+          && request.resource.data.keys().hasAll(['nome','matricula','frenteId','turno','funcao','papel','perfil','solicitacaoPerfil','status'])
+          && request.resource.data.nome is string && request.resource.data.nome.size() >= 3 && request.resource.data.nome.size() <= 100
+          && request.resource.data.matricula is string && request.resource.data.matricula.matches('^[0-9]{1,20}$')
+          && request.auth.token.email == 'matricula.' + request.resource.data.matricula + '@acesso.dm-agro.app'
+          && frenteValida(request.resource.data.frenteId) && turnoValido(request.resource.data.turno)
+          && request.resource.data.solicitacaoPerfil in ['operador','tratorista','ajudante','supervisor']
+          && request.resource.data.papel == 'operador' && request.resource.data.perfil == 'operador' && request.resource.data.status == 'pendente';
+        allow update: if principal() && request.auth.uid == uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['nome'])
+          && request.resource.data.nome is string && request.resource.data.nome.size() >= 3 && request.resource.data.nome.size() <= 100;
+        allow update: if uid != request.auth.uid && uid != 'Z8zjZP3iWjRSD6imwiDO4VLboOY2'
+          && (principal() || (betaApprover(resource.data) && resource.data.status != 'excluido'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['papel','perfil','status'])
+            && request.resource.data.papel == resource.data.solicitacaoPerfil && request.resource.data.status in ['aprovado','bloqueado']))
+          && request.resource.data.status in ['pendente','aprovado','bloqueado','excluido']
+          && request.resource.data.papel in ['operador','funcionario','tratorista','ajudante','supervisor']
+          && request.resource.data.perfil == request.resource.data.papel
+          && frenteValida(request.resource.data.frenteId) && turnoValido(request.resource.data.turno);
+        allow delete: if false;
+      }
+      match /configuracao/{id} {
+        allow get: if logado() && (id in ['equipes','servico'] || principal());
+        allow write: if false;
+      }
+      function betaRead(e,d) { return betaManager(e) || (betaMember(e) && d.grupo in ['pendencias','ocorrencias_campo']); }
+      function betaValid(e,d) {
+        return d.keys().hasOnly(['equipeId','frenteId','turno','tipo','grupo','chave','dados','conteudo','formato','autorUid','editadoPor','versao','atualizadoEm','excluido'])
+          && d.keys().hasAll(['equipeId','frenteId','turno','tipo','grupo','chave','formato','autorUid','editadoPor','versao','atualizadoEm','excluido'])
+          && d.formato == 2 && d.equipeId == e && frenteValida(d.frenteId) && turnoValido(d.turno)
+          && e == d.frenteId + '_' + d.turno && d.editadoPor == request.auth.uid
+          && d.autorUid is string && d.versao is int && d.excluido is bool && d.atualizadoEm == request.time
+          && d.chave is string && d.chave.size() > 0 && d.chave.size() < 250
+          && ((d.tipo == 'item' && d.dados is map && !('conteudo' in d) && d.dados.id == d.chave
+            && d.dados.get('concluida',false) is bool
+            && d.dados.get('__arquivado',false) == d.excluido
+            && d.grupo in ['pendencias','ocorrencias_campo','estoques_salvos','historico_estoque','relatorios_turno','caminhoes','movimentos','historico_os'])
+            || (d.tipo == 'preferencia' && !('dados' in d) && d.conteudo is string && d.conteudo.size() < 750000
+              && d.grupo in ['mapas','pinturas','ordens_servico','talhoes_por_os']));
+      }
+      function betaCreate(e,d) { return betaManager(e) || (betaMember(e) && d.tipo == 'item'
+        && d.grupo in ['pendencias','ocorrencias_campo'] && !d.excluido
+        && d.dados.get('categoriaRegistro','') != 'equipamento' && d.dados.get('concluida',false) == false
+        && !d.dados.keys().hasAny(['historicoExclusoes','arquivadoPorUid','arquivadoPorNome','arquivadoEm','restauradoPorUid','restauradoPorNome','restauradoEm','exclusaoEquipamentoId'])
+        && !('dataConclusao' in d.dados) && !('concluidoPorUid' in d.dados) && !('concluidoPorNome' in d.dados)); }
+      function betaEdit(e,d,old) { return betaManager(e) || (betaMember(e) && old.autorUid == request.auth.uid
+        && old.tipo == 'item' && old.grupo in ['pendencias','ocorrencias_campo'] && !old.excluido && !d.excluido
+        && old.dados.get('categoriaRegistro','') != 'equipamento'
+        && d.dados.get('categoriaRegistro','') == old.dados.get('categoriaRegistro','')
+        && !d.dados.diff(old.dados).affectedKeys().hasAny(['__arquivado','historicoExclusoes','arquivadoPorUid','arquivadoPorNome','arquivadoEm','restauradoPorUid','restauradoPorNome','restauradoEm','exclusaoEquipamentoId'])
+        && d.dados.get('concluida',false) == old.dados.get('concluida',false)
+        && d.dados.get('dataConclusao','') == old.dados.get('dataConclusao','')
+        && d.dados.get('concluidoPorUid','') == old.dados.get('concluidoPorUid','')
+        && d.dados.get('concluidoPorNome','') == old.dados.get('concluidoPorNome','')); }
+      function betaClose(d) { return d.tipo != 'item' || d.dados.get('concluida',false) == false
+        || (d.dados.get('concluidoPorUid','') == request.auth.uid && d.dados.get('dataConclusao','') is string
+          && d.dados.get('dataConclusao','').size() > 0); }
+      match /equipes/{e}/registros/{id} {
+        allow get: if logado() && (betaManager(e) || betaMember(e))
+          && (!exists(/databases/$(database)/documents/ambientes/beta/equipes/$(e)/registros/$(id)) || betaRead(e,resource.data));
+        allow list: if logado() && betaRead(e,resource.data);
+        allow create: if logado() && betaValid(e,request.resource.data) && betaCreate(e,request.resource.data)
+          && betaClose(request.resource.data) && request.resource.data.autorUid == request.auth.uid && request.resource.data.versao == 1;
+        allow update: if logado() && betaValid(e,request.resource.data) && betaEdit(e,request.resource.data,resource.data)
+          && (request.resource.data.tipo != 'item' || resource.data.dados.get('concluida',false) == request.resource.data.dados.get('concluida',false) || betaClose(request.resource.data))
+          && request.resource.data.autorUid == resource.data.autorUid && request.resource.data.grupo == resource.data.grupo
+          && request.resource.data.chave == resource.data.chave && request.resource.data.tipo == resource.data.tipo
+          && request.resource.data.versao == resource.data.versao + 1;
+        allow delete: if false;
+      }
+    }
+    match /{document=**} { allow read, write: if false; }
+  }
+}

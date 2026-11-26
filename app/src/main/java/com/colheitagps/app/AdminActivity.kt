@@ -28,17 +28,16 @@ class AdminActivity : Activity() {
         ui.page("Aprovações da equipe", "Carregando usuários…")
         AccessRepository.loadTeamAccess(this, { access ->
             if (!access.manages) { busy = false; denied("Seu perfil não permite aprovar usuários."); return@loadTeamAccess }
-            val query = if (access.primary) db.collection("usuarios") else db.collection("usuarios")
+            val query = if (access.primary) db.collection(BetaWorkspace.path("usuarios")) else db.collection(BetaWorkspace.path("usuarios"))
                 .whereEqualTo("frenteId", access.profile["frenteId"])
-                .whereEqualTo("turno", access.profile["turno"])
                 .whereIn("papel", TeamPolicy.leafRoles.toList())
-                .whereIn("solicitacaoPerfil", listOf("operador", "tratorista"))
+                .whereIn("solicitacaoPerfil", listOf("operador", "tratorista", "ajudante"))
             query.get(Source.SERVER).addOnCompleteListener {
                 if (isDestroyed) return@addOnCompleteListener
                 busy = false
                 val card = ui.page(if (access.primary) "Gerenciar todos os acessos" else "Aprovar minha equipe",
-                    if (access.primary) "Supervisores entram ao concluir o cadastro. Você gerencia todos os acessos e ajusta as equipes."
-                    else "${TeamPolicy.label(access.team!!)}. Você pode aprovar somente operadores e tratoristas desta equipe.")
+                    if (access.primary) "Você aprova os supervisores do Beta. Cada supervisor aprova operadores, tratoristas e ajudantes da própria frente."
+                    else "${TeamPolicy.label(access.team!!)}. Você pode aprovar operadores, tratoristas e ajudantes da sua frente.")
                 val toolbar=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL };ui.add(card,toolbar,0)
                 for((label,action) in listOf("Atualizar" to { if(!busy) load() },"Voltar" to { finish() })) {
                     val holder=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
@@ -136,7 +135,7 @@ class AdminActivity : Activity() {
                     if (access.primary) ui.button(item, "Ajustar frente e turno", true) {
                         if (!busy) { dialog.dismiss();adjustTeam(user.uid, name) }
                     }
-                    if(access.primary) {
+                    if(access.primary && BetaWorkspace.credentialChangesReady) {
                         ui.button(item,"Corrigir matrícula",true) { if(!busy) { dialog.dismiss();accountAction(user.uid,name,data["matricula"]?.toString().orEmpty(),false) } }
                         ui.button(item,"Excluir definitivamente e liberar matrícula",true) { if(!busy) { dialog.dismiss();accountAction(user.uid,name,data["matricula"]?.toString().orEmpty(),true) } }
                     }
@@ -186,8 +185,8 @@ class AdminActivity : Activity() {
         if (busy) return
         val actor = auth.currentUser?.uid ?: return
         busy = true
-        val actorRef = db.collection("usuarios").document(actor)
-        val target = db.collection("usuarios").document(uid)
+        val actorRef = db.collection(BetaWorkspace.path("usuarios")).document(actor)
+        val target = db.collection(BetaWorkspace.path("usuarios")).document(uid)
         db.runTransaction { tx ->
             val admin = tx.get(actorRef)
             val user = tx.get(target)
@@ -202,7 +201,7 @@ class AdminActivity : Activity() {
         val actor = auth.currentUser?.uid ?: return
         if (!TeamPolicy.primary(actor) || uid == actor || TeamPolicy.primary(uid)) return
         busy = true
-        db.document("configuracao/exclusaoUsuarios").get(Source.SERVER).addOnCompleteListener {
+        db.document(BetaWorkspace.path("configuracao/exclusaoUsuarios")).get(Source.SERVER).addOnCompleteListener {
             busy = false
             if (isDestroyed || isFinishing) return@addOnCompleteListener
             if (!it.isSuccessful) {
@@ -214,7 +213,7 @@ class AdminActivity : Activity() {
                 .setNegativeButton("Cancelar", null).setPositiveButton("Excluir acesso") { _, _ ->
                     if (busy) return@setPositiveButton
                     busy = true
-                    val target = db.collection("usuarios").document(uid)
+                    val target = db.collection(BetaWorkspace.path("usuarios")).document(uid)
                     db.runTransaction { tx ->
                         check(auth.currentUser?.uid == actor && TeamPolicy.primary(actor) && !TeamPolicy.primary(uid))
                         val data = tx.get(target).data ?: error("Cadastro não encontrado")
@@ -238,7 +237,7 @@ class AdminActivity : Activity() {
             .setNegativeButton("Cancelar", null).setPositiveButton("Salvar") { _, _ ->
                 if (auth.currentUser?.uid != TeamPolicy.PRIMARY_ADMIN_UID || uid == TeamPolicy.PRIMARY_ADMIN_UID) return@setPositiveButton
                 busy = true
-                db.collection("usuarios").document(uid).update(mapOf("frenteId" to TeamPolicy.fronts.keys.elementAt(front.selectedItemPosition), "turno" to shift.selectedItem.toString()))
+                db.collection(BetaWorkspace.path("usuarios")).document(uid).update(mapOf("frenteId" to TeamPolicy.fronts.keys.elementAt(front.selectedItemPosition), "turno" to shift.selectedItem.toString()))
                     .addOnCompleteListener { busy = false; if (it.isSuccessful) load() else notice("Não foi possível ajustar a equipe.") }
             }.show()
     }

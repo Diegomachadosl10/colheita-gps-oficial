@@ -21,12 +21,13 @@ internal object AgroService {
             uri.userInfo==null && uri.rawQuery==null && uri.rawFragment==null && uri.path in setOf("","/")
     } catch (_: Exception) { false }
     fun endpoint(context: Context): String {
-        val document=Tasks.await(FirebaseFirestore.getInstance().document("configuracao/servico").get(Source.SERVER), 15, TimeUnit.SECONDS)
+        val document=Tasks.await(FirebaseFirestore.getInstance().document(BetaWorkspace.path("configuracao/servico")).get(Source.SERVER), 15, TimeUnit.SECONDS)
         val value=document.getString("url").orEmpty().trim().trimEnd('/')
         if (!validEndpoint(value)) throw ServiceError(503,"O administrador precisa configurar o serviço gratuito da Cloudflare em Notificações.")
         return value
     }
     fun call(context: Context, path: String, body: JSONObject): JSONObject {
+        if (!BetaWorkspace.notificationsReady) throw ServiceError(503,"O serviço de avisos do Beta ainda não foi configurado. Nenhuma ação foi enviada à produção.")
         val user=FirebaseAuth.getInstance().currentUser ?: throw ServiceError(401,"Entre novamente.")
         val base=endpoint(context)
         val token=Tasks.await(user.getIdToken(true),15,TimeUnit.SECONDS).token ?: throw ServiceError(401,"Entre novamente.")

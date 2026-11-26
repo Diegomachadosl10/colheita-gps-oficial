@@ -21,6 +21,6 @@ internal object AccessPolicy {
 
     fun approved(data: Map<String, Any>?): Boolean =
         normalized(data?.get("status")) == "aprovado" &&
-            role(data) in setOf("administrador", "supervisor", "funcionario", "operador", "tratorista")
+            role(data) in setOf("administrador", "supervisor", "funcionario", "operador", "tratorista", "ajudante")
 
 }

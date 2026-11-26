@@ -4,7 +4,7 @@ import android.content.Context
 import org.json.JSONArray
 
 internal class HomeArrangement(context:Context,team:String,uid:String) {
-    private val prefs=context.applicationContext.getSharedPreferences("inicio_${team}_${uid}",Context.MODE_PRIVATE)
+    private val prefs=context.applicationContext.getSharedPreferences(BetaWorkspace.prefs("inicio_${team}_${uid}"),Context.MODE_PRIVATE)
     fun order(available:List<String>):List<String> {
         val saved=try {JSONArray(prefs.getString("ordem","[]"))} catch(_:Exception) {JSONArray()}
         val favorites=prefs.getStringSet("favoritas",emptySet()).orEmpty()

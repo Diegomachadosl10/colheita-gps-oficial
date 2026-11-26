@@ -15,7 +15,8 @@ internal object EntryLoading {
             fitsSystemWindows = true
             setBackgroundColor(AppTheme.colors(activity).background)
             addView(ui.text("DM AGRO", 32f, ui.dark, true))
-            addView(ui.text("Colheita GPS", 15f).apply { setPadding(0, ui.dp(6), 0, ui.dp(20)) })
+            addView(ui.text(BetaWorkspace.SUBTITLE, 15f).apply { setPadding(0, ui.dp(6), 0, ui.dp(20)) })
+            addView(ui.text("BETA • GRATUITA",12f,ui.green,true))
             addView(ProgressBar(activity).apply { contentDescription = "Abrindo aplicativo" },
                 LinearLayout.LayoutParams(ui.dp(28), ui.dp(28)))
         })

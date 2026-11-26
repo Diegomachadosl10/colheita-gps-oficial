@@ -32,12 +32,6 @@ internal object AccessRepository {
                 val token=Tasks.await(user.getIdToken(forceRefresh),6,TimeUnit.SECONDS).token?:throw AccessFailure("UNAUTHENTICATED")
                 if(FirebaseAuth.getInstance().currentUser?.uid!=user.uid) throw AccessFailure("SESSION_CHANGED")
                 val data=FirestoreAccessHttp.get(project,user.uid,token,readiness)
-                if(!readiness&&EnrollmentPolicy.pendingSupervisor(user.uid,user.email,data)) {
-                    if(FirebaseAuth.getInstance().currentUser?.uid!=user.uid) throw AccessFailure("SESSION_CHANGED")
-                    return try {FirestoreAccessHttp.activateSupervisor(project,user.uid,token)} catch(error:AccessFailure) {
-                        if(error.code=="PERMISSION_DENIED") throw AccessFailure("SUPERVISOR_ENROLLMENT") else throw error
-                    }
-                }
                 return data
             }
             try {read(false)} catch(error:AccessFailure) {if(error.code=="UNAUTHENTICATED") read(true) else throw error}

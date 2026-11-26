@@ -22,7 +22,7 @@ class NotificationSettingsActivity : Activity() {
         activating=value
         activateButton?.apply { isEnabled=!value; text=if(value) label else "Ativar avisos" }
     }
-    override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState); ui=AccessUi(this); load() }
+    override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState); ui=AccessUi(this); if (BetaWorkspace.notificationsReady) load() else ui.page("Notificações do Beta","Os avisos de teste aguardam a configuração do serviço separado. Os avisos da produção não serão alterados.").also { ui.button(it,"Voltar"){finish()} } }
     override fun onResume() { super.onResume(); if(access!=null&&!activating) render() }
     private fun load() {
         AccessRepository.loadTeamAccess(this,{ a ->
@@ -33,7 +33,7 @@ class NotificationSettingsActivity : Activity() {
         val a=access ?: return
         val body=ui.page("Notificações no celular",if(a.primary) "Escolha a frente que você acompanha. Seu acesso de administrador às demais equipes permanece." else "Novos registros e solicitações de ${TeamPolicy.label(a.team!!)}.")
         if(a.primary) {
-            val prefs=applicationContext.getSharedPreferences("avisos_${a.uid}",0)
+            val prefs=applicationContext.getSharedPreferences(BetaWorkspace.prefs("avisos_${a.uid}"),0)
             val front=ui.spinner(body,"Minha frente de notificações",TeamPolicy.fronts.values.toTypedArray())
             frontField=front
             front.setSelection(TeamPolicy.fronts.keys.indexOf(prefs.getString("frente","santo_inacio")).coerceAtLeast(0))
@@ -42,7 +42,7 @@ class NotificationSettingsActivity : Activity() {
                 AgroNotifications.register(this); Toast.makeText(this,"Frente de notificações salva. Ative os avisos para confirmar o registro do aparelho.",Toast.LENGTH_LONG).show()
             }
         }
-        val prefs=applicationContext.getSharedPreferences("avisos_${a.uid}",0)
+        val prefs=applicationContext.getSharedPreferences(BetaWorkspace.prefs("avisos_${a.uid}"),0)
         ui.add(body,ui.text(if(AgroNotifications.enabled(this,a.uid)&&AgroNotifications.allowed(this)) "Aparelho registrado • teste o recebimento" else "Avisos não ativados ou bloqueados no Android",17f,ui.green,true))
         fun date(value:Long)=java.text.SimpleDateFormat("dd/MM HH:mm",java.util.Locale("pt","BR")).format(java.util.Date(value))
         val received=prefs.getLong("recebidoEm",0)
@@ -73,19 +73,19 @@ class NotificationSettingsActivity : Activity() {
             catch(_:Exception) { startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,android.net.Uri.parse("package:$packageName"))) }
         }
         ui.button(body,"Desativar avisos neste aparelho",true) {
-            applicationContext.getSharedPreferences("avisos_${a.uid}",0).edit().putBoolean("ativo",false).apply()
+            applicationContext.getSharedPreferences(BetaWorkspace.prefs("avisos_${a.uid}"),0).edit().putBoolean("ativo",false).apply()
             getSystemService(android.app.NotificationManager::class.java).cancelAll(); render()
         }
         if(a.primary) {
             val url=ui.field(body,"Endereço do serviço gratuito Cloudflare")
             serviceField=url; url.setText(AgroService.DEFAULT_ENDPOINT)
-            FirebaseFirestore.getInstance().document("configuracao/servico").get(Source.SERVER).addOnSuccessListener {
+            FirebaseFirestore.getInstance().document(BetaWorkspace.path("configuracao/servico")).get(Source.SERVER).addOnSuccessListener {
                 if(!isDestroyed&&it.getString("url")?.let(AgroService::validEndpoint)==true) url.setText(it.getString("url"))
             }
             ui.button(body,"Salvar endereço do serviço") {
                 val value=url.text.toString().trim().trimEnd('/')
                 if(!AgroService.validEndpoint(value)) { url.error="Use o endereço HTTPS do seu Worker, terminado em workers.dev"; return@button }
-                FirebaseFirestore.getInstance().document("configuracao/servico").set(mapOf("url" to value))
+                FirebaseFirestore.getInstance().document(BetaWorkspace.path("configuracao/servico")).set(mapOf("url" to value))
                     .addOnSuccessListener { Toast.makeText(this,"Endereço salvo. Agora ative os avisos.",Toast.LENGTH_LONG).show() }
                     .addOnFailureListener { Toast.makeText(this,"Publique as regras desta versão e confira a conexão.",Toast.LENGTH_LONG).show() }
             }
@@ -105,11 +105,11 @@ class NotificationSettingsActivity : Activity() {
         val value=serviceField?.text?.toString()?.trim()?.trimEnd('/').orEmpty()
         if(!AgroService.validEndpoint(value)) { serviceField?.error="Informe o endereço HTTPS do serviço"; return }
         busy(true,"Salvando serviço…")
-        FirebaseFirestore.getInstance().document("configuracao/servico").set(mapOf("url" to value))
+        FirebaseFirestore.getInstance().document(BetaWorkspace.path("configuracao/servico")).set(mapOf("url" to value))
             .addOnSuccessListener {
                 busy(false)
                 if(!isDestroyed) {
-                    frontField?.selectedItemPosition?.let { index->applicationContext.getSharedPreferences("avisos_${a.uid}",0).edit().putString("frente",TeamPolicy.fronts.keys.elementAt(index)).apply() }
+                    frontField?.selectedItemPosition?.let { index->applicationContext.getSharedPreferences(BetaWorkspace.prefs("avisos_${a.uid}"),0).edit().putString("frente",TeamPolicy.fronts.keys.elementAt(index)).apply() }
                     permission()
                 }
             }.addOnFailureListener { busy(false); Toast.makeText(this,"Não foi possível salvar o serviço. Confira a conexão e as regras publicadas.",Toast.LENGTH_LONG).show() }
@@ -119,7 +119,7 @@ class NotificationSettingsActivity : Activity() {
         busy(true)
         com.google.firebase.messaging.FirebaseMessaging.getInstance().token.addOnSuccessListener { token ->
             AgroService.async(this,"/devices/register",AgroNotifications.registration(this,a.uid,token),{
-                applicationContext.getSharedPreferences("avisos_${a.uid}",0).edit().putBoolean("ativo",true).apply(); busy(false); render()
+                applicationContext.getSharedPreferences(BetaWorkspace.prefs("avisos_${a.uid}"),0).edit().putBoolean("ativo",true).apply(); busy(false); render()
             },{error->busy(false);android.app.AlertDialog.Builder(this).setMessage(error).setPositiveButton("OK",null).show()})
         }.addOnFailureListener { busy(false); Toast.makeText(this,"Não foi possível registrar este aparelho. Confira a conexão e o Google Play Services.",Toast.LENGTH_LONG).show() }
     }

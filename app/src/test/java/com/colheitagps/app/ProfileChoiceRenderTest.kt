@@ -28,7 +28,7 @@ class ProfileChoiceRenderTest {
         root.measure(View.MeasureSpec.makeMeasureSpec(width,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(height,View.MeasureSpec.EXACTLY))
         root.layout(0,0,width,height)
         assertTrue(choice.getChildAt(0).height>=96*a.resources.displayMetrics.density)
-        assertEquals(2,choice.childCount)
+        assertEquals(4,choice.childCount)
         val image=Bitmap.createBitmap(width,height,Bitmap.Config.ARGB_8888); root.draw(Canvas(image))
         System.getenv("DM_AGRO_PROFILE_SCREENSHOT")?.let { path->File(path).apply { parentFile?.mkdirs(); outputStream().use { image.compress(Bitmap.CompressFormat.PNG,100,it) } } }
         image.recycle()

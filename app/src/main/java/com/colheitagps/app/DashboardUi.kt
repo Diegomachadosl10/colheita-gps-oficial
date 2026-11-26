@@ -79,8 +79,10 @@ internal class DashboardUi(private val activity: Activity) {
         addView(FieldIconView(activity,FieldIcon.BRAND,0xFFB7E9AF.toInt()), LinearLayout.LayoutParams(dp(47), dp(47)))
         addView(LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL; setPadding(dp(10), 0, 0, 0)
-            addView(text("DM AGRO",26f,Color.WHITE,true));addView(text("Colheita GPS",14f,0xFFD1E8D3.toInt()))
-        })
+            addView(text("DM AGRO",26f,Color.WHITE,true))
+            addView(text(BetaWorkspace.SUBTITLE,11f,0xFFD1E8D3.toInt()).apply { maxLines = 2 })
+            addView(text("BETA GRATUITA",10f,0xFFB7E9AF.toInt(),true))
+        }, LinearLayout.LayoutParams(0,-2,1f))
     }
     data class Tile(val title: String, val icon: FieldIcon, val action: () -> Unit, val badge: Int = 0)
     fun grid(container: LinearLayout, tiles: List<Tile>) {

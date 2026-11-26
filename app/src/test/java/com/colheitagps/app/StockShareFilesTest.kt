@@ -57,7 +57,7 @@ class StockShareFilesTest {
         assertEquals(Intent.ACTION_SEND,intent.action);assertEquals("image/*",intent.type)
         assertTrue(intent.getStringExtra(Intent.EXTRA_TEXT)!!.contains("LOTE-A"));assertTrue(intent.getStringExtra(Intent.EXTRA_TEXT)!!.contains("LOTE-B"))
         val uri=intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)!!
-        assertEquals("${app.packageName}.files",uri.authority);assertTrue(uri.path!!.startsWith("/compartilhamento_equipes/"))
+        assertEquals("${app.packageName}.files",uri.authority);assertTrue(uri.path!!.startsWith("/compartilhamento_beta/"))
         assertEquals(1,intent.clipData!!.itemCount);assertTrue(intent.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION!=0)
         assertTrue(a.isFile)
     }

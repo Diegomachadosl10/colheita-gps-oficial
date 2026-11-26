@@ -2,4 +2,6 @@
     <files-path name="arquivos_equipes" path="equipes/" />
     <cache-path name="atualizacoes" path="atualizacoes/" />
     <cache-path name="compartilhamento_equipes" path="equipes/" />
+    <files-path name="arquivos_beta" path="beta/equipes/" />
+    <cache-path name="compartilhamento_beta" path="beta/equipes/" />
 </paths>

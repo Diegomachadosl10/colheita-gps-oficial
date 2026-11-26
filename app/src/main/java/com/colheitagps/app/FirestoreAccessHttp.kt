@@ -12,7 +12,7 @@ internal object FirestoreAccessHttp {
     fun path(project:String,uid:String,readiness:Boolean):String {
         require(project.matches(Regex("[a-z][a-z0-9-]{3,62}")))
         require(uid.isNotBlank()&&uid.length<=128&&!uid.contains('/'))
-        val document=if(readiness) "configuracao/equipes" else "usuarios/"+URLEncoder.encode(uid,"UTF-8").replace("+","%20")
+        val document=BetaWorkspace.path(if(readiness) "configuracao/equipes" else "usuarios/"+URLEncoder.encode(uid,"UTF-8").replace("+","%20"))
         return "https://firestore.googleapis.com/v1/projects/$project/databases/(default)/documents/$document"
     }
     fun parse(status:Int,body:String,expectedName:String):Map<String,Any>? {
@@ -36,11 +36,6 @@ internal object FirestoreAccessHttp {
     }
     fun get(project:String,uid:String,idToken:String,readiness:Boolean=false):Map<String,Any>? =
         request(project,uid,idToken,readiness,null)
-    fun activateSupervisor(project:String,uid:String,idToken:String):Map<String,Any> {
-        val fields=JSONObject()
-        EnrollmentPolicy.supervisorActivation.forEach {(key,value)->fields.put(key,JSONObject().put("stringValue",value))}
-        return request(project,uid,idToken,false,JSONObject().put("fields",fields).toString())?:throw AccessFailure("INVALID_RESPONSE")
-    }
     private fun request(project:String,uid:String,idToken:String,readiness:Boolean,payload:String?):Map<String,Any>? {
         if(idToken.isBlank()) throw AccessFailure("UNAUTHENTICATED")
         val address=path(project,uid,readiness)+(if(payload!=null) "?updateMask.fieldPaths=papel&updateMask.fieldPaths=perfil&updateMask.fieldPaths=status&currentDocument.exists=true" else "")
@@ -61,7 +56,7 @@ internal object FirestoreAccessHttp {
                 if(text.length>262144) throw AccessFailure("INVALID_RESPONSE")
                 text.toString()
             }.orEmpty()
-            val expected="projects/$project/databases/(default)/documents/"+(if(readiness) "configuracao/equipes" else "usuarios/$uid")
+            val expected="projects/$project/databases/(default)/documents/"+BetaWorkspace.path(if(readiness) "configuracao/equipes" else "usuarios/$uid")
             parse(status,body,expected)
         } finally {connection.disconnect()}
     }

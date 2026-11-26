@@ -15,7 +15,7 @@ class TeamPolicyTest {
         val supervisor = profile("supervisor")
         assertTrue(TeamPolicy.canApprove("sup", supervisor, "op", profile("operador", status="pendente")))
         assertTrue(TeamPolicy.canApprove("sup", supervisor, "tractor", profile("tratorista") + ("solicitacaoPerfil" to "tratorista")))
-        assertFalse(TeamPolicy.canApprove("sup", supervisor, "op", profile("operador", "B")))
+        assertTrue(TeamPolicy.canApprove("sup", supervisor, "op", profile("operador", "B")))
         assertFalse(TeamPolicy.canApprove("sup", supervisor, "op", profile("operador", front="colorado")))
         assertFalse(TeamPolicy.canApprove("sup", supervisor, "supervisor", profile("operador") + ("solicitacaoPerfil" to "supervisor")))
         assertFalse(TeamPolicy.canApprove("sup", supervisor, "sup", supervisor))

@@ -180,7 +180,7 @@ class LoginActivity : Activity() {
     }
     private fun register(existing: Boolean = false) {
         val card = page(if (existing) "Concluir cadastro" else "Criar conta",
-            "Escolha sua frente e turno. Supervisores entram após concluir o cadastro. Operadores e tratoristas aguardam a aprovação do supervisor da própria equipe.")
+            "Escolha sua frente e turno. Somente nossa equipe nesta Beta. Supervisores aguardam aprovação de Diego Machado. Operadores, tratoristas e ajudantes aguardam o supervisor da própria frente.")
         val matricula = ui.field(card, "Número de matrícula").apply { inputType = InputType.TYPE_CLASS_NUMBER }
         if (existing) {
             matricula.setText(auth.currentUser?.email?.substringBefore("@")?.removePrefix("matricula."))
@@ -211,7 +211,7 @@ class LoginActivity : Activity() {
             busy = true; submit.isEnabled = false; submit.text = "Enviando…"; role.setSelectable(false)
             fun saveRequest() {
                 val user = auth.currentUser ?: run { busy = false; login(); return }
-                val doc = db.collection("usuarios").document(user.uid)
+                val doc = db.collection(BetaWorkspace.path("usuarios")).document(user.uid)
                 // A retry may create the missing request, but can never replace an approved profile.
                 db.runTransaction { transaction ->
                     if (!transaction.get(doc).exists()) transaction.set(doc, data)
@@ -249,6 +249,7 @@ class LoginActivity : Activity() {
             if (token != attempt || isDestroyed) return@loadEntry
             busy = false
             when {
+                TeamPolicy.primary(auth.currentUser?.uid.orEmpty()) -> openApp()
                 data == null -> {
                     if (auth.currentUser?.email?.matches(Regex("matricula\\.[0-9]{1,20}@acesso\\.dm-agro\\.app")) == true) {
                         auth.currentUser?.reload()?.addOnCompleteListener { result ->
@@ -266,7 +267,7 @@ class LoginActivity : Activity() {
                 AccessPolicy.normalized(data["status"]) == "bloqueado" -> status("Acesso bloqueado", "Procure o administrador principal para revisar seu acesso.")
                 AccessPolicy.normalized(data["status"]) == "aprovado" -> status("Perfil precisa de revisão", "Sua conta foi aprovada, mas o perfil está ausente ou inválido. Peça ao administrador para conferir o cadastro.")
                 else -> {
-                    status("Aguardando aprovação", "Sua solicitação foi enviada. O supervisor da sua frente e turno pode aprovar operadores e tratoristas. Esta tela acompanha a aprovação quando há conexão.")
+                    status("Aguardando aprovação", "Sua solicitação foi enviada. O supervisor da sua frente aprova operadores, tratoristas e ajudantes. Supervisores aguardam a aprovação de Diego Machado. Esta tela acompanha a aprovação quando há conexão.")
                     waiting = true; watchApproval()
                 }
             }
@@ -277,7 +278,7 @@ class LoginActivity : Activity() {
     private fun watchApproval() {
         if (listener != null || !waiting) return
         val uid = auth.currentUser?.uid ?: return
-        listener = db.collection("usuarios").document(uid).addSnapshotListener(MetadataChanges.INCLUDE) { doc, _ ->
+        listener = db.collection(BetaWorkspace.path("usuarios")).document(uid).addSnapshotListener(MetadataChanges.INCLUDE) { doc, _ ->
             if (!waiting || isDestroyed || auth.currentUser?.uid != uid || doc == null || doc.metadata.isFromCache) return@addSnapshotListener
             if (AccessPolicy.normalized(doc.data?.get("status")) in setOf("aprovado", "bloqueado")) verify()
         }

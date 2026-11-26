@@ -9,7 +9,7 @@ internal object TeamPolicy {
         "sandovalina" to "Sandovalina", "jardim_olinda" to "Jardim Olinda", "itaguaje" to "Itaguajé"
     )
     val shifts = listOf("A", "B", "C")
-    val leafRoles = setOf("operador", "funcionario", "tratorista")
+    val leafRoles = setOf("operador", "funcionario", "tratorista", "ajudante")
     val operatorGroups = setOf("pendencias", "ocorrencias_campo")
     val preferences = setOf("registros_v3", "controle_colheita", "mapas", "pinturas", "ordens_servico", "talhoes_por_os")
     val recordGroups = setOf("pendencias", "ocorrencias_campo", "estoques_salvos", "historico_estoque", "relatorios_turno", "caminhoes", "movimentos", "historico_os")
@@ -24,13 +24,17 @@ internal object TeamPolicy {
         (AccessPolicy.approved(data) && AccessPolicy.role(data) in leafRoles + "supervisor" && team(data) != null)
     fun manages(uid: String, data: Map<String, Any>?) = primary(uid) ||
         (allowed(uid, data) && AccessPolicy.role(data) == "supervisor")
+    fun canUseTeam(uid: String, data: Map<String, Any>?, selected: String): Boolean =
+        selected.substringBeforeLast('_') in fronts && selected.substringAfterLast('_') in shifts &&
+            (primary(uid) || (allowed(uid, data) &&
+                if (AccessPolicy.role(data) == "supervisor") data?.get("frenteId") == selected.substringBeforeLast('_') else team(data) == selected))
     fun requested(data: Map<String, Any>): String = AccessPolicy.normalized(data["solicitacaoPerfil"])
-        .ifEmpty { AccessPolicy.role(data) }.let { if (it in setOf("supervisor", "tratorista")) it else "operador" }
+        .ifEmpty { AccessPolicy.role(data) }.let { if (it in setOf("supervisor", "tratorista", "ajudante")) it else "operador" }
     fun canApprove(actorUid: String, actor: Map<String, Any>?, targetUid: String, target: Map<String, Any>?): Boolean {
         if (target == null || AccessPolicy.normalized(target["status"]) == "excluido" || targetUid == actorUid || primary(targetUid)) return false
         if (primary(actorUid)) return true
-        return manages(actorUid, actor) && team(actor) == team(target) && team(actor) != null &&
-            AccessPolicy.role(target) in leafRoles && AccessPolicy.normalized(target["solicitacaoPerfil"]) in setOf("operador", "tratorista")
+        return manages(actorUid, actor) && actor?.get("frenteId") == target["frenteId"] && team(actor) != null &&
+            AccessPolicy.role(target) in leafRoles && AccessPolicy.normalized(target["solicitacaoPerfil"]) in setOf("operador", "tratorista", "ajudante")
     }
 }
 
@@ -39,4 +43,5 @@ internal data class TeamAccess(val uid: String, val profile: Map<String, Any>) {
     val role get() = if (primary) "administrador" else AccessPolicy.role(profile)
     val team get() = TeamPolicy.team(profile)
     val manages get() = TeamPolicy.manages(uid, profile)
+    fun mayUse(team: String) = TeamPolicy.canUseTeam(uid, profile, team)
 }

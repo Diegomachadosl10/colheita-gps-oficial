@@ -21,8 +21,8 @@ internal object WelcomeUi {
         activity.setContentView(ScrollView(activity).apply { isFillViewport=true;fitsSystemWindows=true;addView(root) })
         root.addView(FieldLandscape(activity),LinearLayout.LayoutParams(-1,ui.dp(132)))
         ui.add(root,ui.text("DM AGRO",38f,palette.text,true).apply { gravity=Gravity.CENTER },8)
-        ui.add(root,ui.text("COLHEITA GPS",16f,palette.accent,true).apply { gravity=Gravity.CENTER },0)
-        ui.add(root,ui.text("Sua equipe conectada no campo.",15f,palette.muted).apply { gravity=Gravity.CENTER },10)
+        ui.add(root,ui.text(BetaWorkspace.SUBTITLE,16f,palette.accent,true).apply { gravity=Gravity.CENTER },0)
+        ui.add(root,ui.text(BetaWorkspace.TITLE,15f,palette.muted).apply { gravity=Gravity.CENTER },10)
         val verse=DailyVerse.forDate()
         val reading=ui.card().apply { background=ui.background(0xFFE2F4D9.toInt(),20);elevation=0f }
         ui.add(root,reading,24)

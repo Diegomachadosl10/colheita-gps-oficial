@@ -14,7 +14,7 @@ internal object NotificationRoutes {
     fun event(team: String, key: String, revision: Long): String = hash("record/$team/$key" + if (revision > 1) "/$revision" else "")
     private fun hash(text: String) = MessageDigest.getInstance("SHA-256").digest(text.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
     fun authorized(access: TeamAccess, uid: String, team: String): Boolean = access.uid == uid && access.manages &&
-        team.substringBeforeLast('_') in TeamPolicy.fronts && team.substringAfterLast('_') in TeamPolicy.shifts && (access.primary || access.team == team)
+        team.substringBeforeLast('_') in TeamPolicy.fronts && team.substringAfterLast('_') in TeamPolicy.shifts && access.mayUse(team)
     fun resolve(eventId: String, team: String, metadata: Map<String, *>): Record? {
         if (!eventId.matches(Regex("[a-f0-9]{64}"))) return null
         for ((key, raw) in metadata) {

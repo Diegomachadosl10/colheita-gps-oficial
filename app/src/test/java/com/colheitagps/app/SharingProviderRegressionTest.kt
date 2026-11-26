@@ -76,7 +76,7 @@ class SharingProviderRegressionTest {
         return chooser.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)!!.also {assertEquals(mime,it.type)}
     }
     private fun readable(uri:Uri):ByteArray {
-        assertTrue(uri.path!!.startsWith("/compartilhamento_equipes/"))
+        assertTrue(uri.path!!.startsWith("/compartilhamento_beta/"))
         assertEquals("image/png",app.contentResolver.getType(uri))
         return app.contentResolver.openInputStream(uri)!!.use {it.readBytes()}.also {
             assertTrue(it.size>100);assertEquals(0x89,it.first().toInt() and 255)

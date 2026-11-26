@@ -74,9 +74,9 @@ class MainActivity : Activity() {
         if (name in setOf("mapas", "pinturas") && teamStore != null && teamAccess?.manages == false)
             teamStore!!.privateMapPrefs(name, teamAccess!!.uid)
         else if (name in TeamPolicy.preferences && teamStore != null) teamStore!!.prefs(name)
-        else super.getSharedPreferences(name, mode)
-    override fun getFilesDir(): File = teamStore?.files ?: super.getFilesDir()
-    override fun getCacheDir(): File = teamStore?.cache ?: super.getCacheDir()
+        else super.getSharedPreferences(BetaWorkspace.prefs(name), mode)
+    override fun getFilesDir(): File = teamStore?.files ?: File(super.getFilesDir(), BetaWorkspace.LOCAL).apply { mkdirs() }
+    override fun getCacheDir(): File = teamStore?.cache ?: File(super.getCacheDir(), BetaWorkspace.LOCAL).apply { mkdirs() }
 
     private fun chooseTeam(access: TeamAccess) {
         val alertTeam=intent.getStringExtra("equipeAlerta")
@@ -85,24 +85,25 @@ class MainActivity : Activity() {
         intent.removeExtra("eventoAlerta");intent.removeExtra("usuarioAlerta")
         intent.removeExtra("equipeAlerta")
         val alertPermitted=notificationEvent.isBlank()||(NotificationRoutes.authorized(access,notificationUid,notificationTeam)&&
-            AgroNotifications.mayDisplay(access.uid,access.profile,notificationTeam,applicationContext.getSharedPreferences("avisos_${access.uid}",0).getString("frente","santo_inacio").orEmpty()))
+            AgroNotifications.mayDisplay(access.uid,access.profile,notificationTeam,applicationContext.getSharedPreferences(BetaWorkspace.prefs("avisos_${access.uid}"),0).getString("frente","santo_inacio").orEmpty()))
         if(!alertPermitted) {
             notificationEvent="";notificationTeam="";notificationUid=""
             Toast.makeText(this,"Este aviso pertence a outra conta ou equipe.",Toast.LENGTH_LONG).show()
         }
         if(alertTeam!=null && alertTeam.substringBeforeLast('_') in TeamPolicy.fronts && alertTeam.substringAfterLast('_') in TeamPolicy.shifts &&
-            (access.primary||access.team==alertTeam)&&alertPermitted&&(notificationUid.isBlank()||notificationUid==access.uid)) { openTeam(access,alertTeam); return }
+            access.mayUse(alertTeam)&&alertPermitted&&(notificationUid.isBlank()||notificationUid==access.uid)) { openTeam(access,alertTeam); return }
         photoEditTarget?.let {target->
             val team=target.optString("team")
-            if(target.optString("uid")==access.uid&&team.substringBeforeLast('_') in TeamPolicy.fronts&&team.substringAfterLast('_') in TeamPolicy.shifts&&(access.primary||access.team==team)) {openTeam(access,team);return}
+            if(target.optString("uid")==access.uid&&team.substringBeforeLast('_') in TeamPolicy.fronts&&team.substringAfterLast('_') in TeamPolicy.shifts&&access.mayUse(team)) {openTeam(access,team);return}
         }
-        if (!access.primary) { openTeam(access, access.team!!); return }
-        val ids = TeamPolicy.fronts.keys.flatMap { f -> TeamPolicy.shifts.map { "${f}_$it" } }
+        if (!access.manages) { openTeam(access, access.team!!); return }
+        val ids = TeamPolicy.fronts.keys.flatMap { f -> TeamPolicy.shifts.map { "${f}_$it" } }.filter(access::mayUse)
         AlertDialog.Builder(this).setTitle("Qual equipe deseja acompanhar?")
             .setItems(ids.map(TeamPolicy::label).toTypedArray()) { _, index -> openTeam(access, ids[index]) }
             .setNegativeButton("Voltar") { _, _ -> moveTaskToBack(true) }.show()
     }
     private fun openTeam(access: TeamAccess, id: String) {
+        require(access.mayUse(id)) { "Frente não autorizada" }
         notificationRoute=null;notificationResolving=false
         if(teamStore?.team!=id||teamAccess?.uid!=access.uid) {buscaEstoque="";buscaEquipamento="";buscaMapas="";filtroParadaChuva=false}
         salvarRascunhoAtivo?.invoke();salvarRascunhoAtivo=null;receberFotoEstoque=null
@@ -128,7 +129,7 @@ class MainActivity : Activity() {
             }
         }, { message -> syncMessage = message; syncLabel?.text = "● ${DashboardUi.status(message)}" })
         teamSync!!.start()
-        if (!access.primary) profileWatch = FirebaseFirestore.getInstance().collection("usuarios").document(access.uid)
+        if (!access.primary) profileWatch = FirebaseFirestore.getInstance().collection(BetaWorkspace.path("usuarios")).document(access.uid)
             .addSnapshotListener(com.google.firebase.firestore.MetadataChanges.INCLUDE) { document, _ ->
                 if (document != null && !document.metadata.isFromCache) AccessRepository.observeProfile(access.uid, document.data)
                 if (document != null && !document.metadata.isFromCache && !isFinishing && !isDestroyed &&
@@ -562,7 +563,7 @@ class MainActivity : Activity() {
 
     private fun escreverBackup(destino: Uri) {
         val preferencias = TeamPolicy.preferences.toList()
-        val indices = JSONObject().put("_equipeId", teamStore!!.team)
+        val indices = JSONObject().put("_equipeId", teamStore!!.team).put("_ambiente", BetaWorkspace.ID)
         val tipos = JSONObject()
         for (nome in preferencias) {
             val dados = JSONObject()
@@ -647,6 +648,7 @@ class MainActivity : Activity() {
                 }
             } ?: throw IOException("Não foi possível abrir o backup")
             val json = indices ?: throw IOException("Preferências não encontradas no backup")
+            require(json.optString("_ambiente") == BetaWorkspace.ID) {"Este backup não é do Beta. Os dados atuais foram preservados."}
             val originalTeam = json.optString("_equipeId")
             if (originalTeam.isNotBlank() && originalTeam != teamStore!!.team) throw IOException("Este backup pertence a outra frente e turno.")
             if (originalTeam.isBlank() && teamAccess?.primary != true) throw IOException("Somente o administrador pode atribuir dados antigos sem equipe.")
@@ -1008,6 +1010,8 @@ class MainActivity : Activity() {
         val coluna=pagina("Configurações")
         themeScreen={configuracoes()};relatorioAtual=null
         coluna.addView(secao("Aplicativo"))
+        val installed = packageManager.getPackageInfo(packageName, 0).versionName.orEmpty()
+        coluna.addView(texto("DM AGRO $installed • Beta gratuita\n${BetaWorkspace.SUBTITLE}\nDesenvolvido por Diego Machado", 15f))
         coluna.addView(botao("Organizar início") {organizarInicio()})
         coluna.addView(botao("Verificar atualização") {startActivity(Intent(this,UpdateActivity::class.java))})
         if(podeGerenciar()) coluna.addView(botao("Notificações") {startActivity(Intent(this,NotificationSettingsActivity::class.java))})
@@ -1032,6 +1036,9 @@ class MainActivity : Activity() {
         val coluna = pagina("DM AGRO")
         themeScreen={inicio()}
         raiz?.setBackgroundColor(palette.background)
+        coluna.addView(ui.text("${BetaWorkspace.TITLE}\nDados de teste separados dos registros atuais.",13f,ui.mint).apply {
+            setPadding(0,dp(8),0,0)
+        })
         coluna.addView(ui.text("Olá, ${DashboardUi.name(access, sessionName)}", 28f, bold = true).apply {
             setPadding(0, dp(26), 0, dp(3))
         })
@@ -1043,7 +1050,7 @@ class MainActivity : Activity() {
             it.setPadding(0, dp(7), 0, 0); it.setOnClickListener { syncDetails() }; teamInfo.addView(it)
         }
         teamPanel.addView(teamInfo, LinearLayout.LayoutParams(0, -2, 1f))
-        if (access.primary) teamPanel.addView(ui.text("Trocar", 14f, ui.mint, true).apply {
+        if (access.manages) teamPanel.addView(ui.text("Trocar", 14f, ui.mint, true).apply {
             gravity = Gravity.CENTER; minHeight = dp(48); setPadding(dp(12), 0, 0, 0)
             contentDescription = "Trocar equipe"; setOnClickListener { chooseTeam(access) }
         })
@@ -1082,14 +1089,7 @@ class MainActivity : Activity() {
                 addView(ui.text(if (access.primary) "Administrador" else "Supervisor da equipe", 13f, ui.mint))
             })
         }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(18) })
-        if (access.primary && store.hasLegacy()) coluna.addView(botao("Dados antigos deste aparelho") {
-            AlertDialog.Builder(this).setTitle("Preservar e importar dados anteriores")
-                .setMessage("Importe somente registros de ${TeamPolicy.label(store.team)}. Os originais e registros atuais serão preservados.")
-                .setNegativeButton("Cancelar", null).setPositiveButton("Importar") { _, _ ->
-                    try { store.importLegacy(); teamSync?.retry(); inicio() }
-                    catch (e: Exception) { Toast.makeText(this, e.message ?: "Falha na importação", Toast.LENGTH_LONG).show() }
-                }.show()
-        })
+
     }
 
     private fun homeTiles(access:TeamAccess):MutableList<DashboardUi.Tile> {
@@ -1224,7 +1224,7 @@ class MainActivity : Activity() {
             .setNegativeButton("Cancelar", null).setPositiveButton("Salvar") { _, _ ->
                 val name = input.text.toString().trim()
                 if (name.length !in 3..100) { Toast.makeText(this, "Informe seu nome, de 3 a 100 caracteres.", Toast.LENGTH_LONG).show(); return@setPositiveButton }
-                FirebaseFirestore.getInstance().document("usuarios/${teamAccess!!.uid}")
+                FirebaseFirestore.getInstance().document(BetaWorkspace.path("usuarios/${teamAccess!!.uid}"))
                     .set(mapOf("nome" to name), com.google.firebase.firestore.SetOptions.merge())
                     .addOnSuccessListener { if (!isDestroyed) { teamAccess = teamAccess!!.copy(profile = teamAccess!!.profile + ("nome" to name)); inicio() } }
                     .addOnFailureListener { Toast.makeText(this, "Não foi possível salvar. Confira as regras desta atualização e a conexão.", Toast.LENGTH_LONG).show() }
@@ -1987,6 +1987,7 @@ class MainActivity : Activity() {
         if (equipment.isEmpty()) coluna.addView(texto("Nenhum equipamento excluído nesta equipe.", 15f))
     }
     private fun cadastrarEquipamento() {
+        if (!exigirGestor()) return
         pausarSincronizacao()
         val input = campo("Número do equipamento (ex.: 21569)")
         AlertDialog.Builder(this).setTitle("Cadastrar equipamento da equipe").setView(input)
@@ -2011,9 +2012,9 @@ class MainActivity : Activity() {
         val coluna=pagina("Pendências de manutenção")
         themeScreen={pendencias()}
         compartilharImagemAtual={compartilharPendenciasAbertas(imagem=true)}
-        atalhos(coluna,
-            Triple("Nova pendência",FieldIcon.PENDING,{editarPendencia(-1)}),
-            Triple("Cadastrar equipamento",FieldIcon.EQUIPMENT,{cadastrarEquipamento()}))
+        val actions = mutableListOf(Triple("Nova pendência",FieldIcon.PENDING,{editarPendencia(-1)}))
+        if (podeGerenciar()) actions.add(Triple("Cadastrar equipamento",FieldIcon.EQUIPMENT,{cadastrarEquipamento()}))
+        atalhos(coluna,*actions.toTypedArray())
         coluna.addView(CheckBox(this).apply {
             text="Serviços para a parada de chuva";setTextColor(palette.text);minHeight=dp(48);isChecked=filtroParadaChuva
             setOnCheckedChangeListener {_,checked->filtroParadaChuva=checked;pendencias()}
@@ -2141,7 +2142,7 @@ class MainActivity : Activity() {
         pausarSincronizacao()
         val arr = dados("pendencias")
         val obj = arr.optJSONObject(idx) ?: return
-        if (!exigirEdicao("pendencias", obj)) return
+        if (!exigirGestor() || !exigirEdicao("pendencias", obj)) return
         val concluida = obj.optBoolean("concluida", false)
         AlertDialog.Builder(this)
             .setTitle(if (concluida) "Reabrir pendência?" else "Concluir pendência?")
@@ -2150,8 +2151,8 @@ class MainActivity : Activity() {
             .setNegativeButton("Cancelar", null)
             .setPositiveButton(if (concluida) "Reabrir" else "Concluir") { _, _ ->
                 obj.put("concluida", !concluida)
-                if (concluida) obj.remove("dataConclusao")
-                else obj.put("dataConclusao", java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", Locale("pt", "BR")).format(java.util.Date()))
+                if (concluida) {obj.remove("dataConclusao");obj.remove("concluidoPorUid");obj.remove("concluidoPorNome")}
+                else obj.put("dataConclusao", java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", Locale("pt", "BR")).format(java.util.Date())).put("concluidoPorUid",teamAccess!!.uid).put("concluidoPorNome",teamAccess!!.profile["nome"]?.toString().orEmpty())
                 guardar("pendencias", arr)
                 pendenciasEquipamento(obj.optString("equipamento"))
             }.show()
@@ -2181,7 +2182,7 @@ class MainActivity : Activity() {
         }
         val opcoes = listOf("Editar pendência", if (concluida) "↩ Reabrir pendência" else "✓ Concluir pendência",
             "Excluir pendência", "Compartilhar", "Adicionar foto", "Ver fotos", "Peças vinculadas", "Histórico de correções")
-            .mapIndexed { index, label -> label to index }.filter { it.second != 2 || podeGerenciar() }
+            .mapIndexed { index, label -> label to index }.filter { it.second !in setOf(1, 2) || podeGerenciar() }
         AlertDialog.Builder(this).setTitle(obj.optString("equipamento", "Pendência"))
             .setItems(opcoes.map { it.first }.toTypedArray()) { _, escolha ->
                 when (opcoes[escolha].second) {

@@ -8,7 +8,7 @@ import org.json.JSONObject
 
 /** Local drafts never become operational records until Save is confirmed. */
 internal class FieldDrafts(context:Context,team:String,uid:String) {
-    private val prefs=context.applicationContext.getSharedPreferences("rascunhos_campo_${team}_${uid}",Context.MODE_PRIVATE)
+    private val prefs=context.applicationContext.getSharedPreferences(BetaWorkspace.prefs("rascunhos_campo_${team}_${uid}"),Context.MODE_PRIVATE)
     fun read(key:String):JSONObject?=try {prefs.getString(key,null)?.let(::JSONObject)} catch(_:Exception) {null}
     fun write(key:String,row:JSONObject) {check(prefs.edit().putString(key,row.toString()).commit())}
     fun clear(key:String) {check(prefs.edit().remove(key).commit())}

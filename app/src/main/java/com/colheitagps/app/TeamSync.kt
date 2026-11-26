@@ -23,9 +23,9 @@ import java.util.concurrent.TimeUnit
 internal class TeamSync(context: Context, private val access: TeamAccess, val store: TeamStore,
     private val changed: () -> Unit, private val status: (String) -> Unit) {
     private val storeContext = context.applicationContext
-    private val local = context.applicationContext.getSharedPreferences("sincronizacao_${access.uid}_${store.team}", 0)
+    private val local = context.applicationContext.getSharedPreferences(BetaWorkspace.prefs("sincronizacao_${access.uid}_${store.team}"), 0)
     private val db = FirebaseFirestore.getInstance()
-    private val records = db.collection("equipes").document(store.team).collection("registros")
+    private val records = db.collection(BetaWorkspace.path("equipes")).document(store.team).collection("registros")
     private val worker = Executors.newSingleThreadExecutor()
     private val handler = Handler(Looper.getMainLooper())
     private var subscription: ListenerRegistration? = null
@@ -75,7 +75,7 @@ internal class TeamSync(context: Context, private val access: TeamAccess, val st
             if (snapshot == null || snapshot.metadata.isFromCache || snapshot.metadata.hasPendingWrites()) return@addSnapshotListener
             execute {
                 scan()
-                for (d in snapshot.documents) remote[d.id] = JSONObject(d.data.orEmpty())
+                for (d in snapshot.documents) remote[d.id] = BetaRecordCodec.fromWire(d.data.orEmpty())
                 ready = true
                 applyRemote(); flush()
             }
@@ -124,6 +124,7 @@ internal class TeamSync(context: Context, private val access: TeamAccess, val st
                 for (i in 0 until arr.length()) {
                     val obj = arr.optJSONObject(i) ?: continue
                     if (obj.optString("id").isBlank()) { obj.put("id", UUID.randomUUID().toString()); assigned = true }
+                    if (!access.manages && MaintenanceRecords.isEquipment(obj)) continue
                     val recordKey = obj.getString("id")
                     val wire = proposed("item", group, recordKey, store.encode((if (TeamPolicy.AUTOMATIC_ATTACHMENTS) obj else TeamContent.textOnly(obj)).toString()),
                         RecordArchive.archived(obj))
@@ -143,7 +144,7 @@ internal class TeamSync(context: Context, private val access: TeamAccess, val st
                     store.encode(MaintenanceRecords.withArchiveState(JSONObject(decoded), it.optBoolean("excluido")).toString())
                 else store.encode(decoded)
             }
-            if (old == null || old.optBoolean("excluido") != value.optBoolean("excluido") || previousContent != value.getString("conteudo")) queue(key, value)
+            if (old == null || old.optBoolean("excluido") != value.optBoolean("excluido") || !BetaRecordCodec.sameContent(previousContent, value.getString("conteudo"))) queue(key, value)
         }
         for (key in local.all.keys.filter { it.startsWith("e_item_") && it.removePrefix("e_item_") !in now })
             local.edit().remove(key).commit()
@@ -176,12 +177,12 @@ internal class TeamSync(context: Context, private val access: TeamAccess, val st
                     check(active())
                     val doc = tx.get(records.document(key))
                     val revision = (doc.get("versao") as? Number)?.toLong() ?: 0L
-                    val existing = if (doc.exists()) JSONObject(doc.data.orEmpty()) else null
+                    val existing = if (doc.exists()) BetaRecordCodec.fromWire(doc.data.orEmpty()) else null
                     if (RecordDeletion.alreadyDeleted(change, existing)) return@runTransaction existing!!
                     val existingEquipment = change.getString("grupo") == "pendencias" &&
                         try { MaintenanceRecords.isEquipment(JSONObject(change.getString("conteudo"))) } catch (_: Exception) { false }
-                    if (existingEquipment && change.getLong("base") == 0L && doc.exists() && doc.getString("conteudo") == change.getString("conteudo") && doc.getBoolean("excluido") != true)
-                        return@runTransaction JSONObject(doc.data.orEmpty())
+                    if (existingEquipment && change.getLong("base") == 0L && doc.exists() && existing != null && BetaRecordCodec.sameContent(existing.optString("conteudo"), change.getString("conteudo")) && doc.getBoolean("excluido") != true)
+                        return@runTransaction BetaRecordCodec.fromWire(doc.data.orEmpty())
                     check(revision == change.getLong("base") || RecordDeletion.canDeleteUnconfirmed(change, existing)) { "CONFLITO_DE_VERSAO" }
                     val data = mutableMapOf<String, Any>(
                         "equipeId" to store.team, "frenteId" to store.team.substringBeforeLast('_'), "turno" to store.team.substringAfterLast('_'),
@@ -190,7 +191,7 @@ internal class TeamSync(context: Context, private val access: TeamAccess, val st
                         "autorUid" to change.getString("autorUid"), "editadoPor" to access.uid,
                         "versao" to (if (!doc.exists() && change.getBoolean("excluido") && change.getString("tipo") != "item") 0L else revision + 1), "atualizadoEm" to FieldValue.serverTimestamp()
                     )
-                    if (doc.exists() || !change.getBoolean("excluido") || change.getString("tipo") == "item") tx.set(records.document(key), data)
+                    if (doc.exists() || !change.getBoolean("excluido") || change.getString("tipo") == "item") tx.set(records.document(key), BetaRecordCodec.toWire(data))
                     data.remove("atualizadoEm")
                     JSONObject(data)
                 }, 25, TimeUnit.SECONDS)
@@ -221,6 +222,7 @@ internal class TeamSync(context: Context, private val access: TeamAccess, val st
         else if (conflicts == 0) announce(if (pending == 0) "Registros sincronizados • compartilhamento por imagem" else "$pending alterações aguardando envio")
     }
     private fun flushNotificationOutbox() {
+        if (!BetaWorkspace.notificationsReady) return
         for((prefKey,revision) in local.all) {
             if(!prefKey.startsWith("n_")||revision !is Long||!active()) continue
             try {
@@ -300,7 +302,7 @@ internal class TeamSync(context: Context, private val access: TeamAccess, val st
         val file = store.file(path)
         val digest = content.getString("hash")
         val storagePath = content.getString("storage")
-        require(storagePath.startsWith("equipes/${store.team}/arquivos/") && !storagePath.contains(".."))
+        require(storagePath.startsWith(BetaWorkspace.path("equipes/${store.team}/arquivos") + "/") && !storagePath.contains(".."))
         if (file.isFile && hash(file) == digest) { local.edit().putString("f_$path", digest).putString("m_$path", "${file.lastModified()}:${file.length()}").commit(); return }
         file.parentFile?.mkdirs()
         val temporary = File(store.cache, UUID.randomUUID().toString())
@@ -344,7 +346,7 @@ internal class TeamSync(context: Context, private val access: TeamAccess, val st
             val digest = hash(file)
             if (local.getString("f_$path", null) == digest) { local.edit().putString("m_$path", fingerprint).commit(); continue }
             val contentType = when (ext) { "pdf" -> "application/pdf"; "png" -> "image/png"; else -> "image/jpeg" }
-            val storagePath = "equipes/${store.team}/arquivos/${access.uid}/$digest"
+            val storagePath = BetaWorkspace.path("equipes/${store.team}/arquivos/${access.uid}/$digest")
             val ref = FirebaseStorage.getInstance().reference.child(storagePath)
             val snapshot = File(store.cache, UUID.randomUUID().toString())
             try {
@@ -390,7 +392,7 @@ internal class TeamSync(context: Context, private val access: TeamAccess, val st
             val id = key.removePrefix("c_")
             val doc = Tasks.await(records.document(id).get(Source.SERVER), 15, TimeUnit.SECONDS)
             local.edit().remove(key).remove("q_$id").remove("b_$id").commit()
-            if (doc.exists()) remote[id] = JSONObject(doc.data.orEmpty())
+            if (doc.exists()) remote[id] = BetaRecordCodec.fromWire(doc.data.orEmpty())
         }
         applyRemote()
     } }

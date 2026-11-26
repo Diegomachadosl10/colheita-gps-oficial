@@ -1,1 +1,14 @@
-{"private":true,"type":"module","scripts":{"test":"node --test rules.test.mjs"},"devDependencies":{"@firebase/rules-unit-testing":"^5.0.0","firebase":"^12.0.0","firebase-tools":"^14.0.0"}}
+{
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test rules.test.mjs",
+    "test:beta": "node --test beta.rules.test.mjs",
+    "test:beta-compat": "FIRESTORE_RULES_PATH=../../firebase/firestore.beta.rules node --test rules.test.mjs"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.0",
+    "firebase": "^12.0.0",
+    "firebase-tools": "^14.0.0"
+  }
+}

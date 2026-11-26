@@ -37,8 +37,8 @@ class FirestoreAccessHttpTest {
     }
     @Test fun urlsStayOnTheFirestoreProjectAndTypedValuesAreDecodedWithoutUsingCachedProfiles() {
         val url=FirestoreAccessHttp.path("dm-agro-c0e04","person+one",false)
-        assertEquals("https://firestore.googleapis.com/v1/projects/dm-agro-c0e04/databases/(default)/documents/usuarios/person%2Bone",url)
-        assertTrue(FirestoreAccessHttp.path("dm-agro-c0e04","person",true).endsWith("/configuracao/equipes"))
+        assertEquals("https://firestore.googleapis.com/v1/projects/dm-agro-c0e04/databases/(default)/documents/ambientes/beta/usuarios/person%2Bone",url)
+        assertTrue(FirestoreAccessHttp.path("dm-agro-c0e04","person",true).endsWith("/ambientes/beta/configuracao/equipes"))
         for((project,uid) in listOf("https://other.example" to "person","dm-agro-c0e04" to "../other")) {
             try {FirestoreAccessHttp.path(project,uid,false);fail()} catch(_:IllegalArgumentException) {}
         }

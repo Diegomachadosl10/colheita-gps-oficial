@@ -40,7 +40,7 @@ class StockShareActivity:Activity() {
         AccessRepository.loadTeamAccess(this,{ a->
             if(token!=generation||isDestroyed||isFinishing) return@loadTeamAccess
             val team=intent.getStringExtra("team").orEmpty()
-            if(!a.manages||(!a.primary&&a.team!=team)||ids.isEmpty()) {denied();return@loadTeamAccess}
+            if(!a.manages||!a.mayUse(team)||ids.isEmpty()) {denied();return@loadTeamAccess}
             store=try {TeamStore(applicationContext,team)} catch(_:IllegalArgumentException) {denied();return@loadTeamAccess}
             access=a
             if(pendingUri!=null) receivePhoto() else render()

@@ -20,14 +20,14 @@ import java.util.concurrent.TimeUnit
 
 internal object AgroNotifications {
     private const val CHANNEL="equipe_dm_agro"
-    fun enabled(context: Context, uid: String) = context.applicationContext.getSharedPreferences("avisos_$uid",0).getBoolean("ativo",false)
+    fun enabled(context: Context, uid: String) = BetaWorkspace.notificationsReady && context.applicationContext.getSharedPreferences(BetaWorkspace.prefs("avisos_$uid"),0).getBoolean("ativo",false)
     fun registration(context: Context, uid: String, token: String) = JSONObject().put("token",token)
-        .put("front",context.applicationContext.getSharedPreferences("avisos_$uid",0).getString("frente","santo_inacio"))
+        .put("front",context.applicationContext.getSharedPreferences(BetaWorkspace.prefs("avisos_$uid"),0).getString("frente","santo_inacio"))
     fun runtimePermission(context:Context)=Build.VERSION.SDK_INT<33 || context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)==PackageManager.PERMISSION_GRANTED
     fun allowed(context: Context) = runtimePermission(context) && NotificationManagerCompat.from(context).areNotificationsEnabled() &&
         context.getSystemService(NotificationManager::class.java).getNotificationChannel(CHANNEL)?.importance!=NotificationManager.IMPORTANCE_NONE
     fun status(context:Context,uid:String,message:String) {
-        context.applicationContext.getSharedPreferences("avisos_$uid",0).edit().putString("ultimoResultado",message).putLong("resultadoEm",System.currentTimeMillis()).apply()
+        context.applicationContext.getSharedPreferences(BetaWorkspace.prefs("avisos_$uid"),0).edit().putString("ultimoResultado",message).putLong("resultadoEm",System.currentTimeMillis()).apply()
     }
     fun mayDisplay(uid: String, profile: Map<String,Any>?, sourceTeam: String, selectedFront: String): Boolean =
         sourceTeam.substringBeforeLast('_') in TeamPolicy.fronts && sourceTeam.substringAfterLast('_') in TeamPolicy.shifts &&
@@ -43,6 +43,7 @@ internal object AgroNotifications {
         enqueue(context,"event",body,uid,persist)
     }
     fun enqueue(context: Context, action: String, body: JSONObject, uid: String, persist:Boolean=false) {
+        if (!BetaWorkspace.notificationsReady) return
         val builder=OneTimeWorkRequestBuilder<AgroNotificationWorker>()
             .setInputData(workDataOf("action" to action,"body" to body.toString(),"uid" to uid,"created" to System.currentTimeMillis()))
             .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
@@ -56,9 +57,10 @@ internal object AgroNotifications {
         } else manager.enqueue(builder.build())
     }
     fun offer(activity: Activity, access: TeamAccess) {
+        if (!BetaWorkspace.notificationsReady) return
         if(!access.manages) return
         register(activity)
-        val prefs=activity.applicationContext.getSharedPreferences("avisos_${access.uid}",0)
+        val prefs=activity.applicationContext.getSharedPreferences(BetaWorkspace.prefs("avisos_${access.uid}"),0)
         if(prefs.getBoolean("perguntou",false)) return
         prefs.edit().putBoolean("perguntou",true).apply()
         AlertDialog.Builder(activity).setTitle("Avisos da equipe")
@@ -66,6 +68,7 @@ internal object AgroNotifications {
             .setNegativeButton("Agora não",null).setPositiveButton("Configurar") { _,_->activity.startActivity(Intent(activity,NotificationSettingsActivity::class.java)) }.show()
     }
     fun logout(context: Context) {
+        if (!BetaWorkspace.notificationsReady) return
         val uid=FirebaseAuth.getInstance().currentUser?.uid ?: return
         context.getSystemService(NotificationManager::class.java).cancelAll()
         WorkManager.getInstance(context.applicationContext).cancelAllWorkByTag("avisos-$uid")
@@ -75,9 +78,10 @@ internal object AgroNotifications {
         .putExtra("equipeAlerta",data.optString("team")).putExtra("eventoAlerta",data.optString("eventId")).putExtra("usuarioAlerta",uid)
         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
     fun display(context: Context, uid: String, data: JSONObject) {
+        if (!BetaWorkspace.notificationsReady) return
         if(!allowed(context)||!enabled(context,uid)) return
         val event=data.optString("eventId"); if(event.isBlank()||event.length>160) return
-        val prefs=context.getSharedPreferences("avisos_recebidos_$uid",0)
+        val prefs=context.getSharedPreferences(BetaWorkspace.prefs("avisos_recebidos_$uid"),0)
         if(prefs.contains(event)) return
         val manager=context.getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(NotificationChannel(CHANNEL,"Novidades da equipe",NotificationManager.IMPORTANCE_DEFAULT))
@@ -89,7 +93,7 @@ internal object AgroNotifications {
             .setContentIntent(pending).setAutoCancel(true).setCategory(NotificationCompat.CATEGORY_EVENT).build()
         if(FirebaseAuth.getInstance().currentUser?.uid!=uid) return
         manager.notify((uid+event).hashCode(),notification)
-        context.getSharedPreferences("avisos_$uid",0).edit().putLong("recebidoEm",System.currentTimeMillis()).apply()
+        context.getSharedPreferences(BetaWorkspace.prefs("avisos_$uid"),0).edit().putLong("recebidoEm",System.currentTimeMillis()).apply()
         val edit=prefs.edit().putLong(event,System.currentTimeMillis())
         for((key,value) in prefs.all) if(value is Long && value<System.currentTimeMillis()-7*86400000L) edit.remove(key)
         edit.apply()
@@ -126,8 +130,8 @@ class AgroNotificationWorker(context: Context,params: WorkerParameters) : Worker
                 }
                 "display" -> {
                     if(System.currentTimeMillis()-inputData.getLong("created",0)>3600000) return Result.success()
-                    val profile=Tasks.await(FirebaseFirestore.getInstance().document("usuarios/$uid").get(Source.SERVER),15,TimeUnit.SECONDS).data
-                    val front=applicationContext.getSharedPreferences("avisos_$uid",0).getString("frente","santo_inacio").orEmpty()
+                    val profile=Tasks.await(FirebaseFirestore.getInstance().document(BetaWorkspace.path("usuarios/$uid")).get(Source.SERVER),15,TimeUnit.SECONDS).data
+                    val front=applicationContext.getSharedPreferences(BetaWorkspace.prefs("avisos_$uid"),0).getString("frente","santo_inacio").orEmpty()
                     if(AgroNotifications.mayDisplay(uid,profile,body.optString("team"),front))
                         AgroNotifications.display(applicationContext,uid,body)
                     Result.success()

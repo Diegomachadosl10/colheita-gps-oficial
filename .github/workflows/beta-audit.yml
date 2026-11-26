@@ -59,7 +59,7 @@ jobs:
         env:
           CI: 'true'
           FIREBASE_CLI_DISABLE_UPDATE_CHECK: '1'
-        run: tests/firebase/node_modules/.bin/firebase emulators:exec --project demo-dm-agro --only firestore,storage 'cd tests/firebase && npm test'
+        run: tests/firebase/node_modules/.bin/firebase emulators:exec --project demo-dm-agro --only firestore,storage 'cd tests/firebase && npm test && npm run test:beta-compat && npm run test:beta'
 
   android:
     name: Compilacao, testes e lint - sem distribuicao

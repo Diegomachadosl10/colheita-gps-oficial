@@ -33,10 +33,10 @@ class DashboardTest {
         assertFalse(labels.contains("Equipamentos"))
         for(title in listOf("Estoque","Ordens de serviço","Relatórios","Caminhões","Calendário","Gerenciar usuários","Sair da conta")) assertFalse(title,labels.contains(title))
     }
-    @Test fun supervisorDashboardPreservesEveryManagerToolWithoutTheOwnerTeamSwitcher() {
+    @Test fun supervisorDashboardPreservesToolsAndSwitchesOnlyWithinItsFront() {
         val labels=texts(home("supervisor").window.decorView)
         for(title in listOf("Estoque","Ordens de serviço","Caminhões","Calendário","Aprovar minha equipe")) assertTrue(title,labels.contains(title))
-        assertFalse(labels.contains("Trocar"));assertFalse(labels.contains("Relatórios"))
+        assertTrue(labels.contains("Trocar"));assertFalse(labels.contains("Relatórios"))
     }
     @Test fun ownerDashboardHasTeamSwitcherAndTheNameNeverDefaultsToUsuario() {
         val labels=texts(home("administrador").window.decorView)

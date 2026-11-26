@@ -9,7 +9,7 @@ internal class MapFavorites(context:Context,team:String,uid:String) {
     init {
         require(uid.isNotBlank())
         val owner=MessageDigest.getInstance("SHA-256").digest(uid.toByteArray()).joinToString("") {"%02x".format(it)}
-        preferences=context.applicationContext.getSharedPreferences("favoritos_mapas_${team}_$owner",Context.MODE_PRIVATE)
+        preferences=context.applicationContext.getSharedPreferences(BetaWorkspace.prefs("favoritos_mapas_${team}_$owner"),Context.MODE_PRIVATE)
     }
     fun ids():Set<String> = preferences.getStringSet("ids",emptySet()).orEmpty().toSet()
     fun toggle(id:String) {

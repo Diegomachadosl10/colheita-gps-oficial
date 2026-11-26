@@ -52,9 +52,10 @@ internal class AccessUi(private val activity: Activity,attach:Boolean=true) {
         val brand=LinearLayout(activity).apply {
             orientation=LinearLayout.VERTICAL;setPadding(dp(18),dp(18),dp(18),dp(18));background=background(palette.header,18)
             addView(text("DM AGRO",28f,Color.WHITE,true))
-            addView(text("COLHEITA GPS  •  GESTÃO NO CAMPO",11f,0xFFD1E8D3.toInt(),true))
+            addView(text(BetaWorkspace.SUBTITLE,11f,0xFFD1E8D3.toInt(),true))
         }
         add(root,brand,0)
+        add(root,text(BetaWorkspace.TITLE,12f,green,true),6)
         val card = card()
         add(root, card, 16)
         val heading=LinearLayout(activity).apply {orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL}
@@ -131,7 +132,7 @@ internal class AccessUi(private val activity: Activity,attach:Boolean=true) {
         add(container,text("Selecione uma opção",13f),3)
         return ProfileChoice(activity).also { choice ->
             add(container,choice,10)
-            add(container,text("Supervisor: acesso ao concluir o cadastro. Operador: aguarda aprovação do supervisor da própria frente e turno.",13f,green),10)
+            add(container,text("Supervisor: aguarda aprovação de Diego Machado. Demais perfis: aguardam aprovação do supervisor da própria frente.",13f,green),10)
         }
     }
     fun spinner(container: LinearLayout, label: String, values: Array<String>): Spinner {
