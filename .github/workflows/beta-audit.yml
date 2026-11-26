@@ -1,0 +1,124 @@
+name: DM AGRO Professional Beta - Validacao
+
+on:
+  push:
+    branches: [dm-agro-professional-beta]
+    paths:
+      - 'app/**'
+      - 'backend/**'
+      - 'firebase/**'
+      - 'tests/**'
+      - 'scripts/**'
+      - '*.gradle.kts'
+      - 'gradle.properties'
+      - 'firebase.json'
+      - '.github/workflows/beta-audit.yml'
+  pull_request:
+    branches: [dm-agro-professional-beta]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dm-agro-beta-audit-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  services:
+    name: Servico gratuito e publicador
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node backend/worker.test.mjs
+      - run: python3 -m unittest discover -s scripts -p 'test_*.py'
+
+  firebase-rules:
+    name: Regras em emuladores isolados
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: tests/firebase/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: npm ci --prefix tests/firebase
+      - name: Testar somente o projeto ficticio demo-dm-agro
+        env:
+          CI: 'true'
+          FIREBASE_CLI_DISABLE_UPDATE_CHECK: '1'
+        run: tests/firebase/node_modules/.bin/firebase emulators:exec --project demo-dm-agro --only firestore,storage 'cd tests/firebase && npm test'
+
+  android:
+    name: Compilacao, testes e lint - sem distribuicao
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Preservar a identidade do aplicativo instalado
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          source = Path('app/build.gradle.kts').read_text()
+          assert re.search(r'applicationId\s*=\s*"com[.]colheitagps[.]app"', source)
+          assert 'applicationIdSuffix' not in source
+          assert Path('scripts/android-signing.sha256').read_text().strip() == 'd6bff2432575da5928e07127ef565b19c8148f53c2c0047de3f2bb7ce003b3a6'
+          PY
+      # Validation may use the runner's disposable debug key. Never upload its APK.
+      # A distributable update still requires the existing permanent signing key.
+      - name: Compilar sem acessar segredos de assinatura
+        run: gradle testDebugUnitTest assembleDebug lintDebug --no-daemon
+      - name: Resumo para consulta pelo celular
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          suites = [ET.parse(p).getroot() for p in Path('app/build/test-results/testDebugUnitTest').glob('TEST-*.xml')]
+          totals = {key: sum(int(s.get(key, 0)) for s in suites) for key in ('tests', 'failures', 'errors', 'skipped')}
+          lint = Path('app/build/reports/lint-results-debug.xml')
+          issues = ET.parse(lint).getroot().findall('issue') if lint.exists() else []
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as out:
+              out.write('## DM AGRO Professional Beta - validacao\n\n')
+              out.write(f"Testes Android: {totals['tests']}; falhas: {totals['failures']}; erros: {totals['errors']}; ignorados: {totals['skipped']}.\n\n")
+              out.write(f"Lint: {sum(i.get('severity') in ('Error', 'Fatal') for i in issues)} erros e {sum(i.get('severity') == 'Warning' for i in issues)} avisos.\n\n" if lint.exists() else 'Lint: relatorio ainda indisponivel.\n\n')
+              if not suites:
+                  out.write('A execucao nao chegou a produzir resultados Android. Consulte o passo que falhou.\n\n')
+              out.write('Nenhum APK e distribuido por este workflow. Nenhuma release, regra Firebase ou dado de producao e alterado. A assinatura permanente nao e acessada.\n')
+          PY
+      - name: Guardar somente relatorios de validacao
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: DM-AGRO-Beta-Auditoria
+          retention-days: 14
+          if-no-files-found: ignore
+          path: |
+            app/build/test-results/testDebugUnitTest/
+            app/build/reports/tests/testDebugUnitTest/
+            app/build/reports/lint-results-debug.*
