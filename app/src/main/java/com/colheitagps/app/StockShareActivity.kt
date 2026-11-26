@@ -68,7 +68,7 @@ class StockShareActivity:Activity() {
             val id=record.optString("id");val photo=StockShareFiles.photo(s.files,record)
             val card=ui.card().apply {background=ui.background(0xFFF1F6F1.toInt());elevation=0f};ui.add(body,card,14)
             ui.add(card,ui.text("Lote ${record.optString("os")}",18f,ui.dark,true),0)
-            ui.add(card,ui.text("Talhões: ${record.optString("talhoes")}\nÁrea: ${record.optString("areaRestante")} ha • ${record.optString("produtividade")} t/ha",13f),6)
+            ui.add(card,ui.text(StockBatch.details(record),13f),6)
             if(photo!=null) {
                 StockShareFiles.decode(photo,360)?.let { bitmap->
                     ui.add(card,ImageView(this).apply {setImageBitmap(bitmap);adjustViewBounds=true;maxHeight=ui.dp(120);contentDescription="Foto do lote ${record.optString("os")}"},10)
@@ -83,6 +83,7 @@ class StockShareActivity:Activity() {
         }
         val enabled=records.isNotEmpty()&&records.size==ids.size&&a.manages
         ui.button(body,"Enviar mensagem e fotos") {sendStock()}.isEnabled=enabled
+        ui.button(body,"Enviar em PDF",true) {sendPdf()}.isEnabled=enabled
         ui.button(body,"Voltar",true){finish()}
     }
     private fun choosePhoto(id:String) {
@@ -145,6 +146,15 @@ class StockShareActivity:Activity() {
         if(!a.manages) return
         val selected=try {selectedForSharing()} catch(error:Exception) {notice(error.message?:"Confira os lotes selecionados antes de enviar.");return}
         StockSharing.share(this,s,selected) {access?.uid==a.uid&&access?.manages==true&&store?.team==s.team}
+    }
+    private fun sendPdf() {
+        val a=access?:return;val s=store?:return
+        if(!a.manages) return
+        try {
+            val date=java.text.SimpleDateFormat("dd/MM/yyyy HH:mm",java.util.Locale("pt","BR")).format(java.util.Date())
+            val report=StockSharing.pdfReport(s,selectedForSharing(),date,a.profile["nome"]?.toString().orEmpty())
+            FieldReportSharing.sharePdf(this,report,s.cache) {access?.uid==a.uid&&access?.manages==true&&store?.team==s.team}
+        } catch(error:Exception) {notice(error.message?:"Confira os lotes antes de gerar o PDF.")}
     }
     companion object {private const val PHOTO=8810}
 }

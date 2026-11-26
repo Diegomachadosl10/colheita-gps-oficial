@@ -72,4 +72,43 @@ internal object FieldReportSharing {
             FieldReportRenderer.render(report,File(cache,"relatorios/${UUID.randomUUID()}"),false)
         }
     }
+    fun pdfIntent(activity:Activity,report:FieldReport,file:File):Intent {
+        require(file.isFile&&file.length()>0)
+        val app=activity.applicationContext
+        val uri=FileProvider.getUriForFile(app,"${app.packageName}.files",file)
+        return Intent(Intent.ACTION_SEND).apply {
+            type="application/pdf"
+            putExtra(Intent.EXTRA_STREAM,uri)
+            putExtra(Intent.EXTRA_TEXT,"${report.title} • ${report.team}\n${report.period}")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            clipData=ClipData.newUri(app.contentResolver,report.title,uri)
+        }
+    }
+    /** A prepared PDF remains private until the user confirms Enviar. */
+    fun reviewPdf(activity:Activity,report:FieldReport,file:File,allowed:()->Boolean={true}) {
+        if(activity.isDestroyed||activity.isFinishing||!allowed()) return
+        try {
+            val intent=pdfIntent(activity,report,file)
+            SharePreview.review(activity,intent,allowed) {
+                try {
+                    if(!activity.isDestroyed&&!activity.isFinishing&&allowed())
+                        activity.startActivity(Intent.createChooser(intent,"Enviar PDF DM AGRO"))
+                } catch(_:Exception) {failure(activity,"Não foi possível enviar o PDF. Tente novamente.")}
+            }
+        } catch(_:Exception) {failure(activity,"Não foi possível preparar o PDF. Tente novamente.")}
+    }
+    fun sharePdf(activity:Activity,report:FieldReport,cache:File,allowed:()->Boolean={true}) {
+        if(activity.isDestroyed||activity.isFinishing||!allowed()) return
+        Toast.makeText(activity,"Preparando PDF…",Toast.LENGTH_SHORT).show()
+        worker.execute {
+            try {
+                val file=FieldReportRenderer.render(report,File(cache,"relatorios/${UUID.randomUUID()}"),true).single()
+                activity.runOnUiThread {reviewPdf(activity,report,file,allowed)}
+            } catch(_:OutOfMemoryError) {
+                activity.runOnUiThread {failure(activity,"Memória insuficiente. Tente enviar menos itens no PDF.")}
+            } catch(_:Exception) {
+                activity.runOnUiThread {failure(activity,"Não foi possível gerar o PDF. Tente novamente.")}
+            }
+        }
+    }
 }

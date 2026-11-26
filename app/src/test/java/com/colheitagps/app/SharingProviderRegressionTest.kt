@@ -40,6 +40,7 @@ class SharingProviderRegressionTest {
     private val report get()=FieldReport("Teste de compartilhamento","Santo Inácio • Turno C",sections=listOf(ReportSection("Lotes",listOf("Lote"),listOf(listOf("K/05")))))
     @Before fun useTheActualProviderAndItsProductionXmlWithAnEmptyCache() {
         shadowOf(MimeTypeMap.getSingleton()).addExtensionMimeTypeMapping("png","image/png")
+        shadowOf(MimeTypeMap.getSingleton()).addExtensionMimeTypeMapping("pdf","application/pdf")
         val authority="${app.packageName}.files"
         val info=ProviderInfo().apply {
             this.authority=authority;packageName=app.packageName;name=FileProvider::class.java.name
@@ -62,6 +63,48 @@ class SharingProviderRegressionTest {
         val bitmap=Bitmap.createBitmap(80,80,Bitmap.Config.ARGB_8888);bitmap.eraseColor(color)
         file.parentFile?.mkdirs();file.outputStream().use {check(bitmap.compress(Bitmap.CompressFormat.PNG,100,it))};bitmap.recycle()
         return file
+    }
+    // A synthetic empty PDF tests URI grants and preview behavior, not Android's native PDF writer.
+    private fun pdfFixture():File {
+        val data=StringBuilder("%PDF-1.4\n");val offsets=mutableListOf<Int>()
+        for((i,obj) in listOf("<< /Type /Catalog /Pages 2 0 R >>","<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << >> >>","<< /Length 0 >>\nstream\nendstream").withIndex()) {
+            offsets.add(data.length);data.append("${i+1} 0 obj\n$obj\nendobj\n")
+        }
+        val xref=data.length;data.append("xref\n0 5\n0000000000 65535 f \n")
+        offsets.forEach {data.append(it.toString().padStart(10,'0')).append(" 00000 n \n")}
+        data.append("trailer\n<< /Size 5 /Root 1 0 R >>\nstartxref\n$xref\n%%EOF\n")
+        return File(store.cache,"documentos/exemplo.pdf").apply {parentFile!!.mkdirs();writeText(data.toString(),Charsets.US_ASCII)}
+    }
+    private fun views(view:android.view.View):List<android.view.View> = listOf(view)+
+        (if(view is android.view.ViewGroup) (0 until view.childCount).flatMap {views(view.getChildAt(it))} else emptyList())
+    @Test fun aPdfCanBeInspectedAndIsOnlySharedAfterEnviarWithAReadableGrantedUri() {
+        val a=activity();val file=pdfFixture()
+        FieldReportSharing.reviewPdf(a,report,file)
+        assertNull(shadowOf(a).nextStartedActivity)
+        val preview=ShadowAlertDialog.getLatestAlertDialog()
+        val labels=views(preview.window!!.decorView).filterIsInstance<android.widget.TextView>()
+        assertTrue(labels.any {it.text.contains("Documento PDF")});assertFalse(labels.any {it.text.contains("Imagem 1")})
+        labels.single {it.text=="Visualizar PDF"}.performClick()
+        val reader=shadowOf(a).nextStartedActivity
+        assertEquals(Intent.ACTION_VIEW,reader.action);assertEquals("application/pdf",reader.type)
+        assertTrue(reader.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION!=0)
+        preview.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick()
+        val chooser=shadowOf(a).nextStartedActivity;assertEquals(Intent.ACTION_CHOOSER,chooser.action)
+        val sent=chooser.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)!!
+        assertEquals("application/pdf",sent.type);assertEquals(Intent.ACTION_SEND,sent.action)
+        assertTrue(sent.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION!=0)
+        val uri=sent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)!!
+        assertEquals(uri,sent.clipData!!.getItemAt(0).uri);assertEquals("application/pdf",app.contentResolver.getType(uri))
+        assertArrayEquals(file.readBytes(),app.contentResolver.openInputStream(uri)!!.use {it.readBytes()})
+    }
+    @Test fun aSessionChangeBlocksBothOpeningAndSendingThePreparedPdf() {
+        val a=activity();var allowed=true
+        FieldReportSharing.reviewPdf(a,report,pdfFixture()) {allowed}
+        val preview=ShadowAlertDialog.getLatestAlertDialog();allowed=false
+        views(preview.window!!.decorView).filterIsInstance<android.widget.TextView>().single {it.text=="Visualizar PDF"}.performClick()
+        preview.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick()
+        assertNull(shadowOf(a).nextStartedActivity)
     }
     private fun awaitShare(a:Activity,mime:String="image/png"):Intent {
         var chooser:Intent?=null
@@ -148,7 +191,7 @@ class SharingProviderRegressionTest {
         ReflectionHelpers.callInstanceMethod<Unit>(a,"escolherCompartilhamentoEstoque")
         val share=awaitShare(a,"image/*")
         assertEquals(Intent.ACTION_SEND,share.action)
-        assertTrue(share.getStringExtra(Intent.EXTRA_TEXT)!!.startsWith("ESTOQUE DE CANA - COLHEITA GPS"))
+        assertTrue(share.getStringExtra(Intent.EXTRA_TEXT)!!.startsWith("DM AGRO — ESTOQUE DE CANA"))
         assertFalse(share.getStringExtra(Intent.EXTRA_TEXT)!!.contains("Fotos/mapas"))
         assertTrue(share.getStringExtra(Intent.EXTRA_TEXT)!!.contains("Lote: K/05"))
         assertTrue(share.getStringExtra(Intent.EXTRA_TEXT)!!.contains("Talhões: 1 a 3"))

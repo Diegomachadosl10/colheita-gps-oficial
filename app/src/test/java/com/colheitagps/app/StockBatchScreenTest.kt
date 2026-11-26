@@ -39,11 +39,14 @@ class StockBatchScreenTest {
         val dialog=ShadowAlertDialog.getLatestAlertDialog()
         views(dialog.window!!.decorView).filterIsInstance<TextView>().single { it.text.toString()=="+ Adicionar outro lote" }.performClick()
         val fields=views(dialog.window!!.decorView).filterIsInstance<EditText>()
-        listOf("K/01","1, 2","10,5","80","K/02","3 a 5","9","75").forEachIndexed { i,text->fields[i].setText(text) }
+        listOf("K/01","1, 2","10,5","80","Carreador sul","K/02","3 a 5","Área a medir","Produtividade a confirmar","").forEachIndexed { i,text->fields[i].setText(text) }
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick();shadowOf(Looper.getMainLooper()).idle()
         val saved=JSONArray(a.getSharedPreferences("registros_v3",0).getString("estoques_salvos","[]"))
         assertEquals(3,saved.length());assertEquals("ANTIGO",saved.getJSONObject(0).getString("os"))
         assertEquals("K/02",saved.getJSONObject(2).getString("os"))
+        assertEquals("Carreador sul",saved.getJSONObject(1).getString("observacoes"))
+        assertEquals("Área a medir",saved.getJSONObject(2).getString("areaRestante"))
+        assertEquals("Produtividade a confirmar",saved.getJSONObject(2).getString("produtividade"))
         assertEquals("original",JSONObject(a.getSharedPreferences("controle_colheita",0).getString("progresso","{}")).getString("id"))
     }
     @Test fun anOperatorCannotOpenTheStockBatchForm() {
@@ -51,5 +54,29 @@ class StockBatchScreenTest {
         a.javaClass.getDeclaredMethod("cadastrarLotes").apply { isAccessible=true }.invoke(a)
         assertNull(ShadowAlertDialog.getLatestAlertDialog())
         assertEquals(1,JSONArray(a.getSharedPreferences("registros_v3",0).getString("estoques_salvos","[]")).length())
+    }
+    @Test fun anIncompleteSecondLotDoesNotSaveTheFirstLot() {
+        val a=activity("supervisor")
+        a.javaClass.getDeclaredMethod("cadastrarLotes").apply {isAccessible=true}.invoke(a)
+        shadowOf(Looper.getMainLooper()).idle()
+        val dialog=ShadowAlertDialog.getLatestAlertDialog()
+        views(dialog.window!!.decorView).filterIsInstance<TextView>().single {it.text=="+ Adicionar outro lote"}.performClick()
+        val fields=views(dialog.window!!.decorView).filterIsInstance<EditText>()
+        listOf("K/01","1","A conferir","80","Sem foto","K/02","","10","70","").forEachIndexed {i,value->fields[i].setText(value)}
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick();shadowOf(Looper.getMainLooper()).idle()
+        assertTrue(dialog.isShowing)
+        assertEquals(1,JSONArray(a.getSharedPreferences("registros_v3",0).getString("estoques_salvos","[]")).length())
+    }
+    @Test fun aBatchFromTheOldTeamCannotSaveIntoTheNewTeam() {
+        val a=activity("supervisor")
+        a.javaClass.getDeclaredMethod("cadastrarLotes").apply {isAccessible=true}.invoke(a)
+        shadowOf(Looper.getMainLooper()).idle()
+        val dialog=ShadowAlertDialog.getLatestAlertDialog()
+        val fields=views(dialog.window!!.decorView).filterIsInstance<EditText>()
+        listOf("K/01","1","10","80","").forEachIndexed {i,value->fields[i].setText(value)}
+        ReflectionHelpers.setField(a,"teamStore",TeamStore(a.applicationContext,"colorado_C"))
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick();shadowOf(Looper.getMainLooper()).idle()
+        assertEquals("[]",TeamStore(a.applicationContext,"colorado_C").prefs("registros_v3").getString("estoques_salvos","[]"))
+        assertEquals(1,JSONArray(TeamStore(a.applicationContext,"santo_inacio_C").prefs("registros_v3").getString("estoques_salvos","[]")).length())
     }
 }

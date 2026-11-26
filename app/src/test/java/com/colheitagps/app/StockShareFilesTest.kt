@@ -90,6 +90,19 @@ class StockShareFilesTest {
         assertEquals(listOf(1,2,3),RecordingStockPdf.pages.map {it.pageNumber})
         assertTrue(RecordingStockPdf.pages.all {it.pageWidth==595&&it.pageHeight==842});assertTrue(file.isFile)
     }
+    @Test fun theStockPdfContainsOnlyChosenAttachmentsAndIncludesFreeTextNotesAndTheResponsiblePerson() {
+        val first=row("K/39",image("selected.png")).put("observacoes","Liberar carreador sul").put("areaRestante","A conferir")
+        val second=row("K/40")
+        val foreignFile=File(app.filesDir,"another-team-photo.png").apply {writeBytes(File(first.getString("fotoEstoque")).readBytes())}
+        val foreign=row("OTHER",foreignFile)
+        val rows=listOf(first,second,foreign);val before=rows.map {it.toString()}
+        val report=StockSharing.pdfReport(store,rows,"26/11/2026 07:00","Responsável fictício")
+        assertEquals(1,report.pictures.size);assertEquals("selected.png",report.pictures.single().file.name)
+        assertTrue(report.period.contains("Responsável fictício"));assertTrue(report.team.contains("Santo Inácio"))
+        val text=report.sections.flatMap {it.rows}.flatten().joinToString("\n")
+        assertTrue(text.contains("Liberar carreador sul"));assertTrue(text.contains("A conferir"));assertEquals(before,rows.map {it.toString()})
+        assertFalse(text.contains("another-team-photo"))
+    }
 }
 
 /** Robolectric 4.14 does not implement Android's native PDF writer. Capture the real

@@ -14,9 +14,13 @@ internal object FieldWorkflow {
     fun lot(value:String)=java.text.Normalizer.normalize(value,java.text.Normalizer.Form.NFKC).uppercase(Locale.ROOT).replace(Regex("[\\s/_-]+"),"")
     fun decimal(value:String):Boolean=value.trim().matches(Regex("[0-9]{1,8}([.,][0-9]{1,4})?"))
     fun requireStock(record:JSONObject) {
-        require(record.optString("os").isNotBlank()&&record.optString("talhoes").isNotBlank()) {"Informe o lote e os talhões."}
-        require(decimal(record.optString("areaRestante"))) {"Informe a área em hectares, usando apenas número e vírgula ou ponto decimal."}
-        require(decimal(record.optString("produtividade"))) {"Informe a produtividade em toneladas por hectare, usando um número válido."}
+        for ((key, label, limit) in listOf(Triple("os","lote",100),Triple("talhoes","talhões",2000),
+            Triple("areaRestante","área",200),Triple("produtividade","produtividade",200))) {
+            val value=record.optString(key)
+            require(value.isNotBlank()) {"Informe $label. Você pode usar texto livre."}
+            require(value.length<=limit) {"O campo $label aceita até $limit caracteres."}
+        }
+        require(record.optString("observacoes").length<=4000) {"As observações aceitam até 4000 caracteres."}
     }
     fun matches(all:JSONArray,row:JSONObject)=FieldReports.rows(all).filter {!RecordArchive.archived(it)&&it.optString("id")!=row.optString("id")&&lot(it.optString("os"))==lot(row.optString("os"))}
     fun parts(all:JSONArray,id:String)=FieldReports.rows(all).filter {PartsRecords.isPart(it)&&!RecordArchive.archived(it)&&id.isNotBlank()&&it.optString("pendenciaId")==id}

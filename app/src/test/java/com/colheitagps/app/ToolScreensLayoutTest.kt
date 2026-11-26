@@ -101,7 +101,7 @@ class ToolScreensLayoutTest {
         val labels=views(a.window.decorView).filterIsInstance<TextView>().map {it.text.toString()}
         assertTrue(labels.containsAll(listOf("Verificar atualização","Notificações","Registros excluídos","Sincronização")))
         call(a,"estoque");assertEquals(listOf("Tema do aplicativo","Configurações","Sair da conta"),openMenu())
-        call(a,"pendencias");assertEquals(listOf("Compartilhar imagem","Tema do aplicativo","Configurações","Sair da conta"),openMenu())
+        call(a,"pendencias");assertEquals(listOf("Compartilhar imagem","Enviar em PDF","Tema do aplicativo","Configurações","Sair da conta"),openMenu())
     }
     @Test fun tileActionsStackOnNarrowScreensAndLargeFontsKeepTheirLabelsAndReachTheRightForm() {
         for(fontScale in listOf(1f,1.6f)) {

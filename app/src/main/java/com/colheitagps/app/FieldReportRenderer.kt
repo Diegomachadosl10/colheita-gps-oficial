@@ -46,7 +46,7 @@ internal object FieldReportRenderer {
             else {bitmap=Bitmap.createBitmap(WIDTH*2,HEIGHT*2,Bitmap.Config.ARGB_8888);canvas=Canvas(bitmap!!).apply {scale(2f,2f)}}
             canvas!!.drawColor(Color.WHITE)
             paint.color=0xFF123E2A.toInt();canvas!!.drawRect(0f,0f,WIDTH.toFloat(),94f,paint)
-            text("DM AGRO • COLHEITA GPS",28f,27f,12f,0xFFCBEDBF.toInt(),true)
+            text("DM AGRO • GESTÃO OPERACIONAL AGRÍCOLA",28f,27f,12f,0xFFCBEDBF.toInt(),true)
             wrap(report.title,535f,19f).take(2).forEachIndexed {i,line->text(line,28f,53f+i*23,19f,Color.WHITE,true)}
             text(report.team,28f,111f,11f,0xFF245039.toInt(),true);y=130f
             if(report.period.isNotBlank()) for(line in wrap(report.period,535f,10f)) {text(line,28f,y,10f,0xFF52665B.toInt());y+=13f}

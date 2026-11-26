@@ -6,7 +6,7 @@ import org.json.JSONObject
 /** Business-field audit only. Local media paths and synchronization metadata are never copied into the audit. */
 internal object RecordEdits {
     private val labels=linkedMapOf("equipamento" to "Equipamento","descricao" to "Descrição","osPendencia" to "O.S.","urgente" to "Urgente","paradaChuva" to "Serviço para parada de chuva",
-        "concluida" to "Concluída","os" to "Lote","talhoes" to "Talhões","areaRestante" to "Área (ha)","produtividade" to "Produtividade (t/ha)",
+        "concluida" to "Concluída","os" to "Lote","talhoes" to "Talhões","areaRestante" to "Área (ha)","produtividade" to "Produtividade (t/ha)","observacoes" to "Observações",
         "numero" to "Caminhão","chegada" to "Entrada","saida" to "Saída","dataEntrada" to "Data da entrada","dataSaida" to "Data da saída",
         "codigoPeca" to "Código da peça","nomePeca" to "Peça","quantidadePeca" to "Quantidade","equipamentoReferencia" to "Equipamento da peça","situacaoPeca" to "Situação da peça",
         "pendenciaId" to "Vínculo com pendência","chuvaMm" to "Chuva (mm)","observacaoChuva" to "Observação da chuva","tipo" to "Tipo","localizacao" to "Localização",

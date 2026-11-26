@@ -34,7 +34,18 @@ internal object SharePreview {
                 if(bitmap==null) counter.text="Imagem ${index+1} de ${uris.size} • prévia indisponível"
             } catch(_:Exception) {counter.text="Imagem ${index+1} de ${uris.size} • prévia indisponível"}
         }
-        if(uris.isNotEmpty()) {
+        if(uris.isNotEmpty()&&intent.type=="application/pdf") {
+            ui.add(body,ui.text("Documento PDF • ${uris.size} arquivo(s)",16f,ui.dark,true),0)
+            ui.button(body,"Visualizar PDF",true) {
+                if(allowed()&&!activity.isFinishing&&!activity.isDestroyed) try {
+                    activity.startActivity(Intent(Intent.ACTION_VIEW).apply {
+                        setDataAndType(uris.first(),"application/pdf")
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        clipData=intent.clipData
+                    })
+                } catch(_:Exception) {Toast.makeText(activity,"Não foi possível abrir o leitor de PDF neste celular. Você ainda pode enviar o arquivo.",Toast.LENGTH_LONG).show()}
+            }
+        } else if(uris.isNotEmpty()) {
             ui.add(body,counter,0);ui.add(body,image,8)
             if(uris.size>1) {
                 val navigation=LinearLayout(activity).apply {gravity=Gravity.CENTER;orientation=LinearLayout.HORIZONTAL}

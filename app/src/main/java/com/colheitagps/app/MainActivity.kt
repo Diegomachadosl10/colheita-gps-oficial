@@ -892,6 +892,12 @@ class MainActivity : Activity() {
             acessoConfirmado&&teamStore?.team==store.team&&teamAccess?.uid==uid
         }
     }
+    private fun compartilharRelatorioPdf(report:FieldReport) {
+        val store=teamStore?:return;val uid=teamAccess?.uid?:return
+        FieldReportSharing.sharePdf(this,report,store.cache) {
+            acessoConfirmado&&teamStore?.team==store.team&&teamAccess?.uid==uid
+        }
+    }
     private fun relatorioGrupo(title:String,group:String,records:List<JSONObject>,period:String=""):FieldReport {
         val root=filesDir.canonicalPath+File.separator
         val pictures=records.flatMap {item->
@@ -920,10 +926,11 @@ class MainActivity : Activity() {
                 val catalog=maintenanceCatalog()
                 val visible=MaintenanceRecords.search(catalog,buscaEquipamento)
                 val numbers=visible.map {it.number}.toSet()
-                val summary=visible.map {listOf(it.number,it.open.toString(),it.completed.toString())}
-                FieldReport(title,TeamPolicy.label(teamStore!!.team),sections=listOf(
-                    ReportSection("Equipamentos",listOf("Equipamento","Pendências abertas","Concluídas"),summary),
-                    FieldReports.group("Pendências abertas","pendencias",FieldReports.rows(dados("pendencias")).filter {!RecordArchive.archived(it)&&!it.optBoolean("concluida")&&MaintenanceRecords.number(it.optString("equipamento")) in numbers})))
+                val issues=MaintenanceShareData.open(catalog).filter {MaintenanceRecords.number(it.optString("equipamento")) in numbers&&(!filtroParadaChuva||it.optBoolean("paradaChuva"))}
+                val summary=visible.filter {!filtroParadaChuva||issues.any {row->MaintenanceRecords.number(row.optString("equipamento"))==it.number}}
+                    .map {item->listOf(item.number,issues.count {MaintenanceRecords.number(it.optString("equipamento"))==item.number}.toString(),item.completed.toString())}
+                val report=relatorioGrupo(title,"pendencias",issues)
+                report.copy(sections=listOf(ReportSection("Equipamentos",listOf("Equipamento","Pendências abertas","Concluídas"),summary))+report.sections)
             }
             "Histórico de pendências" -> group("pendencias") {RecordArchive.archived(it)||it.optBoolean("concluida")}
             "Peças a pedir" -> relatorioGrupo(title,"pendencias",FieldReports.rows(dadosPecas()).filter {!PartsRecords.historical(it)})
@@ -989,8 +996,12 @@ class MainActivity : Activity() {
             setPadding(dp(12), 0, dp(8), 0)
             contentDescription = "Mais opções"; minWidth = dp(48); minHeight = dp(48); gravity = Gravity.CENTER
             setOnClickListener { v -> PopupMenu(this@MainActivity, v).apply {
-                if(relatorioAtual!=null&&titulo!="Estoque de cana") menu.add(0,4,0,"Compartilhar imagem").setOnMenuItemClickListener {
+                val report=relatorioAtual?.invoke()
+                if(report!=null&&titulo!="Estoque de cana") menu.add(0,4,0,"Compartilhar imagem").setOnMenuItemClickListener {
                     compartilharImagemAtual?.invoke() ?: relatorioAtual?.invoke()?.let(::compartilharRelatorio);true
+                }
+                if(report!=null&&titulo!="Estoque de cana") menu.add(0,5,1,"Enviar em PDF").setOnMenuItemClickListener {
+                    compartilharRelatorioPdf(report);true
                 }
                 menu.add(0,1,1,"Tema do aplicativo").setOnMenuItemClickListener {escolherTema();true}
                 menu.add(0,2,2,"Configurações").setOnMenuItemClickListener {configuracoes();true}
@@ -1267,11 +1278,18 @@ class MainActivity : Activity() {
         getSharedPreferences("controle_colheita", 0).edit()
             .putString("progresso", obj.toString()).commit()
         val lote = obj.optString("os")
-        val detalhe = "Lote: $lote\nTalhões: ${obj.optString("talhoes")}\nÁrea: ${obj.optString("areaRestante")} ha\nProdutividade: ${obj.optString("produtividade")} t/ha"
+        val detalhe = "Lote: $lote\n${StockBatch.details(obj)}"
         AlertDialog.Builder(this).setTitle("Estoque $lote")
-            .setView(texto(detalhe, 15f))
-            .setItems(arrayOf("Editar estoque", "Compartilhar estoque", "Excluir estoque", "Histórico de correções", "Ver / marcar foto")) { _, escolha ->
+            .setView(ScrollView(this).apply {addView(texto(detalhe, 15f))})
+            .setItems(arrayOf("Editar estoque", "Compartilhar estoque", "Excluir estoque", "Histórico de correções", "Ver / marcar foto", "Enviar em PDF")) { _, escolha ->
                 when (escolha) {
+                    5 -> comRegistroAtual("estoques_salvos",obj.optString("id")) { index->
+                        if(exigirGestor()) try {
+                            val date=java.text.SimpleDateFormat("dd/MM/yyyy HH:mm",Locale("pt","BR")).format(java.util.Date())
+                            val current=listaEstoques().getJSONObject(index)
+                            compartilharRelatorioPdf(StockSharing.pdfReport(teamStore!!,listOf(current),date,teamAccess!!.profile["nome"]?.toString().orEmpty()))
+                        } catch(error:Exception) {Toast.makeText(this,error.message?:"Confira o estoque antes de gerar o PDF.",Toast.LENGTH_LONG).show()}
+                    }
                     4 -> {
                         val photo=StockShareFiles.photo(filesDir,obj)
                         if(photo!=null) mostrarFotoRegistro(obj,"estoques_salvos",photo) else Toast.makeText(this,"Este lote não tem foto salva neste celular.",Toast.LENGTH_LONG).show()
@@ -1301,11 +1319,11 @@ class MainActivity : Activity() {
             results.removeAllViews()
             val all=listaEstoques()
             val rows=(all.length()-1 downTo 0).mapNotNull {all.optJSONObject(it)}.filter {
-                QuickFind.matches(buscaEstoque,it.optString("os"),it.optString("talhoes"))
+                QuickFind.matches(buscaEstoque,it.optString("os"),it.optString("talhoes"),it.optString("observacoes"))
             }
             for(item in rows) {
                 val lote=item.optString("os").ifBlank {"Sem lote"}
-                val detalhe="Talhões: ${item.optString("talhoes")}\n${item.optString("areaRestante")} ha • ${item.optString("produtividade")} t/ha"+
+                val detalhe="Talhões: ${item.optString("talhoes")}\n${StockBatch.quantity(item.optString("areaRestante"),"ha")} • ${StockBatch.quantity(item.optString("produtividade"),"t/ha")}"+
                     item.optString("atualizadoEm").takeIf {it.isNotBlank()}?.let {"\nAtualizado em $it • ${item.optString("atualizadoPorNome")}"}.orEmpty()
                 results.addView(cartao(lote,detalhe) {abrirEstoqueSalvo(item)},LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(10)})
             }
@@ -1320,6 +1338,7 @@ class MainActivity : Activity() {
     private fun cadastrarLotes() {
         if(!exigirGestor()) return
         pausarSincronizacao()
+        val formSession=chaveSessao()
         val ui=AccessUi(this,attach=false)
         val content=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(16),dp(8),dp(16),dp(16)) }
         val rows=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
@@ -1329,8 +1348,8 @@ class MainActivity : Activity() {
             if(inputs.size>=20) { Toast.makeText(this,"Salve estes lotes antes de adicionar outros.",Toast.LENGTH_LONG).show();return }
             val card=ui.card().apply { elevation=0f;background=ui.background(0xFFF1F6F1.toInt()) }
             rows.addView(card,LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(12) })
-            val fields=listOf("Lote","Talhões","Área (ha)","Produtividade (t/ha)").map { ui.field(card,it) }
-            for(field in fields.drop(2)) FieldWorkflow.numeric(field)
+            val fields=listOf("Lote","Talhões","Área (ha) • texto livre","Produtividade (t/ha) • texto livre","Observações (opcional)").map { ui.field(card,it) }
+            fields.last().apply {inputType=android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE;minLines=2}
             ui.button(card,"Remover este lote",true) { rows.removeView(card);inputs.removeAll { it.first===card } }
             inputs.add(card to fields)
         }
@@ -1340,16 +1359,17 @@ class MainActivity : Activity() {
             .setNegativeButton("Cancelar",null).setPositiveButton("Salvar todos",null).create()
         dialog.setOnShowListener {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                val drafts=inputs.map { (_,fields)->StockBatch.Draft(fields[0].text.toString(),fields[1].text.toString(),fields[2].text.toString(),fields[3].text.toString()) }
+                val drafts=inputs.map { (_,fields)->StockBatch.Draft(fields[0].text.toString(),fields[1].text.toString(),fields[2].text.toString(),fields[3].text.toString(),fields[4].text.toString()) }
                 val records=try { StockBatch.records(drafts,dataHoje()) } catch(error:IllegalArgumentException) {
                     Toast.makeText(this,error.message,Toast.LENGTH_LONG).show();return@setOnClickListener
                 }
                 fun saveBatch(update:Boolean) {
+                    if(!acessoConfirmado||chaveSessao()!=formSession||!exigirGestor()) return
                     val all=listaEstoques();val saved=mutableListOf<JSONObject>()
                     for(record in records) {
                         val existing=FieldWorkflow.matches(all,record)
                         if(update&&existing.size==1) {
-                            val previous=existing.single();for(key in listOf("os","talhoes","areaRestante","produtividade")) previous.put(key,record.get(key))
+                            val previous=existing.single();for(key in listOf("os","talhoes","areaRestante","produtividade","observacoes")) previous.put(key,record.get(key))
                             for(i in 0 until all.length()) if(all.getJSONObject(i).optString("id")==previous.optString("id")) all.put(i,previous)
                             saved.add(previous)
                         } else {all.put(record);saved.add(record)}
@@ -1372,7 +1392,7 @@ class MainActivity : Activity() {
         if(all.length()==0) { Toast.makeText(this,"Cadastre um estoque antes de compartilhar.",Toast.LENGTH_LONG).show();return }
         val records=(all.length()-1 downTo 0).mapNotNull { all.optJSONObject(it) }
         val selected=BooleanArray(records.size)
-        val labels=records.map { "Lote ${it.optString("os").ifBlank { "não informado" }} • ${it.optString("areaRestante")} ha\nTalhões: ${it.optString("talhoes")}" }.toTypedArray()
+        val labels=records.map { "Lote ${it.optString("os").ifBlank { "não informado" }} • ${StockBatch.quantity(it.optString("areaRestante"),"ha")}\nTalhões: ${it.optString("talhoes")}" }.toTypedArray()
         val dialog=AlertDialog.Builder(this).setTitle("Selecione os estoques")
             .setMultiChoiceItems(labels,selected) { _,index,value->selected[index]=value }
             .setNegativeButton("Cancelar",null).setNeutralButton("Selecionar todos",null).setPositiveButton("Continuar",null).create()
@@ -1458,10 +1478,11 @@ class MainActivity : Activity() {
         if(rascunhos().read(draftKey)!=null) body.addView(texto("Rascunho recuperado • confira antes de salvar",13f,palette.accent))
         val lot=ui.field(body,"Lote (ex.: K/39)").apply {setText(current.optString("os"))}
         val plots=ui.field(body,"Talhões (ex.: 1 a 10, 25, 301)").apply {setText(current.optString("talhoes"));inputType=android.text.InputType.TYPE_CLASS_TEXT}
-        val area=ui.field(body,"Área restante (ha)").apply {setText(current.optString("areaRestante",current.optString("areaTotal")));FieldWorkflow.numeric(this)}
-        val yield=ui.field(body,"Produtividade (t/ha)").apply {setText(current.optString("produtividade"));FieldWorkflow.numeric(this)}
-        fun capture()=JSONObject(current.toString()).put("os",lot.text.toString()).put("talhoes",plots.text.toString()).put("areaRestante",area.text.toString()).put("produtividade",yield.text.toString())
-        val saveDraft=registrarRascunho(draftKey,listOf(lot,plots,area,yield),::capture)
+        val area=ui.field(body,"Área restante (ha) • texto livre").apply {setText(current.optString("areaRestante",current.optString("areaTotal")))}
+        val yield=ui.field(body,"Produtividade (t/ha) • texto livre").apply {setText(current.optString("produtividade"))}
+        val observations=ui.field(body,"Observações (opcional)").apply {setText(current.optString("observacoes"));inputType=android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE;minLines=2}
+        fun capture()=JSONObject(current.toString()).put("os",lot.text.toString()).put("talhoes",plots.text.toString()).put("areaRestante",area.text.toString()).put("produtividade",yield.text.toString()).put("observacoes",observations.text.toString())
+        val saveDraft=registrarRascunho(draftKey,listOf(lot,plots,area,yield,observations),::capture)
         val photoLabel=texto("",13f,palette.muted)
         fun updatePhoto() {photoLabel.text=if(current.optString("fotoEstoque").isBlank()) "Sem foto anexada" else "Foto / mapa anexado ao rascunho";saveDraft()}
         body.addView(botao("Seleção rápida de talhões (1 a 500)") {
@@ -1498,7 +1519,7 @@ class MainActivity : Activity() {
         ui.button(body,"Escolher lote já cadastrado",true) {
             val records=FieldReports.rows(listaEstoques())
             AlertDialog.Builder(this).setTitle("Atualizar lote salvo").setItems(records.map {"${it.optString("os")} • ${it.optString("talhoes")}"}.toTypedArray()) {_,i->
-                current=JSONObject(records[i].toString());lot.setText(current.optString("os"));plots.setText(current.optString("talhoes"));area.setText(current.optString("areaRestante"));yield.setText(current.optString("produtividade"));updatePhoto()
+                current=JSONObject(records[i].toString());lot.setText(current.optString("os"));plots.setText(current.optString("talhoes"));area.setText(current.optString("areaRestante"));yield.setText(current.optString("produtividade"));observations.setText(current.optString("observacoes"));updatePhoto()
             }.setNegativeButton("Cancelar",null).show()
         }
         ui.button(body,"Adicionar foto / mapa pintado",true) {
@@ -1527,7 +1548,7 @@ class MainActivity : Activity() {
             if(duplicates.isEmpty()) finish(row)
             else AlertDialog.Builder(this).setTitle("Este lote já está cadastrado").setItems((duplicates.map {"Atualizar ${it.optString("os")} • ${it.optString("talhoes")}"}+"Salvar como registro separado").toTypedArray()) {_,i->
                 if(i==duplicates.size) finish(row) else {
-                    val merged=JSONObject(duplicates[i].toString());for(key in listOf("os","talhoes","areaRestante","produtividade","fotoEstoque")) if(row.has(key)) merged.put(key,row.get(key))
+                    val merged=JSONObject(duplicates[i].toString());for(key in listOf("os","talhoes","areaRestante","produtividade","fotoEstoque","observacoes")) if(row.has(key)) merged.put(key,row.get(key))
                     finish(merged)
                 }
             }.setNegativeButton("Voltar",null).show()
@@ -1544,7 +1565,7 @@ class MainActivity : Activity() {
         for (i in arr.length() - 1 downTo 0) {
             val o = arr.optJSONObject(i) ?: continue
             val resumo = "${o.optString("data")} • O.S. ${o.optString("os")}"
-            val detalhe = "Talhões: ${o.optString("talhoes")} • Restante: ${o.optString("areaRestante")} ha • Produtividade: ${o.optString("produtividade")} t/ha"
+            val detalhe = StockBatch.details(o)
             coluna.addView(cartao(resumo, detalhe) {},
                 LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
         }
@@ -1559,23 +1580,8 @@ class MainActivity : Activity() {
 
     private fun textoEstoque(): String {
         val p = progresso()
-        val br = Locale("pt", "BR")
-        fun numero(texto: String): Double? = Regex("""\d+(?:[.,]\d+)?""")
-            .find(texto)?.value?.replace(',', '.')?.toDoubleOrNull()
-        val restante = numero(p.optString("areaRestante", p.optString("areaTotal")))
-        val produt = numero(p.optString("produtividade"))
-        val sb = StringBuilder("ESTOQUE DE CANA - COLHEITA GPS\n")
-        sb.append("Data: ").append(java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", br)
-            .format(java.util.Date())).append("\n")
-        sb.append("Lote: ").append(p.optString("os").ifBlank { "Não informada" }).append("\n")
-        sb.append("Talhões: ").append(p.optString("talhoes").ifBlank { "Não informados" }).append("\n")
-        sb.append("Área: ")
-            .append(restante?.let { "%.2f ha".format(br, it) } ?: "Não informada").append("\n")
-        sb.append("Produtividade: ")
-            .append(produt?.let { "%.2f t/ha".format(br, it) } ?: "Não informada").append("\n")
-        // Estoque não inclui movimentações de cana: somente o que falta colher.
-
-        return sb.toString()
+        val date=java.text.SimpleDateFormat("dd/MM/yyyy HH:mm",Locale("pt","BR")).format(java.util.Date())
+        return StockBatch.singleText(p,TeamPolicy.label(teamStore!!.team),date)
     }
 
     private fun nomeOriginalMapaEstoque(arquivo: File?): String {
@@ -1707,7 +1713,7 @@ class MainActivity : Activity() {
             if (dataRegistro(item) != dataInicial) continue
             encontrados++
             val lote = item.optString("os").ifBlank { "Sem lote" }
-            coluna.addView(cartao(lote, "Talhões: ${item.optString("talhoes")} • Área: ${item.optString("areaRestante")} ha") {
+            coluna.addView(cartao(lote, "Talhões: ${item.optString("talhoes")} • Área: ${StockBatch.quantity(item.optString("areaRestante"),"ha")}") {
                 abrirEstoqueSalvo(item)
             }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
         }
@@ -2079,7 +2085,7 @@ class MainActivity : Activity() {
             }
         }
         relatorioAtual={relatorioGrupo(if(concluidas) "Histórico do equipamento $number" else "Pendências do equipamento $number","pendencias",FieldReports.rows(dados("pendencias")).filter {
-            MaintenanceRecords.number(it.optString("equipamento"))==number&&(if(concluidas) RecordArchive.archived(it)||it.optBoolean("concluida") else !RecordArchive.archived(it)&&!it.optBoolean("concluida"))
+            MaintenanceRecords.number(it.optString("equipamento"))==number&&(if(concluidas) RecordArchive.archived(it)||it.optBoolean("concluida") else !RecordArchive.archived(it)&&!it.optBoolean("concluida")&&(!filtroParadaChuva||it.optBoolean("paradaChuva")))
         })}
         if(filtroParadaChuva&&!concluidas) {
             coluna.addView(texto("Filtro ativo: serviços para a parada de chuva",14f,palette.accent))

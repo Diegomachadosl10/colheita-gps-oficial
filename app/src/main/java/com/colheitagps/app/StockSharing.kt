@@ -33,4 +33,12 @@ internal object StockSharing {
             } catch(_:Exception) {activity.runOnUiThread {failure(activity)}}
         }
     }
+    fun pdfReport(store:TeamStore,records:List<JSONObject>,date:String,responsible:String):FieldReport {
+        val rows=records.map {JSONObject(it.toString())}
+        require(rows.isNotEmpty()&&rows.all {StockBatch.complete(it)&&!RecordArchive.archived(it)}) {"Confira os lotes selecionados antes de gerar o PDF."}
+        return FieldReport("Estoque de cana",TeamPolicy.label(store.team),"Gerado em: $date\nResponsável: ${responsible.ifBlank {"Integrante da equipe"}}",
+            listOf(FieldReports.group("Lotes selecionados","estoques_salvos",rows)),rows.mapNotNull {row->
+                StockShareFiles.photo(store.files,row)?.let {ReportPicture(it,"Lote ${row.optString("os")} • Talhões: ${row.optString("talhoes")}")}
+            })
+    }
 }

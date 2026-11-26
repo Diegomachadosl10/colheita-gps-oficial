@@ -24,4 +24,25 @@ class StockBatchTest {
         catch(_:IllegalArgumentException) {}
         try { StockBatch.records(emptyList(),"hoje");fail() } catch(_:IllegalArgumentException) {}
     }
+    @Test fun freeTextAndOptionalNotesSurviveTheIndividualAndBatchMessagesWithoutExtractingNumbers() {
+        val notes="Esperar liberação do carreador\nUsar entrada sul"
+        val rows=StockBatch.records(listOf(StockBatch.Draft("K/39","1 a 10","40 ha, aproximadamente","Entre 70 e 80 t/ha",notes),
+            StockBatch.Draft("K/40","11","A conferir","Não medida")),"26/11/2026")
+        val before=rows.map {it.toString()}
+        for(text in listOf(StockBatch.singleText(rows[0],"Santo Inácio • Turno C","hoje"),StockBatch.text(rows,"Santo Inácio • Turno C","hoje"))) {
+            assertTrue(text.contains("Área: 40 ha, aproximadamente\n"));assertFalse(text.contains("aproximadamente ha"))
+            assertTrue(text.contains("Produtividade: Entre 70 e 80 t/ha"));assertTrue(text.contains(notes))
+        }
+        assertEquals(before,rows.map {it.toString()})
+        val plain=StockBatch.singleText(rows[1],"Equipe","hoje")
+        assertTrue(plain.contains("Área: A conferir\n"));assertFalse(plain.contains("Observações:"))
+    }
+    @Test fun numericMessagesKeepTheEnteredDecimalSeparatorAndNeverDuplicateAlreadyTypedUnits() {
+        assertEquals("10,50 ha",StockBatch.quantity("10,50","ha"))
+        assertEquals("80.5 t/ha",StockBatch.quantity("80.5","t/ha"))
+        assertEquals("40 hectares",StockBatch.quantity("40 hectares","ha"))
+        assertEquals("1.000,5",StockBatch.quantity("1.000,5","ha"))
+        val data=StockBatch.records(listOf(StockBatch.Draft("A","1","10,50","80.5")),"hoje").single()
+        assertTrue(StockBatch.text(listOf(data),"Equipe","hoje").contains("Área: 10,50 ha\nProdutividade: 80.5 t/ha"))
+    }
 }

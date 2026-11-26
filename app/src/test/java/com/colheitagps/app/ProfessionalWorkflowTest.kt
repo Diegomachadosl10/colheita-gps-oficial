@@ -54,12 +54,16 @@ class ProfessionalWorkflowTest {
         assertEquals("Maria",unchanged.getString("atualizadoPorNome"));assertEquals(result.getJSONArray("historicoAlteracoes").toString(),unchanged.getJSONArray("historicoAlteracoes").toString())
         assertFalse(TeamContent.textOnly(result).getJSONArray("historicoAlteracoes").toString().contains("/private/"))
     }
-    @Test fun stockValidationAcceptsBrazilianNumbersAndFindsExistingLotsWithoutModifyingThem() {
+    @Test fun stockValidationPreservesFreeTextAndFindsExistingLotsWithoutModifyingThem() {
         val row=JSONObject().put("id","new").put("os","k39").put("talhoes","1 a 5").put("areaRestante","10,5").put("produtividade","80")
         FieldWorkflow.requireStock(row)
         val saved=JSONObject(row.toString()).put("id","old").put("os","K/39");val all=JSONArray().put(saved)
         assertEquals("old",FieldWorkflow.matches(all,row).single().getString("id"))
-        for(bad in listOf("abc","NaN","-1","1,2,3","1.000,5")) {try {FieldWorkflow.requireStock(JSONObject(row.toString()).put("areaRestante",bad));fail(bad)} catch(_:IllegalArgumentException) {}}
+        for(free in listOf("Área a conferir","40 hectares, aproximadamente","1.000,5")) {
+            val record=JSONObject(row.toString()).put("areaRestante",free).put("produtividade","A confirmar")
+            FieldWorkflow.requireStock(record);assertEquals(free,record.getString("areaRestante"))
+        }
+        for(bad in listOf("","  ","x".repeat(201))) {try {FieldWorkflow.requireStock(JSONObject(row.toString()).put("areaRestante",bad));fail(bad)} catch(_:IllegalArgumentException) {}}
         assertEquals("K/39",all.getJSONObject(0).getString("os"))
     }
     @Test fun pieceStatesRemainLinkedToTheRightIssueAndWaitTimesRespectTheCutoffAndMidnight() {
@@ -102,17 +106,19 @@ class ProfessionalWorkflowTest {
         val a=activity()
         fun form() {a.javaClass.getDeclaredMethod("editarProgressoColheita",Boolean::class.javaPrimitiveType).apply {isAccessible=true}.invoke(a,true);shadowOf(Looper.getMainLooper()).idle()}
         form();var dialog=ShadowAlertDialog.getLatestAlertDialog();var fields=views(dialog.window!!.decorView).filterIsInstance<EditText>()
-        listOf("K/39","1 a 10","10,5","80").forEachIndexed {i,value->fields[i].setText(value)}
+        listOf("K/39","1 a 10","Área a conferir","80 t/ha estimados","Acesso pelo carreador sul").forEachIndexed {i,value->fields[i].setText(value)}
         assertEquals("[]",a.getSharedPreferences("registros_v3",0).getString("estoques_salvos","[]"))
         dialog.getButton(android.app.AlertDialog.BUTTON_NEGATIVE).performClick();shadowOf(Looper.getMainLooper()).idle()
         val existing=JSONObject().put("id","original").put("os","K/39").put("talhoes","1").put("areaRestante","20").put("produtividade","70")
         a.getSharedPreferences("registros_v3",0).edit().putString("estoques_salvos",JSONArray().put(existing).toString()).commit()
         form();dialog=ShadowAlertDialog.getLatestAlertDialog();fields=views(dialog.window!!.decorView).filterIsInstance<EditText>()
-        assertEquals("10,5",fields[2].text.toString())
+        assertEquals("Área a conferir",fields[2].text.toString());assertEquals("Acesso pelo carreador sul",fields[4].text.toString())
         dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick();shadowOf(Looper.getMainLooper()).idle()
         val choice=ShadowAlertDialog.getLatestAlertDialog();choice.listView.performItemClick(null,0,0);shadowOf(Looper.getMainLooper()).idle()
         val rows=JSONArray(a.getSharedPreferences("registros_v3",0).getString("estoques_salvos","[]"))
-        assertEquals(1,rows.length());assertEquals("original",rows.getJSONObject(0).getString("id"));assertEquals("10,5",rows.getJSONObject(0).getString("areaRestante"))
+        assertEquals(1,rows.length());assertEquals("original",rows.getJSONObject(0).getString("id"));assertEquals("Área a conferir",rows.getJSONObject(0).getString("areaRestante"))
+        assertEquals("Acesso pelo carreador sul",rows.getJSONObject(0).getString("observacoes"))
+        assertTrue(RecordEdits.text(rows.getJSONObject(0)).contains("Observações"))
         assertTrue(rows.getJSONObject(0).getJSONArray("historicoAlteracoes").length()>0)
     }
     @Test fun aTruckDraftSurvivesTheBackButtonWithoutCreatingAnOperationalEntry() {
@@ -163,6 +169,20 @@ class ProfessionalWorkflowTest {
         dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick();shadowOf(Looper.getMainLooper()).idle()
         assertEquals("[]",TeamStore(app,"colorado_C").prefs("registros_v3").getString("pendencias","[]"))
         assertEquals("[]",TeamStore(app,"santo_inacio_C").prefs("registros_v3").getString("pendencias","[]"))
+    }
+
+    @Test fun theMaintenanceDocumentIncludesOnlyRainJobsAndTheirLocalPhotosWhenTheRainFilterIsSelected() {
+        val a=activity()
+        val photo=java.io.File(a.filesDir,"teste-local.jpg").apply {writeBytes(byteArrayOf(1,2,3))}
+        val rows=JSONArray().put(JSONObject().put("id","rain").put("equipamento","21571").put("descricao","SERVICO_CHUVA").put("paradaChuva",true).put("foto",photo.path))
+            .put(JSONObject().put("id","normal").put("equipamento","21571").put("descricao","SERVICO_NORMAL"))
+            .put(JSONObject().put("id","done").put("equipamento","21571").put("descricao","CONCLUIDO").put("concluida",true).put("paradaChuva",true))
+        a.getSharedPreferences("registros_v3",0).edit().putString("pendencias",rows.toString()).commit()
+        ReflectionHelpers.setField(a,"filtroParadaChuva",true)
+        val report=a.javaClass.getDeclaredMethod("relatorioPadrao",String::class.java).apply {isAccessible=true}.invoke(a,"Pendências de manutenção") as FieldReport
+        val text=report.sections.flatMap {it.rows}.flatten().joinToString("\n")
+        assertTrue(text.contains("SERVICO_CHUVA"));assertFalse(text.contains("SERVICO_NORMAL"));assertFalse(text.contains("CONCLUIDO"))
+        assertEquals(photo,report.pictures.single().file)
     }
 
 }
