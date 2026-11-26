@@ -1,10 +1,10 @@
-# DM AGRO — Colheita GPS
+# DM AGRO — Gestão Operacional Agrícola
 
-Android, ramificação de trabalho **dm-agro-login**. A `main` permanece intacta.
+Android nativo. Produção em **dm-agro-login**; desenvolvimento em **dm-agro-professional-beta**. A `main` permanece intacta.
 
-## DM AGRO Professional — auditoria do Beta
+## DM AGRO Professional — Beta para nossa equipe
 
-Desenvolvimento isolado em **dm-agro-professional-beta**. [Auditoria de 26/11/2026](docs/beta/AUDITORIA-2026-11-26.md), [plano técnico por etapas](docs/beta/PLANO-TECNICO.md) e [CI Beta aprovado](https://github.com/Diegomachadosl10/colheita-gps-oficial/actions/runs/45796151156). A produção permanece 2.2.7; nenhuma mudança estrutural, migração ou nova distribuição foi realizada nesta etapa.
+Desenvolvimento isolado em **dm-agro-professional-beta**, somente para nossa equipe/empresa por enquanto. [Auditoria de 26/11/2026](docs/beta/AUDITORIA-2026-11-26.md), [plano técnico por etapas](docs/beta/PLANO-TECNICO.md) e [primeira implementação de isolamento e permissões](docs/beta/ETAPA-1-EQUIPE.md). A versão interna 2.3.0/código 39 ainda não foi distribuída; servidor, notificações e canal Beta dependem de preparação/homologação. A produção permanece 2.2.7, sem implantação de regras/Worker ou migração de dados reais.
 
 ## Versão 2.2.7
 
@@ -53,6 +53,8 @@ As [cinco melhorias para passagem de turno, preventiva, notificações, fotos e 
 Veja [as dez melhorias da rotina no campo](docs/EVOLUCAO-2.0.0.md). Mantido [o envio de pendências por mensagem, imagem e de todas as abertas](docs/PENDENCIAS-WHATSAPP-1.9.2.md). Mantida [a organização das telas e o menu simplificado](docs/VISUAL-1.9.1.md). Mantidos [busca, favoritos, urgência e temas claro/noturno](docs/MELHORIAS-1.9.0.md). A [simplificação da versão 1.8.3](docs/SIMPLIFICACAO-1.8.3.md) foi preservada. O [envio de estoque por mensagem e fotos](docs/ESTOQUE-WHATSAPP-1.8.2.md) continua disponível. A [correção do fechamento ao compartilhar](docs/CORRECAO-COMPARTILHAMENTO-1.8.1.md) foi preservada. A configuração dos supervisores permanece descrita na [versão 1.8.0](docs/ATUALIZACAO-1.8.0.md). O download dentro do aplicativo depende de publicar os releases no GitHub com a assinatura permanente. Histórico: [versão 1.2.0](ATUALIZACOES-1.2.0.md).
 
 ## Equipes por frente e turno
+
+Esta seção descreve a **versão estável 2.2.7**. Na branch Beta, supervisores aguardam aprovação de Diego e gerenciam os turnos da própria frente, conforme [Etapa 1](docs/beta/ETAPA-1-EQUIPE.md).
 
 - O UID principal possui acesso geral e gerencia todos os usuários. Supervisores entram ao concluir o cadastro, sem aprovação do principal; operadores e tratoristas continuam pendentes até a aprovação de um gestor da equipe.
 - Supervisores usam as ferramentas dentro de sua equipe e aprovam somente operadores/tratoristas da mesma frente e turno.

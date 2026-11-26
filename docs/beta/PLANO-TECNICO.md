@@ -1,6 +1,8 @@
 # DM AGRO Professional — plano técnico do Beta
 
-Este é o plano para revisão depois da [auditoria inicial](AUDITORIA-2026-11-26.md). Os itens futuros abaixo **não estão implementados**. A produção permanece 2.2.7. Não há autorização nesta etapa para migrar dados, implantar regras ou publicar atualização para os usuários.
+Este plano acompanha a [auditoria inicial](AUDITORIA-2026-11-26.md). Diego autorizou continuar o desenvolvimento, mantendo **somente nossa equipe/empresa para os testes**. Não haverá cadastro nem escolha de outras empresas nesta fase. A produção permanece 2.2.7. A autorização de desenvolvimento não inclui migrar dados reais, implantar regras/Worker nem publicar atualização para os usuários.
+
+A primeira implementação está descrita em [Etapa 1 — nossa equipe](ETAPA-1-EQUIPE.md). Os demais itens abaixo continuam sendo planejamento, salvo quando explicitamente marcados como implementados naquele documento. O contrato multiempresa apresentado adiante fica reservado para o futuro.
 
 ## Princípios de entrega
 
@@ -17,7 +19,7 @@ Este é o plano para revisão depois da [auditoria inicial](AUDITORIA-2026-11-26
 | Etapa | Entrega | Condição para avançar |
 | --- | --- | --- |
 | 0 — Auditoria e compilação | Branch isolada, baseline, testes e CI independente da assinatura | Auditoria revisada; CI Beta aprovado; produção inalterada |
-| 1 — Contratos e segurança | Modelos de empresa, vínculo, frente, turno e operações autorizadas; regras/Worker inicialmente em ambiente de teste | Matriz de permissões e testes negativos entre empresas/frentes aprovados; nenhuma autoaprovação de supervisor |
+| 1 — Contratos e segurança | Um único ambiente da nossa equipe; dados Beta separados, aprovação e operações autorizadas; regras em emuladores | Matriz de permissões, isolamento do estável e testes negativos entre frentes; nenhuma autoaprovação de supervisor |
 | 2 — Persistência e migração | Adaptadores legados, armazenamento transacional local, fila e simulador de migração | Dados fictícios convertidos/restaurados sem perda de IDs, anexos, pinturas e revisões; prova de idempotência |
 | 3 — Experiência e indicadores | Identidade Beta, navegação por módulos, acessibilidade e painel com dados reais | Celular pequeno, fonte grande e temas claro/escuro sem cortes; valores conferidos com a base |
 | 4 — Ferramentas e exportação | Estoque livre, relatórios de turno, novas permissões de manutenção, ocorrências/caminhões e PDF/WhatsApp | Fluxos completos de criar/editar/concluir/excluir/restaurar e exportar aprovados por papel |
@@ -25,7 +27,7 @@ Este é o plano para revisão depois da [auditoria inicial](AUDITORIA-2026-11-26
 | 6 — Homologação e entrega Beta | Feedback, identificação de versão, backup, documentação de privacidade e canal de atualização isolado | Testes no celular com dados autorizados, assinatura preservada e autorização específica para disponibilizar a versão |
 | 7 — Preparação comercial | Painel web, licenças inativas, requisitos Play/LGPD e integrações | Escopo, custos, direitos de uso e obrigações aprovados antes de ativar qualquer serviço comercial |
 
-A etapa 0 é a entrega atual. As etapas seguintes começam somente depois da apresentação deste diagnóstico/plano e da definição da próxima etapa com Diego. Não se trata de uma estimativa de conclusão em uma única atualização.
+A etapa 0 foi concluída e a etapa 1 está em desenvolvimento autorizado, com o recorte de equipe única detalhado no documento da entrega. Preparação comercial e multiempresa ficam adiadas. Não se trata de uma estimativa de conclusão em uma única atualização.
 
 ## Arquitetura proposta
 
@@ -42,7 +44,7 @@ Não é necessário criar vários módulos Gradle imediatamente. Primeiro separa
 
 ## Multiempresa e cadastro dinâmico
 
-Contrato de dados proposto, a validar no emulador antes de uso real:
+**Adiado a pedido de Diego.** O Beta atual usa `ambientes/beta`, sem tabelas ou telas para contratar/cadastrar empresas. As nove frentes e os turnos atuais continuam preservados; a edição do catálogo de frentes/turnos ainda será feita em etapa posterior. O contrato abaixo é somente uma proposta futura, a validar antes de uso real:
 
 ```text
 usuarios/{uid}                              identidade e preferências pessoais
