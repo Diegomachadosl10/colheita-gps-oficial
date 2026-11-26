@@ -2,6 +2,10 @@
 
 Android, ramificação de trabalho **dm-agro-login**. A `main` permanece intacta.
 
+## DM AGRO Professional — auditoria do Beta
+
+Desenvolvimento isolado em **dm-agro-professional-beta**. [Auditoria de 26/11/2026](docs/beta/AUDITORIA-2026-11-26.md), [plano técnico por etapas](docs/beta/PLANO-TECNICO.md) e [CI Beta aprovado](https://github.com/Diegomachadosl10/colheita-gps-oficial/actions/runs/45796151156). A produção permanece 2.2.7; nenhuma mudança estrutural, migração ou nova distribuição foi realizada nesta etapa.
+
 ## Versão 2.2.7
 
 [Atualização 2.2.7 publicada para todos](https://github.com/Diegomachadosl10/colheita-gps-oficial/releases/tag/v2.2.7), código 38, com manifesto público, download e assinatura verificados. [Entrada sem verificação repetida](docs/ENTRADA-2.2.7.md): sessão aprovada reaproveitada entre entrada e início, abertura discreta, administrador direto no aplicativo e acompanhamento das permissões em segundo plano.

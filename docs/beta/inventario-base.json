@@ -1,0 +1,1183 @@
+[
+  {
+    "path": ".github/workflows/android.yml",
+    "bytes": 4079,
+    "sha256": "29cb6f73d441d84e464e4ec81b56343152d75431a46321293c82350a13f655b5",
+    "lines": 131
+  },
+  {
+    "path": ".github/workflows/publish-prebuilt.yml",
+    "bytes": 994,
+    "sha256": "b754ef6bc725e91e78a97ac26d59d3dc56af7b86975da123ce208e150aed1e8b",
+    "lines": 39
+  },
+  {
+    "path": ".gitignore",
+    "bytes": 137,
+    "sha256": "d20b4805cc077057b15d7bfe473c56a2a3d86679544e9b664287f2c567f1a330"
+  },
+  {
+    "path": "ATUALIZACOES-1.2.0.md",
+    "bytes": 6580,
+    "sha256": "700eefcf9b779cd5c4bb3c1489741b8918201014cdd9797f7a32f162396d1704",
+    "lines": 66
+  },
+  {
+    "path": "MainActivity.kt",
+    "bytes": 69379,
+    "sha256": "82dfa5913c2821fa573e8e2cf31c4de267523251c63c784652c20b025c4c6c37",
+    "lines": 2107
+  },
+  {
+    "path": "README.md",
+    "bytes": 9232,
+    "sha256": "68b231f4f3ea8aa119e009a11ea806947534034cda6d3f970045b60779a89fe9",
+    "lines": 79
+  },
+  {
+    "path": "app/build.gradle.kts",
+    "bytes": 1533,
+    "sha256": "abd6ca2ba9551cf8944007100c36807353f10c35940794184f425f23fe350be9",
+    "lines": 55
+  },
+  {
+    "path": "app/google-services.json",
+    "bytes": 675,
+    "sha256": "d2c94def9de60a1e4f2306c74af4f82f43d4da13301c2f73fd776b8422945ff5",
+    "lines": 29
+  },
+  {
+    "path": "app/src/main/AndroidManifest.xml",
+    "bytes": 2500,
+    "sha256": "53cf4213d2943df65327544bdee372f191934ae0994bc7a7e35e27aea2740640",
+    "lines": 55
+  },
+  {
+    "path": "app/src/main/MainActivity.kt",
+    "bytes": 125986,
+    "sha256": "faf0fb6989b655380e01dd4b11efc02014121d23c4b02a41ebadefbcda2ab4a8",
+    "lines": 3143
+  },
+  {
+    "path": "app/src/main/assets/municipios-LICENSE.txt",
+    "bytes": 1173,
+    "sha256": "56d101659b4c3ec928dd40635efa78da323b4d6d2e632fe2b80aa6af02ac2267"
+  },
+  {
+    "path": "app/src/main/assets/municipios.json",
+    "bytes": 583618,
+    "sha256": "b1c291ca5e0c4b7dce88a14a5c6c43172c3097db7bf7e7067cea9ba0be194306",
+    "lines": 1
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/AccessAttempt.kt",
+    "bytes": 875,
+    "sha256": "c3fb119d7573026268260b45d75234e137b8cec2f5b63d1c7a1f952d028f3da1",
+    "lines": 19
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/AccessFailure.kt",
+    "bytes": 2056,
+    "sha256": "9d6cd06c4d5adc06dffbb559e183cd0c84db29e43da8d17eee382193c2d20aba",
+    "lines": 39
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/AccessPolicy.kt",
+    "bytes": 1022,
+    "sha256": "e360b7b84dfa84c2078fb57594cbd94030af8e14307e7d47ca73507f54c1b575",
+    "lines": 26
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/AccessRepository.kt",
+    "bytes": 6052,
+    "sha256": "23895f15bd9648223a3fe658ab90a6c0bc8e4f78f79f4510c6b4fc87b0f60efa",
+    "lines": 99
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/AccessUi.kt",
+    "bytes": 8162,
+    "sha256": "00afc5e3a0c2bf65e27e646fbe05153225bfad4276700e90856158fbc653c6b2",
+    "lines": 162
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/AdminActivity.kt",
+    "bytes": 19210,
+    "sha256": "1d5d8cdecf16b69cb5c6c89e21edfbd38b815a989db02cae128789036f8121f3",
+    "lines": 245
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/AdminUserList.kt",
+    "bytes": 1313,
+    "sha256": "abc6211514bded346bdb3980d0094f57dabbac6a1f68d83273fdefc1757b6191",
+    "lines": 22
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/AgroNotifications.kt",
+    "bytes": 10348,
+    "sha256": "980b02ed42e2c16fcf585e5c0c4c963ac7bad6f10196fde68eba23b7ff400124",
+    "lines": 145
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/AgroService.kt",
+    "bytes": 3976,
+    "sha256": "40c5b865c741ddad2733e2e4717fbe6f8f2e7b66cdcc6f081fe80c3de643eeda",
+    "lines": 60
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/AppTheme.kt",
+    "bytes": 4549,
+    "sha256": "b1657f18c9f104d85f66ce090b18aeae3a735e4c758d009f8c50cd54ce575a6e",
+    "lines": 65
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/AppUpdatePolicy.kt",
+    "bytes": 3017,
+    "sha256": "bec5ee2e8244bc99fd9b7ff1a040a7ec46f62c34744149d6373c243785059e72",
+    "lines": 48
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/ArchiveRecovery.kt",
+    "bytes": 3215,
+    "sha256": "c9d42ccdc0760709e55af2dbc3b008e3f1353d340b6db022048fc8a5fbec43e6",
+    "lines": 48
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/DailyVerse.kt",
+    "bytes": 3500,
+    "sha256": "62a2fe180cf04aa1f11d5d727a88c54b0089691174975bc15d2bc1d4f6f6700b",
+    "lines": 42
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/DashboardUi.kt",
+    "bytes": 10240,
+    "sha256": "31f57fc33fd34edfc606d0f99a9eee8647bb52770a70d04618110f92e8ae83a5",
+    "lines": 119
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/EnrollmentPolicy.kt",
+    "bytes": 1108,
+    "sha256": "d01c82aaf374f7bbf8d73dbec92a9d97ece5703000f9e4d087a9221c41b6846e",
+    "lines": 18
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/EntryLoading.kt",
+    "bytes": 979,
+    "sha256": "9978fda562b3a2f93d90d12e5a9abbe0055d3cd213eacd28c8c1b55d6f7ff3ea",
+    "lines": 23
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/EntrySession.kt",
+    "bytes": 2860,
+    "sha256": "6417353490c9fe820903218a58dd56d39c3a914346eeb9b99e32b970faf049b2",
+    "lines": 69
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/FieldDrafts.kt",
+    "bytes": 1185,
+    "sha256": "d3d44476620c6eb3f721c2d7a3203018cb4d3424fbaa068f68fd5569d6b07ed8",
+    "lines": 24
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/FieldReport.kt",
+    "bytes": 5074,
+    "sha256": "e16a3ca7313eddf71d1465227c1304e00629573e47de53e1705c36257e96d232",
+    "lines": 39
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/FieldReportRenderer.kt",
+    "bytes": 6607,
+    "sha256": "c02a5c617273cb865cfca1cf28e4a8743cea7c3288f0e063cc19630e44d98791",
+    "lines": 105
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/FieldReportSharing.kt",
+    "bytes": 4217,
+    "sha256": "1e872a254875d8cacb9c66be737c97db842f885324b67180927f08aab68abcfb",
+    "lines": 75
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/FieldWorkflow.kt",
+    "bytes": 2498,
+    "sha256": "8a900f56c0a0bb3f34fe20db3a61355f2c1ea020f9de9c09e9af06c25c33aab2",
+    "lines": 36
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/FirestoreAccessHttp.kt",
+    "bytes": 4889,
+    "sha256": "1276d99934b37e9c117e390d8bda4d3549ac8af53b2211ed55d31dcb7bec17a6",
+    "lines": 68
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/HomeArrangement.kt",
+    "bytes": 1127,
+    "sha256": "502fb32f998c509803fcbfd94ccd9fbd772d1d528aeb4f57f07177c7fbcc931e",
+    "lines": 17
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/LoginActivity.kt",
+    "bytes": 18699,
+    "sha256": "f5939279256023dec75475e1b09492d8020c98a556bff0056bbaf9b6e9fb9872",
+    "lines": 303
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/MainActivity.kt",
+    "bytes": 280205,
+    "sha256": "e8f768a743dbef4ffc19a58bce52976859bc12b76853f10506f913ddde1eca39",
+    "lines": 5028
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/MaintenanceRecords.kt",
+    "bytes": 7752,
+    "sha256": "f40c175f1ae125ba484c04922572b3d1be3cd596ebecec0cd3a163e8d0dfc52e",
+    "lines": 112
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/MaintenanceShareData.kt",
+    "bytes": 4954,
+    "sha256": "dbe322331c159dde6b1de9ed03c7df80103e0bd4dbb10f65dabcc4a37c391d69",
+    "lines": 76
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/MaintenanceShareRenderer.kt",
+    "bytes": 5419,
+    "sha256": "2325d4c1da3f3d6ad2c5eab4ddb8c523fb6626b93241b354fee2c2ee8dcf21fc",
+    "lines": 84
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/MaintenanceSharing.kt",
+    "bytes": 4168,
+    "sha256": "56ee0e1b58800757399fc665b859b9fb89693d3a6769910e5cf3bdd052f85a3c",
+    "lines": 59
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/MapFavorites.kt",
+    "bytes": 956,
+    "sha256": "d9f192665e67aefaffe675b0d3f57e048f90b17c4e34fda2e4c7392497088851",
+    "lines": 20
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/MapLocationTracker.kt",
+    "bytes": 9208,
+    "sha256": "ba61e6cd5f1a2d422e2fc4d51ec7bcb82f44fb3d559e98b0d70289791cad21c9",
+    "lines": 202
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/MapThumbnail.kt",
+    "bytes": 1551,
+    "sha256": "33f65b14f44404a40d1c2000d9479c30077f5a5ad1252162895bf95b9b4ce3c6",
+    "lines": 31
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/MapViewport.kt",
+    "bytes": 4097,
+    "sha256": "8e2f7dc6690de87f3e55f96ffa04a634234ef3a807c4e6f5ee932655d6429576",
+    "lines": 75
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/NotificationRoutes.kt",
+    "bytes": 2186,
+    "sha256": "0b33c784300b8bbcbbaf63bd7a33505414f5ce16823948414b73d640376f03c8",
+    "lines": 32
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/NotificationSettingsActivity.kt",
+    "bytes": 9520,
+    "sha256": "c13acd6663371808a6ae33f8d5f3ad6434eea4bab404ed9224713b89d6cd6608",
+    "lines": 130
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/OrderRecords.kt",
+    "bytes": 1327,
+    "sha256": "9b2b44bb3151b74000a34b1e439a4fef0ba58585c5a4ccd2ddf7b5cdc1cdf893",
+    "lines": 22
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/PaintedMapPicker.kt",
+    "bytes": 3531,
+    "sha256": "9222397486d7bf28964d7ef7cfe6350f6af889700cb8145e1342deae0daa422a",
+    "lines": 61
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/PartsRecords.kt",
+    "bytes": 2796,
+    "sha256": "894b09ec91c4dcf60908b3f90f619785f135347b2a27db7a62d92d4ad8c7041f",
+    "lines": 34
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/PhotoMarkup.kt",
+    "bytes": 7974,
+    "sha256": "cebc7980e667f03cc32a3863195e566856aafbdd647fb9e7e401dc04250b00ba",
+    "lines": 118
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/PhotoMarkupActivity.kt",
+    "bytes": 9348,
+    "sha256": "e9843919e8c73c9ece225b8323a57b0054631476dcf060146437226cb75387af",
+    "lines": 131
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/PreventiveMaintenance.kt",
+    "bytes": 3635,
+    "sha256": "4ccb5b22c0870d0047670785554422f33d0da6859446786f5113b9041e76d3bf",
+    "lines": 49
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/ProfileChoice.kt",
+    "bytes": 4725,
+    "sha256": "dfdd3c226d1f70f6676d858e9f27a7df216869752db812b1c03ccfc898c946ef",
+    "lines": 86
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/QuickFind.kt",
+    "bytes": 790,
+    "sha256": "70720e118ab0e524e1abe9aface9edd37ac48c6a251b27114c56e5f8d918f939",
+    "lines": 18
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/RainRecords.kt",
+    "bytes": 2446,
+    "sha256": "b5730a1f54f40b6ee928f1870029b301497368f4aff1db3cf8609b34e3cdd88a",
+    "lines": 40
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/RecordArchive.kt",
+    "bytes": 3831,
+    "sha256": "7d8ed1f5a6359e2b15e9401652835f1ec01ea358faf14d260ba659aa820ddf32",
+    "lines": 48
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/RecordDeletion.kt",
+    "bytes": 994,
+    "sha256": "3159e63f410439feec712920fe4586a504afbcca33826456e820c5ff73920fe7",
+    "lines": 18
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/RecordEdits.kt",
+    "bytes": 4049,
+    "sha256": "446244cbf0f9efa132e572e4d018fd50f1d7d2373186be71be8b1a0110e7b950",
+    "lines": 44
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/ScreenHelp.kt",
+    "bytes": 5661,
+    "sha256": "51d2ce019f72d2519ff7c2481908efa18ea7a993e5a833f6ec6aa861e03c2d66",
+    "lines": 25
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/SharePreview.kt",
+    "bytes": 3398,
+    "sha256": "5953cec2a1a9b0723ad3bcce58ac39e56af2da45a51badc7bd2cf963bfe9ac29",
+    "lines": 54
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/ShiftHandover.kt",
+    "bytes": 5059,
+    "sha256": "862c0f06811da0c92f82b763e31a51df9d7bea07bbca3c3764f0cf8a20b3f6d2",
+    "lines": 47
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/StartupUpdates.kt",
+    "bytes": 2015,
+    "sha256": "c751a543ca312cd1b2448994468f3e0a86c0173c92affaa74a7c7d9e70348f5f",
+    "lines": 37
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/StockBatch.kt",
+    "bytes": 1984,
+    "sha256": "b7cd6e37830b6a80484de0e4a7380f1d294ee063d9465ee3022e681a82981da9",
+    "lines": 25
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/StockShareActivity.kt",
+    "bytes": 9447,
+    "sha256": "af43577e4ff0b8bfba2f3a4d7a94cee98d12b7dd3d4a89d360fc792b01ebf37b",
+    "lines": 150
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/StockShareFiles.kt",
+    "bytes": 6182,
+    "sha256": "37eb6422b971d2de807f55349dba91243086aac9b18d54a7baad8f2de72fe3c3",
+    "lines": 97
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/StockSharing.kt",
+    "bytes": 2070,
+    "sha256": "73465fb989a5f18aedeef36b3e44db06dadf0a2b07b908b12c168cb97847ef13",
+    "lines": 36
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/TeamContent.kt",
+    "bytes": 967,
+    "sha256": "21476a5b360089d15d5f70c9675a81cb03a1dabe0f5969aeff8bafccd236f00e",
+    "lines": 21
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/TeamPolicy.kt",
+    "bytes": 2903,
+    "sha256": "6c51c4d2f5283f8a5d9df6d880d5a4b3308e612af6b0775f72b6743d8aae34ce",
+    "lines": 42
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/TeamStore.kt",
+    "bytes": 6980,
+    "sha256": "405e60f4069083a7740030709b6ae7a92d8c7ce9231a27e824bd4a32b8762a5f",
+    "lines": 111
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/TeamSync.kt",
+    "bytes": 25736,
+    "sha256": "b7692d3600b16461912241c61905a5f637b82f44ef78ee8e310bea25d8d54440",
+    "lines": 397
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/TruckRecords.kt",
+    "bytes": 5482,
+    "sha256": "78eda4c6a92f881148ea5de502e48a8fb62422f1934949035ab0a89d26d65f1b",
+    "lines": 69
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/TruckShift.kt",
+    "bytes": 3631,
+    "sha256": "4cece752ac413fbf311b5349a747e1b4fcec7cc730d5c1f356dc88ee1162c0b8",
+    "lines": 62
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/UpdateActivity.kt",
+    "bytes": 11999,
+    "sha256": "60e77206b2553aace76d43e1e7ef464ccf2c80b6e181f82887799c25455d4e72",
+    "lines": 215
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/WeatherActivity.kt",
+    "bytes": 7628,
+    "sha256": "3c613d6ea33f49f28dd0681ccbd04fab7cd573e5a0f2c3fb9184e25756a81a30",
+    "lines": 107
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/WeatherData.kt",
+    "bytes": 5715,
+    "sha256": "eaf167b187d24e0c0f71dba70377880ea52a257d8d0ccfa25e346873c5748503",
+    "lines": 85
+  },
+  {
+    "path": "app/src/main/java/com/colheitagps/app/WelcomeUi.kt",
+    "bytes": 4008,
+    "sha256": "23faabc0d21b0c07aac2540b30e094211760b95a57082428906e7b20784a8021",
+    "lines": 60
+  },
+  {
+    "path": "app/src/main/res/drawable/.gitkeep",
+    "bytes": 3,
+    "sha256": "dc51b8c96c2d745df3bd5590d990230a482fd247123599548e0632fdbf97fc22"
+  },
+  {
+    "path": "app/src/main/res/drawable/colheita_gps_icone_correto.png",
+    "bytes": 318036,
+    "sha256": "c14933080f80f432b5498a372632073561e13e73d7b76ca9fae0f9edfc777737"
+  },
+  {
+    "path": "app/src/main/res/drawable/ic_agro_notification.xml",
+    "bytes": 379,
+    "sha256": "dc6ac00743d34ffdcd9582b3bbe8f8c7bb59dacb5f96b2f93480be578db2c545",
+    "lines": 3
+  },
+  {
+    "path": "app/src/main/res/drawable/ic_password_hide.xml",
+    "bytes": 1121,
+    "sha256": "18e6660446089d87c082f37675ec12794b87993fc7b7e944f3e7b61e4fe8ce74",
+    "lines": 29
+  },
+  {
+    "path": "app/src/main/res/drawable/ic_password_show.xml",
+    "bytes": 689,
+    "sha256": "07a12d91634f25718656e2fb0a76d7e558cd4a78827ef8201b29d06ba68766ec",
+    "lines": 17
+  },
+  {
+    "path": "app/src/main/res/drawable/splash_dm_agro.jpg",
+    "bytes": 238370,
+    "sha256": "1263b7e2f41dcb04201665c34bed1bdc1c30ab419ce21070000cbe5289a1a593"
+  },
+  {
+    "path": "app/src/main/res/xml/shared_paths.xml",
+    "bytes": 262,
+    "sha256": "46a50560da772a008e19b9a5ef88d1a66da21f7e17d5c60cfbe8db35490cb87b",
+    "lines": 5
+  },
+  {
+    "path": "app/src/test/java/com/colheitagps/app/AccessPolicyTest.kt",
+    "bytes": 2405,
+    "sha256": "75e9bcf2d246d3fa9bc1ed543589dfc4a70494245924029a7dbc096076140ac1",
+    "lines": 44
+  },
+  {
+    "path": "app/src/test/java/com/colheitagps/app/AccessWaitTest.kt",
+    "bytes": 4632,
+    "sha256": "34f2ecdd32a2cc24ff9285ce5519356081b4eabb027044a257b30c049f246611",
+    "lines": 66
+  },
+  {
+    "path": "app/src/test/java/com/colheitagps/app/ActiveMapCatalogTest.kt",
+    "bytes": 3596,
+    "sha256": "132b15b9c6ab44a89eb49ad97b70072026d5001c8d544687263adda74624ade1",
+    "lines": 59
+  },
+  {
+    "path": "app/src/test/java/com/colheitagps/app/AdminUserListTest.kt",
+    "bytes": 1147,
+    "sha256": "9e5c9b3da023ff19ebacbea244b1c3c584b327f6890572044d0ba7fbadf5494e",
+    "lines": 20
+  },
+  {
+    "path": "app/src/test/java/com/colheitagps/app/AppThemeScreenTest.kt",
+    "bytes": 5162,
+    "sha256": "e5f31df5fbce9de114a8bc7974adbd783376d46f80167df30ab74f6b673585a8",
+    "lines": 81
+  },
+  {
+    "path": "app/src/test/java/com/colheitagps/app/AppUpdatePolicyTest.kt",
+    "bytes": 2904,
+    "sha256": "0ff4b27d6c21a1b9937173e16bb134defa60916f1b429e0c47086227840c8a89",
+    "lines": 44
+  },
+  {
+    "path": "app/src/test/java/com/colheitagps/app/ArchiveLifecycleTest.kt",
+    "bytes": 5670,
+    "sha256": "4de3a3844db2eede13acca2c63b6c652e5a5d4087c2480ef282647b1b7871a40",
+    "lines": 64
+  },
+  {
+    "path": "app/src/test/java/com/colheitagps/app/ClosedOrderTest.kt",
+    "bytes": 6307,
+    "sha256": "0f3dd2d02e934d47ca26335a7000e8a6e01a19fd41d84f8aa2dcff81a78c19e5",
+    "lines": 76
+  },
+  {
+    "path": "app/src/test/java/com/colheitagps/app/DailyVerseTest.kt",
+    "bytes": 534,
+    "sha256": "84b34371e8e5ac1f2e4911b1a6e7d7e582371f7bb895b77cb1851584ae7092c9",
+    "lines": 14
+  },
+  {
+    "path": "app/src/test/java/com/colheitagps/app/DashboardGridLayoutTest.kt",
+    "bytes": 2787,
+    "sha256": "848d5a711e4dfe7f5c372b5a1a564f09312e87b6f9946133e725b0f2087a3b65",
+    "lines": 48
+  },
+  {
+    "path": "app/src/test/java/com/colheitagps/app/DashboardRenderTest.kt",
+    "bytes": 2193,
+    "sha256": "a5ca41b4a436447e0227a45dae3a4fb16106639737cc9234b3e71baec9510a1a",
+    "lines": 40
+  },
+  {
+    "path": "app/src/test/java/com/colheitagps/app/DashboardTest.kt",
+    "bytes": 2961,
+    "sha256": "f2ec61b0026b1151f8736ca38dece5d8b334d1a945338c7d571e588bbcb6db45",
+    "lines": 47
+  },
+  {
+    "path": "app/src/test/java/com/colheitagps/app/DeletionScreenTest.kt",
+    "bytes": 7266,
+    "sha256": "7128ba55b63a87ecca5715baef41020b36c10547561c64a90b039fcc95145545",
+    "lines": 122
+  },
+  {
+    "path": "app/src/test/java/com/colheitagps/app/EnrollmentPolicyTest.kt",
+    "bytes": 2247,
+    "sha256": "4183572ed5788eb655da46d13d08c6bbd8c9043d45e106523fb2d1528787193b",
+    "lines": 32
+  },
+  {
+    "path": "app/src/test/java/com/colheitagps/app/EntrySessionTest.kt",
+    "bytes": 6442,
+    "sha256": "7fe02dce12c5972c396982793dae1c9d1abd4f7b82c038b4cbda5c709a510f12",
+    "lines": 117
+  },
+  {
+    "path": "app/src/test/java/com/colheitagps/app/FieldOperationsUpgradeTest.kt",
+    "bytes": 11606,
+    "sha256": "a789fe29306899d6057dbc6c4451d1d6fe01443d7c14b7ed71d5e40a2a39c85d",
+    "lines": 140
+  },
+  {
+    "path": "app/src/test/java/com/colheitagps/app/FieldReportTest.kt",
+    "bytes": 5108,
+    "sha256": "daf1132459b92880ebf992b3acd299d3ecaabf93e7b06149968be98baa74c362",
+    "lines": 70
+  },
+  {
+    "path": "app/src/test/java/com/colheitagps/app/FirestoreAccessHttpTest.kt",
+    "bytes": 4070,
+    "sha256": "1f6bd8b563d9d4b7dcda02421396f4ae6815fb8acce035083731b2170c5bc0fc",
+    "lines": 51
+  },
+  {
+    "path": "app/src/test/java/com/colheitagps/app/HomeScrollingTest.kt",
+    "bytes": 3424,
+    "sha256": "962eec77907b01a97db22bb11c694e4becfdfae7444a901125347571102f5a35",
+    "lines": 53
+  },
+  {
+    "path": "app/src/test/java/com/colheitagps/app/ImageSharingTest.kt",
+    "bytes": 1894,
+    "sha256": "ad1f6f5916c719bec21bcd227250810b235c1586254f2534e62cf4cac4b66f39",
+    "lines": 36
+  },
+  {
+    "path": "app/src/test/java/com/colheitagps/app/MainNavigationTest.kt",
+    "bytes": 2530,
+    "sha256": "9f63d83dd472b48a858b509e97ba07eec881284564d96a6f90125c4b77144be3",
+    "lines": 46
+  },
+  {
+    "path": "app/src/test/java/com/colheitagps/app/MaintenanceRecordsTest.kt",
+    "bytes": 6756,
+    "sha256": "6b94c834f5d54cdaea5ab17d834543d87db40e21e5c0a68bdb81c3ef52aae911",
+    "lines": 100
+  },
+  {
+    "path": "app/src/test/java/com/colheitagps/app/MaintenanceSharingTest.kt",
+    "bytes": 14581,
+    "sha256": "ff5cb4481d58a78543561b32eb8c21140d1c6bd0eeed864f4f7108aae4f08b99",
+    "lines": 210
+  },
+  {
+    "path": "app/src/test/java/com/colheitagps/app/MapLocationTest.kt",
+    "bytes": 7357,
+    "sha256": "69495c8871bc4bde5a021d140bdcf40ea8db2d3fd243332e1aaf06ba9e9cd2b2",
+    "lines": 137
+  },
+  {
+    "path": "app/src/test/java/com/colheitagps/app/MapOnlyScreenTest.kt",
+    "bytes": 2591,
+    "sha256": "f35ba97327e5bf70d7e5690ced55d0fc694af1bbd7390fc64dfe68b5f861b7a6",
+    "lines": 46
+  },
+  {
+    "path": "app/src/test/java/com/colheitagps/app/MapRotationTest.kt",
+    "bytes": 9660,
+    "sha256": "304405c797345f4a18292f0d7fb5309a7ac8e11a17b581330b112e4b7d602ea3",
+    "lines": 136
+  },
+  {
+    "path": "app/src/test/java/com/colheitagps/app/NoVoiceControlsTest.kt",
+    "bytes": 3449,
+    "sha256": "1d7b0b48ea1ce5bc9300ff5fa36093543650630539d477733caca8b6bb5cc2a8",
+    "lines": 50
+  },
+  {
+    "path": "app/src/test/java/com/colheitagps/app/NotificationRoutingTest.kt",
+    "bytes": 4784,
+    "sha256": "cf3a1a49630b7808398e4c0c772f50207893f36ea9651009312034a56c707de5",
+    "lines": 62
+  },
+  {
+    "path": "app/src/test/java/com/colheitagps/app/NotificationScopeTest.kt",
+    "bytes": 1030,
+    "sha256": "ea09143ccc4e2a36ded58033c345c2ee2f4ad60fc830231e2aa55608f0092e25",
+    "lines": 16
+  },
+  {
+    "path": "app/src/test/java/com/colheitagps/app/PartsRecordsTest.kt",
+    "bytes": 3331,
+    "sha256": "ef0eb30615a18364e93ce9c16b435e4cef72bd5799cf77a9f9ec80510d719877",
+    "lines": 46
+  },
+  {
+    "path": "app/src/test/java/com/colheitagps/app/PartsScreenTest.kt",
+    "bytes": 5069,
+    "sha256": "31a7a24aff8be3be4120542af8e03d2eddb2cb90a210346b3f0fd322d746b0b0",
+    "lines": 75
+  },
+  {
+    "path": "app/src/test/java/com/colheitagps/app/PhotoMarkupTest.kt",
+    "bytes": 9122,
+    "sha256": "6ebd7a95aa39b983cccbaa2789d69b9f7c4ceebbc3008118ccc2942105daaf93",
+    "lines": 110
+  },
+  {
+    "path": "app/src/test/java/com/colheitagps/app/ProductivityScreenTest.kt",
+    "bytes": 6190,
+    "sha256": "e9fe4249b0c33058f840555628ad42fbfa248fc8872a18261107063b9088da4f",
+    "lines": 86
+  },
+  {
+    "path": "app/src/test/java/com/colheitagps/app/ProductivityTest.kt",
+    "bytes": 2604,
+    "sha256": "af9abb48749b10495e64e7d67723fde23a0aa14a03d53aead70484e06f0e20ce",
+    "lines": 45
+  },
+  {
+    "path": "app/src/test/java/com/colheitagps/app/ProfessionalWorkflowTest.kt",
+    "bytes": 14432,
+    "sha256": "a9d02d2478a7d271e5777f69d7fc2fb69dffb2df3ed07b2723e45f09e213dc07",
+    "lines": 168
+  },
+  {
+    "path": "app/src/test/java/com/colheitagps/app/ProfileChoiceRenderTest.kt",
+    "bytes": 1782,
+    "sha256": "d9aa02a1196b01f09d1bc9f7169a150abbb271ad68ffc5e094b22e11ca83b680",
+    "lines": 36
+  },
+  {
+    "path": "app/src/test/java/com/colheitagps/app/ProfileChoiceTest.kt",
+    "bytes": 2206,
+    "sha256": "ec24ff372a2c0fc745962d3c031f6b1ae78b2a0b90f81e0c7fbe2b600fda361e",
+    "lines": 41
+  },
+  {
+    "path": "app/src/test/java/com/colheitagps/app/QuickFindTest.kt",
+    "bytes": 680,
+    "sha256": "f61ddf935d227f3a1576a9e61e3c19b9fb7d8edf33b5c0377926ec6418b5c736",
+    "lines": 16
+  },
+  {
+    "path": "app/src/test/java/com/colheitagps/app/RainRecordsTest.kt",
+    "bytes": 2484,
+    "sha256": "4dbe8d56848dc2975ae30dd372d8f2c8e15667adc6fac51a61c89d4b3a50807c",
+    "lines": 47
+  },
+  {
+    "path": "app/src/test/java/com/colheitagps/app/RainScreenTest.kt",
+    "bytes": 5632,
+    "sha256": "73b86b26a03ddeb2c6f7b6dc3067cdf218eb1b13bc47b5c77e579090071cdcdc",
+    "lines": 99
+  },
+  {
+    "path": "app/src/test/java/com/colheitagps/app/RecordDeletionTest.kt",
+    "bytes": 2370,
+    "sha256": "e71400c1501601f2f22e88206072658279d7a6eaf527d5297b94f472779bf467",
+    "lines": 41
+  },
+  {
+    "path": "app/src/test/java/com/colheitagps/app/ReportRemovalScreenTest.kt",
+    "bytes": 4508,
+    "sha256": "41fad9967583eb26486ff4df74151bac3010885d7eae6afb2f076a3fcd938e4f",
+    "lines": 67
+  },
+  {
+    "path": "app/src/test/java/com/colheitagps/app/RestoreScreenTest.kt",
+    "bytes": 7254,
+    "sha256": "7b299d23437dd5cd9509c7a13691860fb4c47ce2e805c3172a1217e8f3c7f306",
+    "lines": 90
+  },
+  {
+    "path": "app/src/test/java/com/colheitagps/app/SharingProviderRegressionTest.kt",
+    "bytes": 14759,
+    "sha256": "23161527b00f9e4ce87c57d26ce3e72577c5012804a31a265ef82e93c28e2761",
+    "lines": 219
+  },
+  {
+    "path": "app/src/test/java/com/colheitagps/app/StartupUpdatesTest.kt",
+    "bytes": 2883,
+    "sha256": "3d8f54c57fa09345730ecebca60fb5dec1407ee54b685b224c7cc41563402e21",
+    "lines": 49
+  },
+  {
+    "path": "app/src/test/java/com/colheitagps/app/StockBatchScreenTest.kt",
+    "bytes": 3310,
+    "sha256": "b7bdbe7086bf5bc5396bae84fd962f8dc1a7c2e9e2daa55e5b962f5c64ed2614",
+    "lines": 55
+  },
+  {
+    "path": "app/src/test/java/com/colheitagps/app/StockBatchTest.kt",
+    "bytes": 1475,
+    "sha256": "08534733fd245e261fc181d27e34f10529037de3c1d7bcd85e9cac5a200edcda",
+    "lines": 27
+  },
+  {
+    "path": "app/src/test/java/com/colheitagps/app/StockShareFilesTest.kt",
+    "bytes": 7368,
+    "sha256": "0564ea26d93d8aa68d8f6b8b4b3835d3cbce3b64b2c551e60d85dd7a70f7f406",
+    "lines": 106
+  },
+  {
+    "path": "app/src/test/java/com/colheitagps/app/StockShareScreenTest.kt",
+    "bytes": 9602,
+    "sha256": "5feec2ac7129ac52b37eeb90906e607c94a6683da8eeb4c081dba1f9c9440c2a",
+    "lines": 131
+  },
+  {
+    "path": "app/src/test/java/com/colheitagps/app/TeamContentTest.kt",
+    "bytes": 1705,
+    "sha256": "fbbff600800ce5a3d990eb383e913d82b0bcf93b997158f7a8f9cb3d53c7284c",
+    "lines": 35
+  },
+  {
+    "path": "app/src/test/java/com/colheitagps/app/TeamPolicyTest.kt",
+    "bytes": 2107,
+    "sha256": "d8816c196738e953bfbacb949e4b77341d4b32e532a30493f669cd6012c00611",
+    "lines": 32
+  },
+  {
+    "path": "app/src/test/java/com/colheitagps/app/TeamStoreTest.kt",
+    "bytes": 5444,
+    "sha256": "09fbf3723d7080ec53e069878c96056c1d5a3fb5f0935895697865f0c650df25",
+    "lines": 86
+  },
+  {
+    "path": "app/src/test/java/com/colheitagps/app/ToolScreensLayoutTest.kt",
+    "bytes": 8104,
+    "sha256": "3f4a804731eab8dc286b72b502c194643d98fe78e3a05eb5cbd02ccb5624c007",
+    "lines": 126
+  },
+  {
+    "path": "app/src/test/java/com/colheitagps/app/TruckRecordsTest.kt",
+    "bytes": 4160,
+    "sha256": "326b0f1bfb1895ee28f2b20216d7179d23fc0a1c139ec948189f6c7fd998197f",
+    "lines": 60
+  },
+  {
+    "path": "app/src/test/java/com/colheitagps/app/TruckRolloverScreenTest.kt",
+    "bytes": 5872,
+    "sha256": "7b2ffba78e477b8076d17ddf96f4b4c2dd24254759e738f054bbd05ff661ad7a",
+    "lines": 70
+  },
+  {
+    "path": "app/src/test/java/com/colheitagps/app/TruckScreenTest.kt",
+    "bytes": 6451,
+    "sha256": "ceb136180cfead935f972ddc44b34409d4b430c4f3e07d7480ab9f08b898ac52",
+    "lines": 80
+  },
+  {
+    "path": "app/src/test/java/com/colheitagps/app/TruckShiftTest.kt",
+    "bytes": 4329,
+    "sha256": "4bad4a319df30c75e7a0883ba3f1b1538a2e9f491ebd272205e0631cfba957fc",
+    "lines": 64
+  },
+  {
+    "path": "app/src/test/java/com/colheitagps/app/WeatherDataTest.kt",
+    "bytes": 1913,
+    "sha256": "c8c2103632a1f521ef34753537592fa0bd7b12bb975e49fc88a01c8f36826fab",
+    "lines": 31
+  },
+  {
+    "path": "app/src/test/java/com/colheitagps/app/WelcomeRenderTest.kt",
+    "bytes": 2006,
+    "sha256": "e86928ea098911a7d84f716c9555d8e4771b1c82ed0d383a90b4d24d4c5055f0",
+    "lines": 38
+  },
+  {
+    "path": "backend/README.md",
+    "bytes": 7579,
+    "sha256": "55f203f5aac0ac3c715399f7937d42aefc1ee5c3c816c9ea34d6aa3025a1b0a8",
+    "lines": 47
+  },
+  {
+    "path": "backend/package.json",
+    "bytes": 75,
+    "sha256": "cd1dcf9c0b81b1c2db7deaada83b19f3c72ef9d18e09e7f485f47c12fc920c98",
+    "lines": 1
+  },
+  {
+    "path": "backend/worker.js",
+    "bytes": 19772,
+    "sha256": "4849aa9b21bb044b606906af65bad12c546c78029b3f6ae5229c7f204d3e50ed",
+    "lines": 243
+  },
+  {
+    "path": "backend/worker.test.mjs",
+    "bytes": 16897,
+    "sha256": "2b9046f1a988d0470b2a955fc23c9b4a55b7c19c877d4a57b7a44704220264d3",
+    "lines": 211
+  },
+  {
+    "path": "build.gradle.kts",
+    "bytes": 212,
+    "sha256": "02f5607bdb0878be388549ccf65d7a7dc7b70782e3ebc9e180f1f0117f5c5e45",
+    "lines": 6
+  },
+  {
+    "path": "docs/ATUALIZACAO-1.4.0.md",
+    "bytes": 5825,
+    "sha256": "10de3ed16e0fe69eb410a313147955264bc87d208bd3df6b38a4cf77eaa775f7",
+    "lines": 42
+  },
+  {
+    "path": "docs/ATUALIZACAO-1.4.1.md",
+    "bytes": 5759,
+    "sha256": "1f4049472b0a787c5761ffe57ef92b99cfb3cb533b9a706f96c0bd6d4c759360",
+    "lines": 46
+  },
+  {
+    "path": "docs/ATUALIZACAO-1.4.2.md",
+    "bytes": 3274,
+    "sha256": "19e3478a0a42de573ef9236d6bbf77de9542b794143e559f18a5ceac5cdf0fd7",
+    "lines": 33
+  },
+  {
+    "path": "docs/ATUALIZACAO-1.4.3.md",
+    "bytes": 2793,
+    "sha256": "b6232ac108e12e3cbdec277e7ecef6b5eef134e1023311625a1f64f8377005ad",
+    "lines": 32
+  },
+  {
+    "path": "docs/ATUALIZACAO-1.5.0.md",
+    "bytes": 9622,
+    "sha256": "9e09d1b242e609243017dcaa53ae27cc825a2048fc7d894a023b0b8aac4da142",
+    "lines": 60
+  },
+  {
+    "path": "docs/ATUALIZACAO-1.6.0.md",
+    "bytes": 7855,
+    "sha256": "84fb9aa66e0297848b99b2bdb9c5a2f0357193350c3505bce196cf0cacf179e6",
+    "lines": 53
+  },
+  {
+    "path": "docs/ATUALIZACAO-1.6.1.md",
+    "bytes": 6374,
+    "sha256": "419152a42c5354516a591bf70012523ed7039db680946a0dccf533bbc84f1e7f",
+    "lines": 57
+  },
+  {
+    "path": "docs/ATUALIZACAO-1.7.0.md",
+    "bytes": 7213,
+    "sha256": "c09a27ebf0f37c87d5fdd9978769ddf8e7e2982e3c4104f7b6be2c17af6ddf91",
+    "lines": 49
+  },
+  {
+    "path": "docs/ATUALIZACAO-1.7.1.md",
+    "bytes": 6993,
+    "sha256": "ab25f6d1e04dfccf27e634e3207f00f6e368928811f93a216148286b7c4b0f05",
+    "lines": 54
+  },
+  {
+    "path": "docs/ATUALIZACAO-1.8.0.md",
+    "bytes": 7614,
+    "sha256": "8579ce4b05620da89fafd41af51ae126c582a8f0c07788dbbb2d7d893dfa6061",
+    "lines": 57
+  },
+  {
+    "path": "docs/CORRECAO-COMPARTILHAMENTO-1.8.1.md",
+    "bytes": 5501,
+    "sha256": "594bf9d93355c110a49836b8b4492a16e12c3e564d68f234670ee56afb5ac636",
+    "lines": 43
+  },
+  {
+    "path": "docs/ENTRADA-2.2.7.md",
+    "bytes": 2956,
+    "sha256": "048af92beb15f07c351b1473fc0096429ef51ebe8e45ed6f717800f22623da06",
+    "lines": 15
+  },
+  {
+    "path": "docs/ENVIO-2.1.1.md",
+    "bytes": 1291,
+    "sha256": "3e7f26196ed16bfb1da2c4c0d14fdcead44538819aaf9492d6cef53ed0094043",
+    "lines": 11
+  },
+  {
+    "path": "docs/ESPACAMENTO-PENDENCIAS-2.2.5.md",
+    "bytes": 2182,
+    "sha256": "176c8febaa8a4b5b62c019fba5f6758e7a2799a14bd67a78f27a40570dfd224e",
+    "lines": 30
+  },
+  {
+    "path": "docs/ESTOQUE-WHATSAPP-1.8.2.md",
+    "bytes": 4262,
+    "sha256": "42f8060ca7e190ba5240440f724616f4eae71bf0143a8beca3727799760d2753",
+    "lines": 39
+  },
+  {
+    "path": "docs/EVOLUCAO-2.0.0.md",
+    "bytes": 9213,
+    "sha256": "a059b8adc01dd7a9852846995f376e3ad665ff3dcd3cf437325f1b7ed7ce55cf",
+    "lines": 45
+  },
+  {
+    "path": "docs/EVOLUCAO-2.1.0.md",
+    "bytes": 6236,
+    "sha256": "23dcdcac5f9aaacc0cb612cb843e76e7afea77dee9f48406e66aa80c63b05647",
+    "lines": 31
+  },
+  {
+    "path": "docs/FAIXA-DE-COLHEITA-2.2.2.md",
+    "bytes": 3767,
+    "sha256": "eca4fe7ba6aa043f01eb6118cfbd4309f42de8989dcd518df4c825b379d26c57",
+    "lines": 33
+  },
+  {
+    "path": "docs/GPS-2.2.6.md",
+    "bytes": 3193,
+    "sha256": "9ddb344308009b4401553ba43c648af900ae766d30b36456133216999d7d9fcb",
+    "lines": 19
+  },
+  {
+    "path": "docs/MELHORIAS-1.9.0.md",
+    "bytes": 5843,
+    "sha256": "2249e713f1412d9fb85ba4bd968dec8dbc1a8b5d2530c7980a451ab22ccb27ae",
+    "lines": 39
+  },
+  {
+    "path": "docs/PENDENCIAS-WHATSAPP-1.9.2.md",
+    "bytes": 4552,
+    "sha256": "e7256b07f65b0644547a5b8f741b22ed8dedb258ef1d93e54f8a4748a8192056",
+    "lines": 35
+  },
+  {
+    "path": "docs/PINTURA-SIMPLES-2.2.1.md",
+    "bytes": 4041,
+    "sha256": "04f6c02191a5899aa75de7f2d971480ba69411b5bd6989a62e58be30832c6be7",
+    "lines": 27
+  },
+  {
+    "path": "docs/SEM-COMANDOS-DE-VOZ-2.2.3.md",
+    "bytes": 2473,
+    "sha256": "13d6062c496dfe7ae3c33312ee49dbda7d296fda1f76d2f95bd58aba01f0be4f",
+    "lines": 17
+  },
+  {
+    "path": "docs/SIMPLIFICACAO-1.8.3.md",
+    "bytes": 4887,
+    "sha256": "97486d9f4d7dbb081066dd1aea11dfed8c95eb76132e51b7a6bb1391dadaa047",
+    "lines": 42
+  },
+  {
+    "path": "docs/VISUAL-1.9.1.md",
+    "bytes": 4274,
+    "sha256": "39788f7a55d7e4f001f67b46a39e86ae6ad12f6640e676e445dae873ad87ea85",
+    "lines": 30
+  },
+  {
+    "path": "docs/VOZ-E-CURVAS-2.2.0.md",
+    "bytes": 6089,
+    "sha256": "a496704cd2c7287e3c3584c3981aef55336d621e7a48cce528d500aa809bcbe8",
+    "lines": 47
+  },
+  {
+    "path": "docs/WHATSAPP-PENDENCIAS-2.2.4.md",
+    "bytes": 2819,
+    "sha256": "25aee01a2d39ab180d84429140fbb8f367160e12fbc11b8665824eb31e0d2d85",
+    "lines": 19
+  },
+  {
+    "path": "docs/atualizacao-1.2.1.md",
+    "bytes": 5619,
+    "sha256": "753a694db4de552c73efea43eec24baa3f46c7f12169394527e8570ff796a52d",
+    "lines": 44
+  },
+  {
+    "path": "docs/atualizacao-1.2.2.md",
+    "bytes": 6537,
+    "sha256": "445b18d8a11438b4587edeb685e50b091af805fdfe41e8052cd2e015766667a0",
+    "lines": 48
+  },
+  {
+    "path": "docs/atualizacao-1.3.0.md",
+    "bytes": 7416,
+    "sha256": "5abb1872d220615edd048383912e3e999d782d61ebc6193dd37ab20aa2f8df3b",
+    "lines": 58
+  },
+  {
+    "path": "docs/atualizacao-1.3.1.md",
+    "bytes": 6469,
+    "sha256": "ee015032dcb05b7091da675ca61954c1e33c5bf18f6d9a07b714b5b79fa7143f",
+    "lines": 49
+  },
+  {
+    "path": "firebase.json",
+    "bytes": 355,
+    "sha256": "9a645ae5edb5d42d9820b1556367b0a1d00aaea1a159bb0fa280c3bd09445675",
+    "lines": 21
+  },
+  {
+    "path": "firebase/CONFIGURAR-PELO-CELULAR.md",
+    "bytes": 7542,
+    "sha256": "a16af0e5efdd4954bf03b0abcd307ec958ae5e09a78874a138c04beb2fb3271b",
+    "lines": 78
+  },
+  {
+    "path": "firebase/firestore.anterior.rules",
+    "bytes": 2728,
+    "sha256": "5464bbf5106c653425abc7c2923a6080ad795d2feed41abd998666bda0ece2da",
+    "lines": 39
+  },
+  {
+    "path": "firebase/firestore.indexes.json",
+    "bytes": 285,
+    "sha256": "f7e42396a3c85dc34ce504350bb977d29382c3fa350cee5161aceb5b6150b5a3",
+    "lines": 1
+  },
+  {
+    "path": "firebase/firestore.rules",
+    "bytes": 9388,
+    "sha256": "768ab2f6456d28bcdb9ced7eaa0c3d9f3c87a1d74e8f739ef0d7d0dba34a54aa",
+    "lines": 121
+  },
+  {
+    "path": "firebase/storage.rules",
+    "bytes": 1013,
+    "sha256": "fd0d47306348145ca739fc5fba372285965cf5b0c28c5dd730d10b315c5f5df0",
+    "lines": 20
+  },
+  {
+    "path": "gradle.properties",
+    "bytes": 102,
+    "sha256": "e8ef3ecae1467968787e1f5579062239025a9fc0ea9e3a5882bf7b14c3243e42"
+  },
+  {
+    "path": "scripts/android-signing.sha256",
+    "bytes": 65,
+    "sha256": "adadb906dd04fb717bf6aa179c2f3783abf35e3773d2ea40c225f2872b949f95"
+  },
+  {
+    "path": "scripts/prepare-update.py",
+    "bytes": 3007,
+    "sha256": "f82d56c29d771b71a30758ea453af598fd85c0e7678b6145c6b2ee595df1f4fd",
+    "lines": 58
+  },
+  {
+    "path": "scripts/publish-prebuilt.py",
+    "bytes": 6116,
+    "sha256": "40992e4bc6a6f20083a5274002a9a5246cd865f6d0c5c89ba38106d20c71bace",
+    "lines": 110
+  },
+  {
+    "path": "scripts/publish-update.py",
+    "bytes": 1597,
+    "sha256": "e313b8cdc92297cb82d25f98dadd5dc6e7a92095436ace8a60062dfff74c4326",
+    "lines": 28
+  },
+  {
+    "path": "scripts/restore-signing.py",
+    "bytes": 775,
+    "sha256": "4d12e33d438e11ca4c8348cc9751986150e0770ce930f955df63a2640d7e09fa",
+    "lines": 17
+  },
+  {
+    "path": "scripts/test_prepare_update.py",
+    "bytes": 2592,
+    "sha256": "0bdd46592df8b3745db0f8ff243426a393a91984f07dac8a2ea334c0cbdd1e7a",
+    "lines": 42
+  },
+  {
+    "path": "scripts/test_publish_prebuilt.py",
+    "bytes": 3587,
+    "sha256": "a4e2b91411a635392de86a45091c2179b6201a53e4c7c52580cf72586e6147c0",
+    "lines": 73
+  },
+  {
+    "path": "settings.gradle.kts",
+    "bytes": 328,
+    "sha256": "58283a7335b1d0734725b1e297664e1e29439067e98c1f60fc49e50e917f464b",
+    "lines": 16
+  },
+  {
+    "path": "tests/firebase/package-lock.json",
+    "bytes": 376650,
+    "sha256": "548a83601250d96f4dfdf498536730fa8be66345c34518b1465a9a44ad19475b",
+    "lines": 10597
+  },
+  {
+    "path": "tests/firebase/package.json",
+    "bytes": 189,
+    "sha256": "e79fd7aba1be88bcdb1f1abce17be958c69a1532b36b82c6c3bed0727285f8a8",
+    "lines": 1
+  },
+  {
+    "path": "tests/firebase/rules.test.mjs",
+    "bytes": 31260,
+    "sha256": "d53467a9a40c5eb730435bb272bf2bdbf15c9c47d011a04c2b28b12ef7c18ac9",
+    "lines": 359
+  }
+]

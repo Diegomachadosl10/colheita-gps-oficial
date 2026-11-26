@@ -1,0 +1,114 @@
+{
+  "checkedAt": "2026-11-26T09:51:14.382178+00:00",
+  "stableVersion": "2.2.7",
+  "versionCode": 38,
+  "apkSha256": "c01f7fdcdbd4aa74382b5755972413b3f5a801ae9010a197b122c99337399177",
+  "apkSize": 13120586,
+  "certificateSha256": "d6bff2432575da5928e07127ef565b19c8148f53c2c0047de3f2bb7ce003b3a6",
+  "signatureMatches": true,
+  "applicationId": "com.colheitagps.app",
+  "debuggable": true,
+  "publicFeedSha256": "7a1b55ecf080d47ffc84fc8c979cc755f38ba66465a10a7100cb78b9ac0d7467",
+  "workerHealth": {
+    "ok": true,
+    "project": "dm-agro-c0e04",
+    "configured": true,
+    "serviceVersion": "1.4.0"
+  },
+  "firebaseDeployedRulesVerified": false,
+  "productionWrites": false,
+  "productionReleaseChanged": false,
+  "auditDate": "2026-11-26",
+  "productionBranch": "dm-agro-login",
+  "productionHead": "e07aee322d9cbb9f74129bebc171ceb5cca27b7f",
+  "mainHead": "9aa61a3383f098d1517f6871c722077dba76969b",
+  "stableSourceCommit": "e2e13bcff1aa855bd5f7b5771619387e6684fa41",
+  "developmentBranch": "dm-agro-professional-beta",
+  "ciCommit": "5e70bd918b44c4376e361976b47b8f4cef187882",
+  "ciRun": 45796151156,
+  "ciStatus": "completed",
+  "baselineInventory": {
+    "trackedFiles": 198,
+    "kotlinMain": 66,
+    "kotlinTests": 59,
+    "commits": 138,
+    "branches": [
+      "  dm-agro-login",
+      "* dm-agro-professional-beta",
+      "  remotes/origin/backup-colheita-gps-atual",
+      "  remotes/origin/dm-agro-login",
+      "  remotes/origin/main"
+    ]
+  },
+  "androidTests": {
+    "tests": 283,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "suites": 59
+  },
+  "firebaseRulesTests": {
+    "tests": 28,
+    "failures": 0,
+    "environment": "demo-dm-agro local emulators"
+  },
+  "workerTests": {
+    "tests": 18,
+    "failures": 0,
+    "realFcmDeliveryTested": false
+  },
+  "publisherTests": {
+    "tests": 7,
+    "failures": 0
+  },
+  "lint": {
+    "errors": 0,
+    "warnings": 128,
+    "byId": {
+      "ApplySharedPref": 34,
+      "ExifInterface": 2,
+      "GradleDependency": 5,
+      "DrawAllocation": 23,
+      "ObsoleteSdkInt": 1,
+      "StaticFieldLeak": 1,
+      "IconLauncherShape": 1,
+      "IconLocation": 2,
+      "ViewConstructor": 2,
+      "ClickableViewAccessibility": 1,
+      "SetTextI18n": 56
+    }
+  },
+  "policyProbes": {
+    "project": "demo-dm-agro",
+    "productionRead": false,
+    "productionWrite": false,
+    "operatorCanCompleteOwnIssue": true,
+    "newcomerCanSelfApproveSupervisor": true
+  },
+  "secretPatternAudit": {
+    "scope": "reachable Git blobs in all fetched branches and tags; limited patterns only",
+    "blobsScanned": 614,
+    "potentialSecretFindings": [],
+    "claimExhaustiveSecretAudit": false
+  },
+  "physicalDeviceTested": false,
+  "playStoreReadinessVerified": false,
+  "paidServicesCreated": false,
+  "productionAppChanged": false,
+  "ciConclusion": "success",
+  "ciJobs": [
+    {
+      "name": "Servico gratuito e publicador",
+      "conclusion": "success"
+    },
+    {
+      "name": "Compilacao, testes e lint - sem distribuicao",
+      "conclusion": "success"
+    },
+    {
+      "name": "Regras em emuladores isolados",
+      "conclusion": "success"
+    }
+  ],
+  "ciUrl": "https://github.com/Diegomachadosl10/colheita-gps-oficial/actions/runs/45796151156"
+}
