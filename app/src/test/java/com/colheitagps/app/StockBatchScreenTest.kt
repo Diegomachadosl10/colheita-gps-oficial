@@ -79,4 +79,19 @@ class StockBatchScreenTest {
         assertEquals("[]",TeamStore(a.applicationContext,"colorado_C").prefs("registros_v3").getString("estoques_salvos","[]"))
         assertEquals(1,JSONArray(TeamStore(a.applicationContext,"santo_inacio_C").prefs("registros_v3").getString("estoques_salvos","[]")).length())
     }
+    @Test fun updatingAnExistingLotInABatchKeepsItsNotesAndPhotoWhenOptionalNotesAreLeftBlank() {
+        val a=activity("supervisor")
+        val old=JSONObject().put("id","original").put("os","K/39").put("talhoes","1").put("areaRestante","20").put("produtividade","80")
+            .put("fotoEstoque","foto-existente.png").put("observacoes","Não usar o acesso norte")
+        a.getSharedPreferences("registros_v3",0).edit().putString("estoques_salvos",JSONArray().put(old).toString()).commit()
+        a.javaClass.getDeclaredMethod("cadastrarLotes").apply {isAccessible=true}.invoke(a);shadowOf(Looper.getMainLooper()).idle()
+        val dialog=ShadowAlertDialog.getLatestAlertDialog()
+        views(dialog.window!!.decorView).filterIsInstance<EditText>().let {fields->listOf("K39","1 a 3","Área a conferir","80","").forEachIndexed {i,value->fields[i].setText(value)}}
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick();shadowOf(Looper.getMainLooper()).idle()
+        ShadowAlertDialog.getLatestAlertDialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick();shadowOf(Looper.getMainLooper()).idle()
+        val saved=JSONArray(a.getSharedPreferences("registros_v3",0).getString("estoques_salvos","[]"))
+        assertEquals(1,saved.length());val row=saved.getJSONObject(0)
+        assertEquals("original",row.getString("id"));assertEquals("Não usar o acesso norte",row.getString("observacoes"))
+        assertEquals("foto-existente.png",row.getString("fotoEstoque"));assertEquals("Área a conferir",row.getString("areaRestante"))
+    }
 }

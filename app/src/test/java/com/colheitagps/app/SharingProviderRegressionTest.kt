@@ -90,6 +90,7 @@ class SharingProviderRegressionTest {
         assertEquals(Intent.ACTION_VIEW,reader.action);assertEquals("application/pdf",reader.type)
         assertTrue(reader.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION!=0)
         preview.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick()
+        shadowOf(Looper.getMainLooper()).idle()
         val chooser=shadowOf(a).nextStartedActivity;assertEquals(Intent.ACTION_CHOOSER,chooser.action)
         val sent=chooser.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)!!
         assertEquals("application/pdf",sent.type);assertEquals(Intent.ACTION_SEND,sent.action)
@@ -104,6 +105,7 @@ class SharingProviderRegressionTest {
         val preview=ShadowAlertDialog.getLatestAlertDialog();allowed=false
         views(preview.window!!.decorView).filterIsInstance<android.widget.TextView>().single {it.text=="Visualizar PDF"}.performClick()
         preview.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick()
+        shadowOf(Looper.getMainLooper()).idle()
         assertNull(shadowOf(a).nextStartedActivity)
     }
     private fun awaitShare(a:Activity,mime:String="image/png"):Intent {

@@ -1369,7 +1369,8 @@ class MainActivity : Activity() {
                     for(record in records) {
                         val existing=FieldWorkflow.matches(all,record)
                         if(update&&existing.size==1) {
-                            val previous=existing.single();for(key in listOf("os","talhoes","areaRestante","produtividade","observacoes")) previous.put(key,record.get(key))
+                            val previous=existing.single();for(key in listOf("os","talhoes","areaRestante","produtividade")) previous.put(key,record.get(key))
+                            if(record.optString("observacoes").isNotBlank()) previous.put("observacoes",record.getString("observacoes"))
                             for(i in 0 until all.length()) if(all.getJSONObject(i).optString("id")==previous.optString("id")) all.put(i,previous)
                             saved.add(previous)
                         } else {all.put(record);saved.add(record)}
@@ -1548,7 +1549,8 @@ class MainActivity : Activity() {
             if(duplicates.isEmpty()) finish(row)
             else AlertDialog.Builder(this).setTitle("Este lote já está cadastrado").setItems((duplicates.map {"Atualizar ${it.optString("os")} • ${it.optString("talhoes")}"}+"Salvar como registro separado").toTypedArray()) {_,i->
                 if(i==duplicates.size) finish(row) else {
-                    val merged=JSONObject(duplicates[i].toString());for(key in listOf("os","talhoes","areaRestante","produtividade","fotoEstoque","observacoes")) if(row.has(key)) merged.put(key,row.get(key))
+                    val merged=JSONObject(duplicates[i].toString());for(key in listOf("os","talhoes","areaRestante","produtividade","fotoEstoque")) if(row.has(key)) merged.put(key,row.get(key))
+                    if(row.optString("observacoes").isNotBlank()||row.optString("id")==merged.optString("id")) merged.put("observacoes",row.optString("observacoes"))
                     finish(merged)
                 }
             }.setNegativeButton("Voltar",null).show()

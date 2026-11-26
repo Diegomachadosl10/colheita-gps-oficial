@@ -120,6 +120,14 @@ class ProfessionalWorkflowTest {
         assertEquals("Acesso pelo carreador sul",rows.getJSONObject(0).getString("observacoes"))
         assertTrue(RecordEdits.text(rows.getJSONObject(0)).contains("Observações"))
         assertTrue(rows.getJSONObject(0).getJSONArray("historicoAlteracoes").length()>0)
+        a.javaClass.getDeclaredMethod("editarProgressoColheita",Boolean::class.javaPrimitiveType).apply {isAccessible=true}.invoke(a,false)
+        shadowOf(Looper.getMainLooper()).idle();dialog=ShadowAlertDialog.getLatestAlertDialog()
+        fields=views(dialog.window!!.decorView).filterIsInstance<EditText>()
+        assertEquals("Acesso pelo carreador sul",fields[4].text.toString());fields[4].setText("")
+        dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick();shadowOf(Looper.getMainLooper()).idle()
+        val cleared=JSONArray(a.getSharedPreferences("registros_v3",0).getString("estoques_salvos","[]")).getJSONObject(0)
+        assertEquals("original",cleared.getString("id"));assertEquals("",cleared.getString("observacoes"))
+        assertTrue(RecordEdits.text(cleared).contains("Acesso pelo carreador sul → —"))
     }
     @Test fun aTruckDraftSurvivesTheBackButtonWithoutCreatingAnOperationalEntry() {
         val a=activity()

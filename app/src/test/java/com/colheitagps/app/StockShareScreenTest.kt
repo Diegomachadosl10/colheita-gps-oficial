@@ -125,7 +125,9 @@ class StockShareScreenTest {
         assertTrue(stored.getJSONObject(0).has("fotoEstoque"));assertTrue(stored.getJSONObject(1).has("fotoEstoque"))
         ReflectionHelpers.callInstanceMethod<Unit>(a,"render")
         val labels=views(a.window.decorView).filterIsInstance<android.widget.TextView>().map {it.text.toString()}
-        assertTrue(labels.contains("Enviar mensagem e fotos"));assertFalse(labels.any {it.contains("PDF")})
+        assertTrue(labels.contains("Enviar mensagem e fotos"));assertTrue(labels.contains("Enviar em PDF"))
+        val report=StockSharing.pdfReport(store(a),selected,"hoje","Responsável fictício")
+        assertEquals(1,report.pictures.size)
     }
 
 }

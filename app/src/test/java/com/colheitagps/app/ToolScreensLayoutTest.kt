@@ -119,7 +119,7 @@ class ToolScreensLayoutTest {
             }
             buttons.single {it.text=="Vários lotes"}.performClick()
             assertTrue(ShadowAlertDialog.getLatestAlertDialog().isShowing)
-            assertEquals(4,views(ShadowAlertDialog.getLatestAlertDialog().window!!.decorView).filterIsInstance<EditText>().size)
+            assertEquals(5,views(ShadowAlertDialog.getLatestAlertDialog().window!!.decorView).filterIsInstance<EditText>().size)
             ShadowAlertDialog.getLatestAlertDialog().dismiss()
         }
     }
