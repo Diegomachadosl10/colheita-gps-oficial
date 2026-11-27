@@ -25,6 +25,45 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  native-android:
+    name: PDF, compartilhamento e Keystore no Android nativo
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Permitir aceleracao no emulador do runner
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          script: gradle connectedDebugAndroidTest --no-daemon
+      - name: Guardar resultados nativos sem APK ou dados reais
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: DM-AGRO-Beta-Android-Nativo
+          retention-days: 14
+          if-no-files-found: ignore
+          path: |
+            app/build/outputs/androidTest-results/connected/
+            app/build/reports/androidTests/connected/
   services:
     name: Servico gratuito e publicador
     runs-on: ubuntu-latest
