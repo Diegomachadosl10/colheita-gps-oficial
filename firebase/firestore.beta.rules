@@ -158,7 +158,10 @@ service cloud.firestore {
       }
       match /configuracao/{id} {
         allow get: if logado() && (id in ['equipes','servico'] || principal());
-        allow write: if false;
+        allow create, update: if id == 'servico' && principal()
+          && request.resource.data.keys().hasOnly(['url']) && request.resource.data.url is string
+          && request.resource.data.url.matches('https://([a-z0-9]+-)*beta(-[a-z0-9]+)*[.][a-z0-9-]+[.]workers[.]dev/?');
+        allow delete: if false;
       }
       function betaRead(e,d) { return betaManager(e) || (betaMember(e) && d.grupo in ['pendencias','ocorrencias_campo']); }
       function betaValid(e,d) {

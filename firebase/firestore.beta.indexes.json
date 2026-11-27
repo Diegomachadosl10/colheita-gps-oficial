@@ -39,6 +39,20 @@
           "order": "ASCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "usuarios",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "frenteId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "papel",
+          "order": "ASCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": []

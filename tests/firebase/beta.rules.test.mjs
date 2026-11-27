@@ -88,3 +88,20 @@ test('revision, ownership and scope cannot be replaced and stock stays manager o
  await assertFails(setDoc(doc(db('op'),...path('stock')),row('op','stock',{grupo:'estoques_salvos'})));
  await assertSucceeds(setDoc(doc(db('sup'),...path('stock')),row('sup','stock',{grupo:'estoques_salvos'})));
 });
+test('only Diego can configure a Beta Worker URL; production endpoints and secrets are refused',async()=>{
+ const ref=uid=>doc(db(uid),root,'configuracao','servico');
+ await assertSucceeds(setDoc(ref(owner),{url:'https://dm-agro-beta-servico.exemplo.workers.dev'}));
+ await assertFails(setDoc(ref('sup'),{url:'https://outro-beta.exemplo.workers.dev'}));
+ await assertFails(setDoc(ref(owner),{url:'https://dm-agro-servico.exemplo.workers.dev'}));
+ await assertFails(setDoc(ref(owner),{url:'https://dm-agro-beta-servico.exemplo.workers.dev',FIREBASE_BETA_SERVICE_ACCOUNT:'never-store-secrets-here'}));
+ await assertFails(setDoc(doc(db(owner),root,'configuracao','qualquer'),{url:'https://dm-agro-beta-servico.exemplo.workers.dev'}));
+ await assertFails(deleteDoc(ref(owner)));
+});
+test('notification tokens and delivery checkpoints cannot be read or forged by application accounts',async()=>{
+ const paths=['dispositivos/manager/tokens/fictitious','vinculosTokens/fictitious','eventosNotificacao/fictitious'];
+ await env.withSecurityRulesDisabled(async c=>{for(const p of paths)await setDoc(doc(c.firestore(),root,...p.split('/')),{fixture:true});});
+ for(const uid of [owner,'sup','op'])for(const p of paths){
+  await assertFails(getDoc(doc(db(uid),root,...p.split('/'))));
+  await assertFails(setDoc(doc(db(uid),root,...p.split('/')),{forged:true}));
+ }
+});

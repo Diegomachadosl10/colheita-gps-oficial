@@ -11,7 +11,7 @@ on:
       - 'scripts/**'
       - '*.gradle.kts'
       - 'gradle.properties'
-      - 'firebase.json'
+      - 'firebase*.json'
       - '.github/workflows/beta-audit.yml'
   pull_request:
     branches: [dm-agro-professional-beta]
@@ -36,6 +36,7 @@ jobs:
         with:
           node-version: '22'
       - run: node backend/worker.test.mjs
+      - run: node backend/beta-worker.test.mjs
       - run: python3 -m unittest discover -s scripts -p 'test_*.py'
 
   firebase-rules:
@@ -59,7 +60,7 @@ jobs:
         env:
           CI: 'true'
           FIREBASE_CLI_DISABLE_UPDATE_CHECK: '1'
-        run: tests/firebase/node_modules/.bin/firebase emulators:exec --project demo-dm-agro --only firestore,storage 'cd tests/firebase && npm test && npm run test:beta-compat && npm run test:beta'
+        run: tests/firebase/node_modules/.bin/firebase emulators:exec --config firebase.beta.json --project demo-dm-agro --only firestore,storage 'cd tests/firebase && npm test && npm run test:beta-compat && npm run test:beta'
 
   android:
     name: Compilacao, testes e lint - sem distribuicao

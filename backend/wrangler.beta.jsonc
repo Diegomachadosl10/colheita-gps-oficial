@@ -1,0 +1,11 @@
+{
+  // Candidate configuration only. No deployment workflow uses this file.
+  "name": "dm-agro-beta-servico",
+  "main": "beta-worker.js",
+  "compatibility_date": "2025-04-01",
+  "workers_dev": true,
+  "vars": {
+    "DM_AGRO_ENVIRONMENT": "beta"
+  }
+  // FIREBASE_BETA_SERVICE_ACCOUNT must be a Cloudflare Secret, never a variable/file here.
+}
