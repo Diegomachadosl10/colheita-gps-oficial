@@ -24,7 +24,7 @@ class WeatherDataTest {
         assertNull(WeatherData.nearNow(json,Instant.parse("2026-11-12T12:00:00Z")))
     }
     @Test fun endpointsRejectUntrustedOrCredentialBearingCloudflareAddresses() {
-        assertTrue(AgroService.validEndpoint(AgroService.DEFAULT_ENDPOINT))
+        assertEquals("",AgroService.DEFAULT_ENDPOINT)
         assertTrue(AgroService.validEndpoint("https://dm-agro.usuario.workers.dev"))
         for(url in listOf("http://dm-agro.usuario.workers.dev","https://workers.dev.evil.invalid","https://dm-agro.usuario.workers.dev/other","https://key@dm-agro.usuario.workers.dev","https://dm-agro.usuario.workers.dev?token=abc")) assertFalse(url,AgroService.validEndpoint(url))
     }

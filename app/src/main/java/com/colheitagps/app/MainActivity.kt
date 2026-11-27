@@ -84,7 +84,7 @@ class MainActivity : Activity() {
         notificationTeam=alertTeam.orEmpty();notificationUid=intent.getStringExtra("usuarioAlerta").orEmpty()
         intent.removeExtra("eventoAlerta");intent.removeExtra("usuarioAlerta")
         intent.removeExtra("equipeAlerta")
-        val alertPermitted=notificationEvent.isBlank()||(NotificationRoutes.authorized(access,notificationUid,notificationTeam)&&
+        val alertPermitted=notificationEvent.isBlank()||(intent.getStringExtra("ambienteAlerta")==BetaWorkspace.ID&&NotificationRoutes.authorized(access,notificationUid,notificationTeam)&&
             AgroNotifications.mayDisplay(access.uid,access.profile,notificationTeam,applicationContext.getSharedPreferences(BetaWorkspace.prefs("avisos_${access.uid}"),0).getString("frente","santo_inacio").orEmpty()))
         if(!alertPermitted) {
             notificationEvent="";notificationTeam="";notificationUid=""

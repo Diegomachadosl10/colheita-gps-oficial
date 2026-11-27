@@ -74,17 +74,21 @@ class NotificationSettingsActivity : Activity() {
         }
         ui.button(body,"Desativar avisos neste aparelho",true) {
             applicationContext.getSharedPreferences(BetaWorkspace.prefs("avisos_${a.uid}"),0).edit().putBoolean("ativo",false).apply()
-            getSystemService(android.app.NotificationManager::class.java).cancelAll(); render()
+            AgroNotifications.clear(this,a.uid)
+            com.google.firebase.messaging.FirebaseMessaging.getInstance().token.addOnSuccessListener {token->
+                AgroService.async(this,"/devices/unregister",JSONObject().put("token",token),{}, {message->AgroNotifications.status(this,a.uid,message)})
+            }
+            render()
         }
         if(a.primary) {
             val url=ui.field(body,"Endereço do serviço gratuito Cloudflare")
             serviceField=url; url.setText(AgroService.DEFAULT_ENDPOINT)
             FirebaseFirestore.getInstance().document(BetaWorkspace.path("configuracao/servico")).get(Source.SERVER).addOnSuccessListener {
-                if(!isDestroyed&&it.getString("url")?.let(AgroService::validEndpoint)==true) url.setText(it.getString("url"))
+                if(!isDestroyed&&it.getString("url")?.let(BetaNotificationProtocol::endpoint)==true) url.setText(it.getString("url"))
             }
             ui.button(body,"Salvar endereço do serviço") {
                 val value=url.text.toString().trim().trimEnd('/')
-                if(!AgroService.validEndpoint(value)) { url.error="Use o endereço HTTPS do seu Worker, terminado em workers.dev"; return@button }
+                if(!BetaNotificationProtocol.endpoint(value)) { url.error="Use o endereço HTTPS do Worker Beta, com beta no nome"; return@button }
                 FirebaseFirestore.getInstance().document(BetaWorkspace.path("configuracao/servico")).set(mapOf("url" to value))
                     .addOnSuccessListener { Toast.makeText(this,"Endereço salvo. Agora ative os avisos.",Toast.LENGTH_LONG).show() }
                     .addOnFailureListener { Toast.makeText(this,"Publique as regras desta versão e confira a conexão.",Toast.LENGTH_LONG).show() }
@@ -103,7 +107,7 @@ class NotificationSettingsActivity : Activity() {
         }
         if(!a.primary) { permission(); return }
         val value=serviceField?.text?.toString()?.trim()?.trimEnd('/').orEmpty()
-        if(!AgroService.validEndpoint(value)) { serviceField?.error="Informe o endereço HTTPS do serviço"; return }
+        if(!BetaNotificationProtocol.endpoint(value)) { serviceField?.error="Informe o endereço HTTPS do Worker Beta, com beta no nome"; return }
         busy(true,"Salvando serviço…")
         FirebaseFirestore.getInstance().document(BetaWorkspace.path("configuracao/servico")).set(mapOf("url" to value))
             .addOnSuccessListener {

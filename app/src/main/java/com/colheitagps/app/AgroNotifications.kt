@@ -19,10 +19,11 @@ import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 internal object AgroNotifications {
-    private const val CHANNEL="equipe_dm_agro"
+    private const val CHANNEL="beta_equipe_dm_agro"
     fun enabled(context: Context, uid: String) = BetaWorkspace.notificationsReady && context.applicationContext.getSharedPreferences(BetaWorkspace.prefs("avisos_$uid"),0).getBoolean("ativo",false)
-    fun registration(context: Context, uid: String, token: String) = JSONObject().put("token",token)
-        .put("front",context.applicationContext.getSharedPreferences(BetaWorkspace.prefs("avisos_$uid"),0).getString("frente","santo_inacio"))
+    fun registration(context: Context, uid: String, token: String) = JSONObject().put("token",token).apply {
+        if(TeamPolicy.primary(uid)) put("front",context.applicationContext.getSharedPreferences(BetaWorkspace.prefs("avisos_$uid"),0).getString("frente","santo_inacio"))
+    }
     fun runtimePermission(context:Context)=Build.VERSION.SDK_INT<33 || context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)==PackageManager.PERMISSION_GRANTED
     fun allowed(context: Context) = runtimePermission(context) && NotificationManagerCompat.from(context).areNotificationsEnabled() &&
         context.getSystemService(NotificationManager::class.java).getNotificationChannel(CHANNEL)?.importance!=NotificationManager.IMPORTANCE_NONE
@@ -31,7 +32,7 @@ internal object AgroNotifications {
     }
     fun mayDisplay(uid: String, profile: Map<String,Any>?, sourceTeam: String, selectedFront: String): Boolean =
         sourceTeam.substringBeforeLast('_') in TeamPolicy.fronts && sourceTeam.substringAfterLast('_') in TeamPolicy.shifts &&
-            TeamPolicy.manages(uid,profile) && (if(TeamPolicy.primary(uid)) sourceTeam.substringBeforeLast('_')==selectedFront else TeamPolicy.team(profile)==sourceTeam)
+            TeamPolicy.manages(uid,profile) && (if(TeamPolicy.primary(uid)) sourceTeam.substringBeforeLast('_')==selectedFront else profile?.get("frenteId")==sourceTeam.substringBeforeLast('_'))
     fun register(context: Context) {
         val uid=FirebaseAuth.getInstance().currentUser?.uid ?: return
         if(!enabled(context,uid)||!allowed(context)) return
@@ -42,19 +43,27 @@ internal object AgroNotifications {
         val body=if(kind=="user") JSONObject().put("kind","user").put("uid",uid) else JSONObject().put("kind","record").put("team",team).put("key",key).apply { if(revision>0) put("revision",revision) }
         enqueue(context,"event",body,uid,persist)
     }
+    internal fun work(action:String,body:JSONObject,uid:String):OneTimeWorkRequest {
+        require(action in setOf("event","register","display")&&uid.matches(Regex("[A-Za-z0-9_-]{1,128}")))
+        require(action!="display"||BetaNotificationProtocol.message(body))
+        val builder=OneTimeWorkRequestBuilder<BetaNotificationWorker>()
+            .setInputData(workDataOf("environment" to BetaWorkspace.ID,"protocol" to BetaNotificationProtocol.VERSION,"action" to action,"body" to body.toString(),"uid" to uid,"created" to System.currentTimeMillis()))
+            .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+            .addTag("beta-avisos-$uid")
+        if(action!="event") builder.addTag("beta-aparelho-$uid")
+        if(action in setOf("display","event","register")&&Build.VERSION.SDK_INT>=31) builder.setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+        return builder.build()
+    }
     fun enqueue(context: Context, action: String, body: JSONObject, uid: String, persist:Boolean=false) {
         if (!BetaWorkspace.notificationsReady) return
-        val builder=OneTimeWorkRequestBuilder<AgroNotificationWorker>()
-            .setInputData(workDataOf("action" to action,"body" to body.toString(),"uid" to uid,"created" to System.currentTimeMillis()))
-            .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
-            .addTag("avisos-$uid")
-        if(action in setOf("display","event","register")&&Build.VERSION.SDK_INT>=31) builder.setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+        if(action=="display"&&!BetaNotificationProtocol.message(body)) return
+        val request=work(action,body,uid)
         val manager=WorkManager.getInstance(context.applicationContext)
         if(action=="event") {
             val eventKey=java.security.MessageDigest.getInstance("SHA-256").digest(body.toString().toByteArray()).joinToString("") { "%02x".format(it) }
-            val operation=manager.enqueueUniqueWork("aviso-evento-$uid-$eventKey",ExistingWorkPolicy.KEEP,builder.build())
+            val operation=manager.enqueueUniqueWork("beta-aviso-evento-$uid-$eventKey",ExistingWorkPolicy.KEEP,request)
             if(persist) operation.result.get(5,TimeUnit.SECONDS)
-        } else manager.enqueue(builder.build())
+        } else manager.enqueue(request)
     }
     fun offer(activity: Activity, access: TeamAccess) {
         if (!BetaWorkspace.notificationsReady) return
@@ -64,21 +73,28 @@ internal object AgroNotifications {
         if(prefs.getBoolean("perguntou",false)) return
         prefs.edit().putBoolean("perguntou",true).apply()
         AlertDialog.Builder(activity).setTitle("Avisos da equipe")
-            .setMessage(if(access.primary) "Receber avisos de Santo Inácio? Você pode escolher sua frente de notificações na próxima tela." else "Receber avisos de novos registros e solicitações da sua frente e turno?")
+            .setMessage(if(access.primary) "Receber avisos de Santo Inácio? Você pode escolher sua frente de notificações na próxima tela." else "Receber avisos de novos registros e solicitações dos turnos da sua frente?")
             .setNegativeButton("Agora não",null).setPositiveButton("Configurar") { _,_->activity.startActivity(Intent(activity,NotificationSettingsActivity::class.java)) }.show()
     }
     fun logout(context: Context) {
         if (!BetaWorkspace.notificationsReady) return
         val uid=FirebaseAuth.getInstance().currentUser?.uid ?: return
-        context.getSystemService(NotificationManager::class.java).cancelAll()
-        WorkManager.getInstance(context.applicationContext).cancelAllWorkByTag("avisos-$uid")
-        if(enabled(context,uid)) FirebaseMessaging.getInstance().deleteToken()
+        clear(context,uid)
+        WorkManager.getInstance(context.applicationContext).cancelAllWorkByTag("beta-aparelho-$uid")
+        // The FCM token belongs to the installed application identity, also used by stable.
+        // Never delete the shared token from the isolated Beta.
+    }
+    fun clear(context:Context,uid:String) {
+        val manager=context.getSystemService(NotificationManager::class.java)
+        manager.activeNotifications.filter {it.tag=="beta-$uid"}.forEach {manager.cancel(it.tag,it.id)}
     }
     fun tapIntent(context:Context,uid:String,data:JSONObject)=Intent(context,MainActivity::class.java)
+        .setAction("com.colheitagps.app.BETA_NOTICE").putExtra("ambienteAlerta",BetaWorkspace.ID)
         .putExtra("equipeAlerta",data.optString("team")).putExtra("eventoAlerta",data.optString("eventId")).putExtra("usuarioAlerta",uid)
         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
     fun display(context: Context, uid: String, data: JSONObject) {
         if (!BetaWorkspace.notificationsReady) return
+        if (!BetaNotificationProtocol.message(data)) return
         if(!allowed(context)||!enabled(context,uid)) return
         val event=data.optString("eventId"); if(event.isBlank()||event.length>160) return
         val prefs=context.getSharedPreferences(BetaWorkspace.prefs("avisos_recebidos_$uid"),0)
@@ -92,7 +108,7 @@ internal object AgroNotifications {
             .setStyle(NotificationCompat.BigTextStyle().bigText(data.optString("body").take(200)))
             .setContentIntent(pending).setAutoCancel(true).setCategory(NotificationCompat.CATEGORY_EVENT).build()
         if(FirebaseAuth.getInstance().currentUser?.uid!=uid) return
-        manager.notify((uid+event).hashCode(),notification)
+        manager.notify("beta-$uid",(uid+event).hashCode(),notification)
         context.getSharedPreferences(BetaWorkspace.prefs("avisos_$uid"),0).edit().putLong("recebidoEm",System.currentTimeMillis()).apply()
         val edit=prefs.edit().putLong(event,System.currentTimeMillis())
         for((key,value) in prefs.all) if(value is Long && value<System.currentTimeMillis()-7*86400000L) edit.remove(key)
@@ -106,15 +122,24 @@ class AgroMessagingService : FirebaseMessagingService() {
         if(AgroNotifications.enabled(this,uid)) AgroNotifications.enqueue(this,"register",AgroNotifications.registration(this,uid,token),uid)
     }
     override fun onMessageReceived(message: RemoteMessage) {
+        if(!BetaNotificationProtocol.message(JSONObject(message.data))) return
         val uid=FirebaseAuth.getInstance().currentUser?.uid ?: return
         if(message.data["targetUid"]==uid) AgroNotifications.enqueue(this,"display",JSONObject(message.data),uid)
     }
 }
 
 class AgroNotificationWorker(context: Context,params: WorkerParameters) : Worker(context,params) {
+    // Old jobs keep their original class name and cannot be sent through the Beta service.
+    override fun doWork(): Result = Result.retry()
+}
+
+class BetaNotificationWorker(context: Context,params: WorkerParameters) : Worker(context,params) {
     override fun doWork(): Result {
+        // Preserve old jobs for the stable client; do not reinterpret them as Beta events.
+        if(!BetaWorkspace.notificationsReady||!BetaNotificationProtocol.job(inputData)) return Result.retry()
         val uid=inputData.getString("uid") ?: return Result.success()
-        if(FirebaseAuth.getInstance().currentUser?.uid!=uid) return Result.success()
+        if(FirebaseAuth.getInstance().currentUser?.uid!=uid)
+            return if(inputData.getString("action")=="event") Result.retry() else Result.success()
         val body=try { JSONObject(inputData.getString("body")?:"{}") } catch(_:Exception){return Result.failure()}
         return try {
             when(inputData.getString("action")) {
