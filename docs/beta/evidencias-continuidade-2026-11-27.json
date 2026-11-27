@@ -1,0 +1,107 @@
+{
+  "sourceCommit": "39e2651153ffb8bc36556b05c969d42cf5d3afb4",
+  "local": {
+    "tasks": [
+      "testDebugUnitTest",
+      "assembleDebug",
+      "assembleDebugAndroidTest",
+      "lintDebug"
+    ],
+    "tests": {
+      "tests": 341,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "lint": {
+      "errors": 0,
+      "warnings": 128
+    },
+    "apk": {
+      "applicationId": "com.colheitagps.app",
+      "versionCode": 39,
+      "versionName": "2.3.0",
+      "sha256": "a0eb30469a47aaaaa8d684a54a6b2326c1e1466d6e6507456974fb43b118d42e",
+      "sizeBytes": 13164495,
+      "certificateSha256": "d6bff2432575da5928e07127ef565b19c8148f53c2c0047de3f2bb7ce003b3a6",
+      "distributed": false
+    }
+  },
+  "server": {
+    "firebaseConnected": false,
+    "cloudflareConnected": false,
+    "rulesDeployed": false,
+    "betaWorkerDeployed": false,
+    "realDataMigrated": false,
+    "newUpdatePublished": false
+  },
+  "production": {
+    "head": "e07aee322d9cbb9f74129bebc171ceb5cca27b7f",
+    "release": "v2.2.7"
+  },
+  "checkedAtUtc": "2026-11-27T15:38:21.413175+00:00",
+  "ci": {
+    "runId": 46025766436,
+    "url": "https://github.com/Diegomachadosl10/colheita-gps-oficial/actions/runs/46025766436",
+    "sourceCommit": "39e2651153ffb8bc36556b05c969d42cf5d3afb4",
+    "conclusion": "success",
+    "jobs": [
+      {
+        "id": 140596776066,
+        "name": "services",
+        "conclusion": "success",
+        "stableWorkerTests": 18,
+        "betaWorkerTests": 21,
+        "pythonTests": 12
+      },
+      {
+        "id": 140596776468,
+        "name": "nativeAndroid",
+        "conclusion": "success",
+        "tests": 2,
+        "device": "Android API 35 emulator",
+        "realAndroidKeystore": true,
+        "realPdfRenderer": true,
+        "realFileProvider": true
+      },
+      {
+        "id": 140596776566,
+        "name": "rules",
+        "conclusion": "success",
+        "stableRulesTests": 28,
+        "compatibilityTests": 28,
+        "betaRulesTests": 13,
+        "project": "demo-dm-agro"
+      },
+      {
+        "id": 140596776737,
+        "name": "android",
+        "conclusion": "success",
+        "tests": 341,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    ],
+    "artifacts": [
+      {
+        "id": 15212570633,
+        "name": "DM-AGRO-Beta-Auditoria",
+        "containsApk": false
+      },
+      {
+        "id": 15211568217,
+        "name": "DM-AGRO-Beta-Android-Nativo",
+        "containsApk": false
+      }
+    ]
+  },
+  "remaining": [
+    "secure administrative Firebase and Cloudflare access",
+    "live server inspection and homologation",
+    "local files, media, private maps and outbox migration",
+    "legacy client cutover and restoration test",
+    "dynamic front/shift catalogue and remaining planned modules",
+    "full final version and compatible in-app distribution"
+  ]
+}
