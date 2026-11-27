@@ -105,3 +105,9 @@ test('notification tokens and delivery checkpoints cannot be read or forged by a
   await assertFails(setDoc(doc(db(uid),root,...p.split('/')),{forged:true}));
  }
 });
+test('a misconfigured service document with credential fields is not exposed even after an administrative write',async()=>{
+ await env.withSecurityRulesDisabled(async c=>{await setDoc(doc(c.firestore(),root,'configuracao','servico'),{url:'https://beta.exemplo.workers.dev',unexpectedCredential:'fictitious-not-a-real-secret'});});
+ for(const uid of [owner,'sup','op'])await assertFails(getDoc(doc(db(uid),root,'configuracao','servico')));
+ await assertSucceeds(setDoc(doc(db(owner),root,'configuracao','servico'),{url:'https://beta.exemplo.workers.dev'}));
+ await assertSucceeds(getDoc(doc(db('op'),root,'configuracao','servico')));
+});

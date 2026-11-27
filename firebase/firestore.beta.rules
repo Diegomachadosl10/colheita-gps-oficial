@@ -156,11 +156,12 @@ service cloud.firestore {
           && frenteValida(request.resource.data.frenteId) && turnoValido(request.resource.data.turno);
         allow delete: if false;
       }
+      function betaService(d) { return d.keys().hasOnly(['url']) && d.url is string
+        && d.url.matches('https://([a-z0-9]+-)*beta(-[a-z0-9]+)*[.][a-z0-9-]+[.]workers[.]dev/?'); }
       match /configuracao/{id} {
-        allow get: if logado() && (id in ['equipes','servico'] || principal());
-        allow create, update: if id == 'servico' && principal()
-          && request.resource.data.keys().hasOnly(['url']) && request.resource.data.url is string
-          && request.resource.data.url.matches('https://([a-z0-9]+-)*beta(-[a-z0-9]+)*[.][a-z0-9-]+[.]workers[.]dev/?');
+        allow get: if logado() && (id == 'equipes' || (principal() && id != 'servico')
+          || (id == 'servico' && (!exists(/databases/$(database)/documents/ambientes/beta/configuracao/servico) || betaService(resource.data))));
+        allow create, update: if id == 'servico' && principal() && betaService(request.resource.data);
         allow delete: if false;
       }
       function betaRead(e,d) { return betaManager(e) || (betaMember(e) && d.grupo in ['pendencias','ocorrencias_campo']); }
