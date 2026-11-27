@@ -69,6 +69,18 @@ class MainActivity : Activity() {
     private var buscaEstoque=""
     private var buscaEquipamento=""
     private var buscaMapas=""
+    private val verificarAcessoOffline=object:Runnable {
+        override fun run() {
+            if(isFinishing||isDestroyed) return
+            if(AccessRepository.offlineEntryExpired()) {
+                salvarRascunhoAtivo?.invoke();mapa?.salvar();gpsTracker?.stop();teamSync?.stop();acessoConfirmado=false
+                Toast.makeText(this@MainActivity,"Conecte à internet para renovar seu acesso offline. Seus registros foram preservados.",Toast.LENGTH_LONG).show()
+                startActivity(Intent(this@MainActivity,LoginActivity::class.java).apply {flags=Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK})
+                finish();return
+            }
+            syncUiHandler.postDelayed(this,60_000)
+        }
+    }
 
     override fun getSharedPreferences(name: String, mode: Int): SharedPreferences =
         if (name in setOf("mapas", "pinturas") && teamStore != null && teamAccess?.manages == false)
@@ -406,7 +418,7 @@ class MainActivity : Activity() {
                 if(group=="estoques_salvos"&&progresso().optString("id")==id) getSharedPreferences("controle_colheita",0).edit().putString("progresso",updated.toString()).commit()
             }
             Toast.makeText(this,"Foto marcada salva. A original foi preservada.",Toast.LENGTH_LONG).show()
-            when(group) {"pendencias"->if(PartsRecords.isPart(FieldReports.rows(maintenanceCatalog()).first {it.optString("id")==id})) pecas() else pendencias();"ocorrencias_campo"->ocorrenciasCampo();else->estoque()}
+            when(group) {"pendencias"->if(PartsRecords.isPart(FieldReports.rows(maintenanceCatalog()).first {it.optString("id")==id})) pecas() else pendencias();"ocorrencias_campo"->ocorrenciasCampo();ShiftReports.GROUP->relatoriosTurno();else->estoque()}
         } catch(_:Exception) {Toast.makeText(this,"A foto marcada foi preservada neste aparelho, mas o registro mudou. Abra o registro e tente novamente.",Toast.LENGTH_LONG).show()}
     }
     private fun remover(key: String, index: Int, retorno: () -> Unit) {
@@ -803,6 +815,8 @@ class MainActivity : Activity() {
     }
     override fun onResume() {
         super.onResume()
+        syncUiHandler.removeCallbacks(verificarAcessoOffline);verificarAcessoOffline.run()
+        if(isFinishing) return
         StartupUpdates.resume(this)
         if (mapa != null) iniciarGps(solicitarPermissao = false)
         if(acessoConfirmado&&teamStore!=null) {
@@ -1025,6 +1039,7 @@ class MainActivity : Activity() {
         coluna.addView(texto("DM AGRO $installed • Beta gratuita\n${BetaWorkspace.SUBTITLE}\nDesenvolvido por Diego Machado", 15f))
         coluna.addView(botao("Organizar início") {organizarInicio()})
         coluna.addView(botao("Verificar atualização") {startActivity(Intent(this,UpdateActivity::class.java))})
+        coluna.addView(botao("Enviar sugestão ou comunicar erro") {enviarFeedback()})
         if(podeGerenciar()) coluna.addView(botao("Notificações") {startActivity(Intent(this,NotificationSettingsActivity::class.java))})
         if(podeGerenciar()) {
             coluna.addView(secao("Registros"))
@@ -1066,6 +1081,7 @@ class MainActivity : Activity() {
             contentDescription = "Trocar equipe"; setOnClickListener { chooseTeam(access) }
         })
         coluna.addView(teamPanel, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
+        if(AccessRepository.offlineEntry()) coluna.addView(ui.text("Acesso offline • aprovação confirmada nas últimas 24 horas. Registros ficam neste celular até sincronizar. Aprovações de usuários exigem conexão.",13f,ui.mint).apply {setPadding(0,dp(8),0,0)})
         if (access.primary && access.profile["nome"]?.toString().isNullOrBlank()) coluna.addView(botao("Definir meu nome") { definirNome() })
         val verse=DailyVerse.forDate()
         val overview=LinearLayout(this).apply {orientation=if(resources.configuration.fontScale>=1.45f||resources.configuration.screenWidthDp<360) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL;isBaselineAligned=false}
@@ -1118,10 +1134,137 @@ class MainActivity : Activity() {
         tiles.add(DashboardUi.Tile("Ocorrências", FieldIcon.OCCURRENCE, { ocorrenciasCampo() }))
         if (access.manages) tiles.addAll(listOf(
             DashboardUi.Tile("Caminhões", FieldIcon.TRUCK, { abrirCaminhoes() }),
+            DashboardUi.Tile("Relatórios", FieldIcon.ORDER, { relatoriosTurno() }),
+            DashboardUi.Tile("Indicadores", FieldIcon.STOCK, { indicadores() }),
             DashboardUi.Tile("Passagem de turno", FieldIcon.ORDER, { passagemTurno() }),
             DashboardUi.Tile("Calendário", FieldIcon.CALENDAR, { calendario() })
         ))
         return tiles
+    }
+
+    private fun enviarFeedback() {
+        val session=chaveSessao()
+        val input=campo("Conte o que aconteceu ou escreva sua sugestão").apply {minLines=4;filters=arrayOf(android.text.InputFilter.LengthFilter(4000))}
+        val dialog=AlertDialog.Builder(this).setTitle("Sugestão ou erro").setView(input)
+            .setMessage("Você confere a mensagem e escolhe para quem enviar. Nenhum mapa, cadastro ou foto será anexado automaticamente.")
+            .setNegativeButton("Cancelar",null).setPositiveButton("Conferir",null).create()
+        dialog.setOnShowListener {dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            if(chaveSessao()!=session) {dialog.dismiss();return@setOnClickListener}
+            if(input.text.isNullOrBlank()) {input.error="Escreva sua mensagem.";return@setOnClickListener}
+            val installed=packageManager.getPackageInfo(packageName,0).versionName.orEmpty()
+            val share=Intent(Intent.ACTION_SEND).apply {type="text/plain";putExtra(Intent.EXTRA_TEXT,"DM AGRO • Feedback\nVersão $installed • Android API ${Build.VERSION.SDK_INT}\n\n${input.text.toString().trim()}")}
+            dialog.dismiss()
+            SharePreview.review(this,share,{acessoConfirmado&&chaveSessao()==session}) {
+                try {startActivity(Intent.createChooser(share,"Enviar feedback"))} catch(_:Exception) {Toast.makeText(this,"Não foi possível abrir o envio.",Toast.LENGTH_LONG).show()}
+            }
+        }};dialog.show()
+    }
+
+    private fun indicadores() {
+        if(!exigirGestor()) return
+        val column=pagina("Indicadores");themeScreen={indicadores()};refreshList={indicadores()}
+        val team=teamStore!!.team
+        val value=OperationalIndicators.build(maintenanceCatalog(),listaEstoques(),dados("ocorrencias_campo"))
+        val now=java.time.LocalDateTime.now(relogioCaminhoes)
+        val period=TruckShift.at(now)
+        column.addView(texto(TeamPolicy.label(team),17f,palette.accent))
+        column.addView(texto("Registros ativos disponíveis nesta equipe • ${DashboardUi.status(syncMessage)}",14f,palette.muted))
+        val rows=listOf(
+            "Equipamentos cadastrados" to value.equipment.toString(),
+            "Pendências abertas" to "${value.pending} • ${value.urgent} urgentes",
+            "Lotes com estoque" to value.lots.toString(),
+            "Área restante informada" to "${OperationalIndicators.label(value.stockArea)}${if(value.stockArea!=null) " ha" else ""}\n${value.numericLots} de ${value.lots} lotes com área numérica",
+            "Produtividade ponderada por área" to "${OperationalIndicators.label(value.weightedYield)}${if(value.weightedYield!=null) " t/ha" else ""}\n${value.comparableLots} lotes comparáveis",
+            "Ocorrências abertas" to value.occurrences.toString(),
+            "Turno em andamento agora" to period.label(),
+            "Área colhida" to "Ainda sem classificação e período suficientes para somar as pinturas com segurança."
+        )
+        for((title,detail) in rows) column.addView(cartao(title,detail) {},LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(10)})
+        column.addView(texto("Áreas e produtividades são informações dos estoques ativos; textos livres e valores ambíguos ficam fora do cálculo. Lotes de períodos diferentes não devem ser comparados. Não há subtração automática nem estimativa de toneladas.",14f,palette.muted).apply {setPadding(0,dp(14),0,0)})
+        relatorioAtual={FieldReport("Indicadores operacionais",TeamPolicy.label(team),"Situação dos registros disponíveis • ${now.format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"))}",listOf(ReportSection("Equipe selecionada",listOf("Indicador","Valor / abrangência"),rows.map {listOf(it.first,it.second)})))}
+    }
+
+    private fun relatoriosTurno() {
+        if(!exigirGestor()) return
+        val column=pagina("Relatórios de turno");themeScreen={relatoriosTurno()};refreshList={relatoriosTurno()}
+        column.addView(texto(TeamPolicy.label(teamStore!!.team),16f,palette.accent))
+        column.addView(botao("+ Novo relatório") {editarRelatorioTurno(-1)})
+        val rows=FieldReports.rows(dados(ShiftReports.GROUP)).asReversed()
+        relatorioAtual={relatorioGrupo("Relatórios de turno",ShiftReports.GROUP,FieldReports.rows(dados(ShiftReports.GROUP)))}
+        if(rows.isEmpty()) column.addView(texto("Nenhum relatório salvo. Registre o relato e o recado para o próximo turno.",15f))
+        for(row in rows) column.addView(cartao("${row.optString("dataCadastro")} • Turno ${row.optString("turno")}",row.optString("descricao").take(180)) {
+            comRegistroAtual(ShiftReports.GROUP,row.optString("id")) {index->opcoesRelatorioTurno(index)}
+        },LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(10)})
+    }
+
+    private fun opcoesRelatorioTurno(index:Int) {
+        if(!exigirGestor()) return
+        val row=dados(ShiftReports.GROUP).optJSONObject(index)?:return
+        val session=chaveSessao()
+        AlertDialog.Builder(this).setTitle("Relatório • ${row.optString("dataCadastro")}")
+            .setItems(arrayOf("Editar","Enviar mensagem","Compartilhar imagem","Enviar em PDF","Ver fotos","Histórico de correções","Excluir")) {_,option->
+                if(chaveSessao()!=session||!podeGerenciar()) return@setItems
+                when(option) {
+                    0->editarRelatorioTurno(index)
+                    1->{val share=Intent(Intent.ACTION_SEND).apply {type="text/plain";putExtra(Intent.EXTRA_TEXT,ShiftReports.text(teamStore!!.team,row))}
+                        SharePreview.review(this,share,{acessoConfirmado&&podeGerenciar()&&chaveSessao()==session}) {
+                            try {startActivity(Intent.createChooser(share,"Enviar relatório"))} catch(_:Exception) {Toast.makeText(this,"Não foi possível abrir o envio.",Toast.LENGTH_LONG).show()}
+                        }}
+                    2->compartilharRelatorio(relatorioGrupo("Relatório de turno",ShiftReports.GROUP,listOf(row)))
+                    3->compartilharRelatorioPdf(relatorioGrupo("Relatório de turno",ShiftReports.GROUP,listOf(row)))
+                    4->mostrarFotosRegistro(row,ShiftReports.GROUP)
+                    5->historicoCorrecoes(ShiftReports.GROUP,row.optString("id"))
+                    6->remover(ShiftReports.GROUP,index) {relatoriosTurno()}
+                }
+            }.setNegativeButton("Voltar",null).show()
+    }
+
+    private fun editarRelatorioTurno(index:Int) {
+        if(!exigirGestor()) return
+        pausarSincronizacao()
+        val previous=if(index>=0) dados(ShiftReports.GROUP).optJSONObject(index)?:return else null
+        if(!exigirEdicao(ShiftReports.GROUP,previous)) return
+        val session=chaveSessao();val team=teamStore!!.team;val access=teamAccess!!
+        val draftKey="relatorio_${previous?.optString("id")?:"novo"}"
+        val saved=rascunhos().read(draftKey)
+        val now=java.time.LocalDateTime.now(relogioCaminhoes)
+        var date=RainRecords.date(saved?.optString("dataCadastro").orEmpty())?:RainRecords.date(previous?.optString("dataCadastro").orEmpty())?:ShiftHandover.latest(team.substringAfterLast('_'),now).date
+        val body=LinearLayout(this).apply {orientation=LinearLayout.VERTICAL;setPadding(dp(18),dp(10),dp(18),dp(10))}
+        lateinit var day:Button
+        day=botao("Data operacional: ${TruckRecords.label(date)}") {escolherDiaCaminhao(date) {selected->date=selected;day.text="Data operacional: ${TruckRecords.label(date)}";salvarRascunhoAtivo?.invoke()}}
+        body.addView(day)
+        body.addView(texto("${TeamPolicy.label(team)}\nA data é a do início do turno, inclusive quando atravessa a meia-noite.",14f,palette.muted))
+        val description=campo("Relato livre do turno",saved?.optString("descricao")?:previous?.optString("descricao").orEmpty()).apply {minLines=4;filters=arrayOf(android.text.InputFilter.LengthFilter(12000))}
+        val pending=campo("Recado para o próximo turno (opcional)",saved?.optString("pendencias")?:previous?.optString("pendencias").orEmpty()).apply {minLines=2;filters=arrayOf(android.text.InputFilter.LengthFilter(6000))}
+        val lot=campo("Lote / O.S. (opcional)",saved?.optString("os")?:previous?.optString("os").orEmpty()).apply {filters=arrayOf(android.text.InputFilter.LengthFilter(200))}
+        body.addView(description);body.addView(pending);body.addView(lot)
+        val photoList=saved?.optJSONArray("fotos")?:previous?.optJSONArray("fotos")?:JSONArray()
+        fotosFormulario=(0 until photoList.length()).map {photoList.optString(it)}.filter {it.isNotBlank()}.toMutableList()
+        val photoLabel=texto("Fotos anexadas: ${fotosFormulario.size} (até 12)",14f);body.addView(photoLabel)
+        val saveDraft=registrarRascunho(draftKey,listOf(description,pending,lot)) {
+            JSONObject().put("dataCadastro",TruckRecords.label(date)).put("descricao",description.text.toString())
+                .put("pendencias",pending.text.toString()).put("os",lot.text.toString()).put("fotos",JSONArray(fotosFormulario))
+        }
+        atualizarFotosFormulario={photoLabel.text="Fotos anexadas: ${fotosFormulario.size} (até 12)";saveDraft()}
+        body.addView(botao("Adicionar fotos") {if(fotosFormulario.size<12) startActivityForResult(Intent(Intent.ACTION_GET_CONTENT).apply {type="image/*";putExtra(Intent.EXTRA_ALLOW_MULTIPLE,true)},307) else Toast.makeText(this,"Limite de 12 fotos.",Toast.LENGTH_LONG).show()})
+        body.addView(botao("Remover foto do relatório") {if(fotosFormulario.isNotEmpty()) AlertDialog.Builder(this).setTitle("Remover foto")
+            .setItems(fotosFormulario.indices.map {"Foto ${it+1}"}.toTypedArray()) {_,i->fotosFormulario.removeAt(i);atualizarFotosFormulario?.invoke()}.show()})
+        val dialog=AlertDialog.Builder(this).setTitle(if(previous==null) "Novo relatório" else "Editar relatório")
+            .setView(ScrollView(this).apply {addView(body)}).setNegativeButton("Cancelar",null).setPositiveButton("Salvar",null).create()
+        var completed=false
+        dialog.setOnShowListener {dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            if(completed) return@setOnClickListener
+            if(chaveSessao()!=session||!podeGerenciar()) {dialog.dismiss();return@setOnClickListener}
+            try {
+                val updated=ShiftReports.save(previous,ShiftReports.Draft(date,description.text.toString(),pending.text.toString(),lot.text.toString()),team,access.uid,access.profile["nome"]?.toString().orEmpty(),fotosFormulario,java.time.LocalDateTime.now(relogioCaminhoes))
+                val all=dados(ShiftReports.GROUP)
+                if(!colocarRegistro(all,index,updated)) return@setOnClickListener
+                guardar(ShiftReports.GROUP,all);completed=true;rascunhos().clear(draftKey);salvarRascunhoAtivo=null;atualizarFotosFormulario=null
+                dialog.dismiss();relatoriosTurno()
+            } catch(error:IllegalArgumentException) {Toast.makeText(this,error.message?:"Confira o relatório.",Toast.LENGTH_LONG).show()}
+        }}
+        dialog.setOnDismissListener {if(salvarRascunhoAtivo===saveDraft) {saveDraft();salvarRascunhoAtivo=null;atualizarFotosFormulario=null}}
+        dialog.show()
     }
     private fun organizarInicio() {
         val access=teamAccess?:return;val store=teamStore?:return
@@ -3891,6 +4034,7 @@ class MainActivity : Activity() {
         gpsTracker?.stop()
         salvarRascunhoAtivo?.invoke()
         super.onPause()
+        syncUiHandler.removeCallbacks(verificarAcessoOffline)
         syncUiHandler.removeCallbacks(atualizarTurnoCaminhoes)
         mapa?.salvar()
     }

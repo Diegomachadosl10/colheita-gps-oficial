@@ -71,7 +71,7 @@ class AppThemeScreenTest {
             val root=a.window.decorView;root.measure(View.MeasureSpec.makeMeasureSpec(786,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(1640,View.MeasureSpec.EXACTLY));root.layout(0,0,786,1640)
             val labels=views(root).filterIsInstance<TextView>().map {it.text.toString()}
             for(title in listOf("Mapas","Pendências","Estoque","Peças a pedir","Ocorrências","Chuva por turno","Caminhões","Calendário")) assertTrue(title,labels.contains(title))
-            assertFalse(labels.contains("Relatórios"));assertTrue(labels.contains("Versículo do dia"))
+            assertTrue(labels.contains("Relatórios"));assertTrue(labels.contains("Indicadores"));assertTrue(labels.contains("Versículo do dia"))
             System.getenv("DM_AGRO_THEME_PREVIEW_DIR")?.let {folder->
                 val bitmap=Bitmap.createBitmap(786,1640,Bitmap.Config.ARGB_8888);root.draw(Canvas(bitmap))
                 File(folder).mkdirs();File(folder,if(night) "DM-AGRO-noturno.png" else "DM-AGRO-claro.png").outputStream().use {bitmap.compress(Bitmap.CompressFormat.PNG,100,it)};bitmap.recycle()

@@ -2,6 +2,8 @@ package com.colheitagps.app
 
 import android.app.Activity
 import android.content.Intent
+import android.content.Context
+import android.net.ConnectivityManager
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
@@ -11,17 +13,28 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 internal object AccessRepository {
+    private val offline by lazy { OfflineEntryStore(FirebaseApp.getInstance().applicationContext) }
+    @Volatile private var offlineUid: String? = null
     private val entry by lazy {
         val auth = FirebaseAuth.getInstance()
         EntrySession({ auth.currentUser?.uid }).also { session ->
             auth.addAuthStateListener { session.authChanged(it.currentUser?.uid) }
         }
     }
-    fun forgetEntry() = entry.clear()
-    fun observeProfile(uid: String, data: Map<String, Any>?) = entry.observe(uid, data)
-    fun recentEntry(): TeamAccess? = FirebaseAuth.getInstance().currentUser?.uid?.let(entry::recent)
+    fun forgetEntry() { entry.clear(); offlineUid=null; offline.clear() }
+    fun observeProfile(uid: String, data: Map<String, Any>?) {
+        entry.observe(uid,data);offline.observe(uid,data)
+        if(offlineUid==uid&&offline.read(uid)==null) {offlineUid=null;entry.reject(uid)}
+    }
+    fun offlineEntry() = offlineUid?.let {it==FirebaseAuth.getInstance().currentUser?.uid}==true
+    fun offlineEntryExpired():Boolean = offlineEntry() && recentEntry()==null
+    fun recentEntry(): TeamAccess? = FirebaseAuth.getInstance().currentUser?.uid?.let {uid->
+        if(offlineUid==uid) offline.read(uid).also {if(it==null) {offlineUid=null;entry.reject(uid)}} else entry.recent(uid)
+    }
     private fun rejected(uid: String, error: Exception) {
-        if (AccessFailures.code(error) in setOf("PERMISSION_DENIED", "UNAUTHENTICATED", "SESSION_CHANGED", "PROFILE_INVALID")) entry.reject(uid)
+        if (AccessFailures.code(error) in setOf("PERMISSION_DENIED", "UNAUTHENTICATED", "SESSION_CHANGED", "PROFILE_INVALID")) {
+            entry.reject(uid);offline.remove(uid);if(offlineUid==uid) offlineUid=null
+        }
     }
     private val reads=Executors.newCachedThreadPool {work->Thread(work,"dm-agro-access").apply {isDaemon=true}}
     private fun document(user:FirebaseUser,readiness:Boolean=false):Task<Map<String,Any>?> {
@@ -42,7 +55,7 @@ internal object AccessRepository {
     fun load(activity: Activity, success: (Map<String, Any>?) -> Unit, failure: (Exception) -> Unit) {
         val user=FirebaseAuth.getInstance().currentUser?:return failure(AccessFailure("UNAUTHENTICATED"))
         document(user).addOnSuccessListener {data->
-            entry.observe(user.uid, data)
+            observeProfile(user.uid, data)
             if(!activity.isDestroyed&&!activity.isFinishing&&FirebaseAuth.getInstance().currentUser?.uid==user.uid) success(data)
         }.addOnFailureListener {error->
             rejected(user.uid, error)
@@ -52,12 +65,35 @@ internal object AccessRepository {
     fun loadEntry(activity: Activity, success: (Map<String, Any>?) -> Unit, failure: (Exception) -> Unit) {
         val user = FirebaseAuth.getInstance().currentUser ?: return failure(AccessFailure("UNAUTHENTICATED"))
         entry.request(user.uid) {
-            val request = document(user).continueWithTask { read ->
-                val data = read.result
-                if (!TeamPolicy.allowed(user.uid, data)) Tasks.forResult(data)
-                else document(user, true).continueWith { ready -> ready.result; data }
+            val network=activity.applicationContext.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            val cached=if(network.activeNetwork==null) offline.read(user.uid) else null
+            val request:Task<Map<String,Any>?> = if(cached!=null) {
+                offlineUid=user.uid
+                Tasks.forResult<Map<String,Any>?>(cached.profile)
+            } else {
+              val server=document(user).continueWithTask { read ->
+                  val data = read.result
+                  if (!TeamPolicy.allowed(user.uid, data)) Tasks.forResult(data)
+                  else document(user, true).continueWith { ready -> ready.result; data }
+              }
+              // Bound both server reads before fallback: an outer deadline must not
+              // race the fallback and discard an otherwise valid offline lease.
+              Tasks.withTimeout(server,20,TimeUnit.SECONDS).continueWithTask { checked ->
+                if(FirebaseAuth.getInstance().currentUser?.uid!=user.uid) Tasks.forException(AccessFailure("SESSION_CHANGED"))
+                else if(checked.isSuccessful) {
+                    offlineUid=null
+                    // A device key/storage failure must not prevent a valid online login.
+                    try {offline.remember(user.uid,checked.result)} catch(_:Exception) {offline.remove(user.uid)}
+                    Tasks.forResult(checked.result)
+                } else {
+                    val error=checked.exception?:AccessFailure("CONNECTION_FAILED")
+                    rejected(user.uid,error)
+                    val saved=if(OfflineEntryPolicy.networkFailure(error)) offline.read(user.uid) else null
+                    if(saved!=null) {offlineUid=user.uid;Tasks.forResult(saved.profile)} else Tasks.forException(error)
+                }
+              }
             }
-            Tasks.withTimeout(request, 20, TimeUnit.SECONDS)
+            request
         }.addOnSuccessListener { data ->
             if (!activity.isDestroyed && !activity.isFinishing && FirebaseAuth.getInstance().currentUser?.uid == user.uid) success(data)
         }.addOnFailureListener { error ->

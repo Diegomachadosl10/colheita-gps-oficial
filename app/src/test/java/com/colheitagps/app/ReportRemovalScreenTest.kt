@@ -32,7 +32,7 @@ class ReportRemovalScreenTest {
         ReflectionHelpers.setField(a,"papelAtual","supervisor");ReflectionHelpers.setField(a,"acessoConfirmado",true)
         return a
     }
-    @Test fun theHomeMenuHasNoShiftReportsAndTheCalendarDoesNotOfferOldReportEntries() {
+    @Test fun reportsHaveTheirOwnModuleAndDoNotPolluteTheCalendarOrHomeOverflowMenu() {
         val a=activity()
         val legacy="[{\"id\":\"old\",\"descricao\":\"RELATO_ANTIGO\",\"dataCadastro\":\"14/11/2026\",\"turno\":\"C\"}]"
         a.getSharedPreferences("registros_v3",0).edit().putString("relatorios_turno",legacy).commit()
@@ -47,7 +47,7 @@ class ReportRemovalScreenTest {
         assertFalse(text.contains("RELATÓRIOS DE TURNO"));assertFalse(text.contains("RELATO_ANTIGO"))
         val output=ReflectionHelpers.getField<()->FieldReport?>(a,"relatorioAtual").invoke()!!.toString()
         assertFalse(output.contains("RELATO_ANTIGO"));assertFalse(output.contains("relatorios_turno"))
-        assertFalse(RecordArchive.labels.containsKey("relatorios_turno"))
+        assertTrue(RecordArchive.labels.containsKey("relatorios_turno"))
         assertEquals(legacy,a.getSharedPreferences("registros_v3",0).getString("relatorios_turno","[]"))
     }
     @Test fun editingMaintenanceStillPreservesItsPhotosOrderDateAndRecordId() {
