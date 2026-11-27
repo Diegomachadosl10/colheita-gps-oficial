@@ -2,7 +2,7 @@
 
 Este plano acompanha a [auditoria inicial](AUDITORIA-2026-11-26.md). Diego autorizou continuar o desenvolvimento, mantendo **somente nossa equipe/empresa para os testes**. Não haverá cadastro nem escolha de outras empresas nesta fase. A produção permanece 2.2.7. A autorização de desenvolvimento não inclui migrar dados reais, implantar regras/Worker nem publicar atualização para os usuários.
 
-A primeira implementação está descrita em [Etapa 1 — nossa equipe](ETAPA-1-EQUIPE.md). A [entrega 2](ENTREGA-2-ESTOQUE-PDF.md) acrescenta texto livre/observações no estoque e PDF opcional nos módulos existentes. Os demais itens abaixo continuam sendo planejamento, salvo quando explicitamente implementados nesses documentos. O contrato multiempresa apresentado adiante fica reservado para o futuro.
+A primeira implementação está descrita em [Etapa 1 — nossa equipe](ETAPA-1-EQUIPE.md). A [entrega 2](ENTREGA-2-ESTOQUE-PDF.md) acrescenta texto livre/observações no estoque e PDF opcional nos módulos existentes. A [entrega 3](ENTREGA-3-AVISOS.md) prepara o serviço de notificações Beta e o protocolo Android, ainda sem implantação/ativação. Os demais itens abaixo continuam sendo planejamento, salvo quando explicitamente implementados nesses documentos. O contrato multiempresa apresentado adiante fica reservado para o futuro.
 
 ## Princípios de entrega
 

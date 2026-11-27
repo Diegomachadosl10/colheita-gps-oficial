@@ -1,0 +1,108 @@
+{
+  "date": "2026-11-27",
+  "branch": "dm-agro-professional-beta",
+  "sourceCommit": "56c4ff69a495d66f3a3b5d80a7572d27f516d551",
+  "scope": "preparação do serviço de avisos Beta, somente nossa equipe",
+  "android": {
+    "tests": 319,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "lint": {
+    "Error": 0,
+    "Fatal": 0,
+    "Warning": 123
+  },
+  "rules": {
+    "project": "demo-dm-agro",
+    "stable": 28,
+    "stableWithCompositeBetaRules": 28,
+    "beta": 13,
+    "failures": 0,
+    "verifiedFromJobLog": 140549618407
+  },
+  "betaWorker": {
+    "tests": 21,
+    "failures": 0,
+    "network": "fully mocked; ephemeral test keys only",
+    "verifiedFromJobLog": 140549618800
+  },
+  "stableWorker": {
+    "tests": 18,
+    "failures": 0,
+    "verifiedFromJobLog": 140549618800
+  },
+  "publisher": {
+    "tests": 7,
+    "failures": 0,
+    "verifiedFromJobLog": 140549618800
+  },
+  "protectedStableFilesSha256": {
+    "backend/worker.js": "4849aa9b21bb044b606906af65bad12c546c78029b3f6ae5229c7f204d3e50ed",
+    "firebase/firestore.rules": "768ab2f6456d28bcdb9ced7eaa0c3d9f3c87a1d74e8f739ef0d7d0dba34a54aa",
+    "firebase/firestore.indexes.json": "f7e42396a3c85dc34ce504350bb977d29382c3fa350cee5161aceb5b6150b5a3",
+    "firebase/storage.rules": "fd0d47306348145ca739fc5fba372285965cf5b0c28c5dd730d10b315c5f5df0",
+    "firebase.json": "9a645ae5edb5d42d9820b1556367b0a1d00aaea1a159bb0fa280c3bd09445675",
+    "scripts/android-signing.sha256": "adadb906dd04fb717bf6aa179c2f3783abf35e3773d2ea40c225f2872b949f95"
+  },
+  "localApk": {
+    "applicationId": "com.colheitagps.app",
+    "version": "2.3.0",
+    "versionCode": 39,
+    "certificateSha256": "d6bff2432575da5928e07127ef565b19c8148f53c2c0047de3f2bb7ce003b3a6",
+    "sha256": "fd416eea6b34d42bc8e9493df920c23fb680e6bbadd10412ea79d1d5b154d581",
+    "distributed": false
+  },
+  "activation": {
+    "androidNotificationsReady": false,
+    "workerDeployed": false,
+    "rulesDeployed": false,
+    "realFcmTestPerformed": false,
+    "globalAccountChangesEnabled": false
+  },
+  "production": {
+    "branch": "dm-agro-login",
+    "head": "e07aee322d9cbb9f74129bebc171ceb5cca27b7f",
+    "release": "v2.2.7",
+    "manifestSha256": "7a1b55ecf080d47ffc84fc8c979cc755f38ba66465a10a7100cb78b9ac0d7467",
+    "dataMigrationPerformed": false,
+    "newApkDistributed": false
+  },
+  "githubActions": {
+    "runId": 46011957590,
+    "url": "https://github.com/Diegomachadosl10/colheita-gps-oficial/actions/runs/46011957590",
+    "conclusion": "success",
+    "jobs": [
+      {
+        "id": 140549618407,
+        "name": "Regras em emuladores isolados",
+        "conclusion": "success"
+      },
+      {
+        "id": 140549618712,
+        "name": "Compilacao, testes e lint - sem distribuicao",
+        "conclusion": "success"
+      },
+      {
+        "id": 140549618800,
+        "name": "Servico gratuito e publicador",
+        "conclusion": "success"
+      }
+    ],
+    "reportArtifact": {
+      "id": 15203774729,
+      "name": "DM-AGRO-Beta-Auditoria",
+      "size": 196455,
+      "containsApk": false
+    }
+  },
+  "limitations": [
+    "Serviço preparado, não implantado nem ativado",
+    "Sem teste real de Firebase IAM, FCM ou Android físico",
+    "Cotas e projeto compartilhados; credencial de serviço ignora regras de cliente",
+    "Migração de filas, retenção, canal de atualização e assinatura no CI ainda pendentes de homologação",
+    "Sem garantia de entrega imediata ou de transporte exatamente uma vez",
+    "Demais etapas do plano profissional ainda pendentes"
+  ]
+}

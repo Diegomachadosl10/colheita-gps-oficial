@@ -1,5 +1,7 @@
 # Serviço gratuito DM AGRO
 
+Este documento descreve o **serviço estável**. A preparação de avisos do Beta está em [BETA.md](BETA.md), com outro Worker, outras rotas e credencial própria. Não substituir o Worker estável pelo arquivo Beta.
+
 Um módulo único para **Cloudflare Workers Free**, sem pacotes npm de produção, chave no APK, Firebase Functions ou alteração do plano Spark. A conta gratuita tem cotas de requisições e CPU; não selecionar Workers Paid nem ativar faturamento. O serviço usa recursos gratuitos do Firebase Authentication, Firestore e Cloud Messaging dentro das cotas do projeto.
 
 ## Implantação pelo celular

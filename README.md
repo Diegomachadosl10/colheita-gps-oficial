@@ -8,6 +8,8 @@ Desenvolvimento isolado em **dm-agro-professional-beta**, somente para nossa equ
 
 [Entrega 2 — estoque livre e PDF opcional](docs/beta/ENTREGA-2-ESTOQUE-PDF.md): observações por lote, preservação do texto original nas mensagens, fotos escolhidas por lote e PDF separado com confirmação de envio. Relatórios de turno, novos indicadores e a revisão visual completa continuam pendentes.
 
+[Entrega 3 — preparação dos avisos Beta](docs/beta/ENTREGA-3-AVISOS.md): Worker separado, protocolo próprio, avisos por frente e progresso de envio testados com respostas simuladas. A ativação permanece desligada; ainda não houve implantação, envio FCM real ou distribuição de APK. [Roteiro futuro pelo celular](backend/BETA.md).
+
 ## Versão 2.2.7
 
 [Atualização 2.2.7 publicada para todos](https://github.com/Diegomachadosl10/colheita-gps-oficial/releases/tag/v2.2.7), código 38, com manifesto público, download e assinatura verificados. [Entrada sem verificação repetida](docs/ENTRADA-2.2.7.md): sessão aprovada reaproveitada entre entrada e início, abertura discreta, administrador direto no aplicativo e acompanhamento das permissões em segundo plano.
