@@ -31,3 +31,15 @@ Não há, nas ferramentas disponíveis nesta conversa, uma operação para resta
 > Na tarefa de desenvolvimento do DM AGRO, o ambiente voltou sem os arquivos anteriores. Preciso verificar se há backup ou snapshot do arquivo `/workspace/dm-agro-build-tools/assinatura-permanente/dm-agro.keystore`, usado na assinatura da versão 2.2.8 em 28/11/2026. É possível recuperá-lo no workspace privado? Não enviar o conteúdo da chave pelo chat. O objetivo é preservar a assinatura dos aplicativos já instalados, não criar uma nova chave.
 
 A recuperação pelo provedor não é garantida. Enquanto não houver uma cópia válida, não é possível produzir uma nova atualização Android compatível com a assinatura fixada. Isso não remove o aplicativo atual nem altera seus dados. O desenvolvimento e a homologação restantes do Beta continuam separados dessa pendência de distribuição.
+
+### Busca ampliada autorizada
+
+Diego pediu ampliar a busca pelo agente. Foram consultados quatro repositórios antigos relacionados ao projeto; a API confirmou que estão vazios (HTTP 409), sem material para recuperar. As buscas pelos nomes técnicos nos arquivos vinculados ao ChatGPT e nos anexos do e-mail conectado não retornaram candidato. Não foram lidos corpos de e-mail ou conteúdos de mapas. Também não foi encontrado candidato nas pastas de artefatos acessíveis do runtime ou na lixeira do Drive conectado.
+
+A consulta de metadados de segredos do repositório retornou HTTP 403; não autoriza concluir que não exista nenhum segredo sob qualquer nome. A API de ambientes de publicação retornou zero ambientes. O certificado público extraído do APK 2.2.8 corresponde ao pin fixado e identifica `Android Debug`, com início de validade em 09/11/2026 às 15:04:55 UTC. Isso é compatível com uma chave de depuração gerada automaticamente, sem provar qual processo a criou; não permite reconstruir a chave privada.
+
+A revisão automática inicialmente recusou a execução da busca por nomes alternativos em segredos protegidos. A rotina não foi executada nessa tentativa. Após explicar o escopo e o motivo da autorização, Diego autorizou explicitamente a verificação dos 12 nomes preparados, sem exibir valores, gerar chave/APK ou publicar atualização.
+
+[Actions 46178381320](https://github.com/Diegomachadosl10/colheita-gps-oficial/actions/runs/46178381320), código `e4d92448b137a126049bc21fcb5583991eebaabb`: o job de presença executou com sucesso e registrou **zero nomes alternativos disponíveis**. A validação de certificado foi pulada por não haver candidato. Apenas indicadores de presença chegaram ao processo de busca; não houve enumeração dos valores de todos os segredos, exposição de chave/senha ou produção de APK.
+
+A rotina temporária de busca foi removida da branch após a conferência, conforme a autorização. Seu código revisável permanece no commit da execução, sem valores privados. Esse resultado cobre somente os 12 nomes conhecidos verificados; a assinatura continua não recuperada. As limitações de distribuição e a necessidade de uma cópia original válida permanecem.
