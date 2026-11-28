@@ -56,7 +56,7 @@ internal class TeamSync(context: Context, private val access: TeamAccess, val st
         }
         return digest.digest().joinToString("") { "%02x".format(it) }
     }
-    private fun id(kind: String, group: String, key: String) = hash("$kind|$group|$key".toByteArray())
+    private fun id(kind: String, group: String, key: String) = SyncBaseline.id(kind,group,key)
     private fun base(id: String) = local.getString("b_$id", null)?.let(::JSONObject)
     private fun permitted(group: String) = access.manages || group in TeamPolicy.operatorGroups
     private fun editable(d: JSONObject) = access.manages ||
@@ -74,8 +74,19 @@ internal class TeamSync(context: Context, private val access: TeamAccess, val st
             if (error != null) { announce("Sincronização indisponível. Confira a conexão ou avise o administrador."); return@addSnapshotListener }
             if (snapshot == null || snapshot.metadata.isFromCache || snapshot.metadata.hasPendingWrites()) return@addSnapshotListener
             execute {
+                remote.clear()
+                val diagnostics=local.edit()
+                local.all.keys.filter {it.startsWith("e_remote_")}.forEach {diagnostics.remove(it)}
+                for(d in snapshot.documents) try {
+                    val data=SyncBaseline.decode(d.id,d.data.orEmpty(),store.team)
+                    require(permitted(data.getString("grupo")))
+                    remote[d.id]=data
+                } catch(_:Exception) {
+                    diagnostics.putString("e_remote_${hash(d.id.toByteArray())}","Registro recebido com identidade ou formato inválido; cópia local preservada")
+                }
+                check(diagnostics.commit())
+                adoptMatchingBaselines()
                 scan()
-                for (d in snapshot.documents) remote[d.id] = BetaRecordCodec.fromWire(d.data.orEmpty())
                 ready = true
                 applyRemote(); flush()
             }
@@ -102,6 +113,7 @@ internal class TeamSync(context: Context, private val access: TeamAccess, val st
             local.edit().remove("b_$key").commit(); remote[key] = old
             return
         }
+        value.put("conteudo",SyncBaseline.content(store,value))
         if (value.optString("conteudo").toByteArray().size >= 740000) {
             local.edit().putString("e_item_$key", "Registro maior que o limite de envio").commit()
             announce("Registro muito grande. Divida as informações antes de enviar."); return
@@ -111,8 +123,7 @@ internal class TeamSync(context: Context, private val access: TeamAccess, val st
             .put("autorUid", old?.optString("autorUid") ?: access.uid)
         local.edit().putString("q_$key", pending.toString()).commit()
     }
-    private fun scan() {
-        if (applying || !active()) return
+    private fun currentRecords():Map<String,JSONObject> {
         val now = linkedMapOf<String, JSONObject>()
         for ((name, prefs) in preferences) for ((key, raw) in prefs.all) {
             if (raw !is String) continue
@@ -126,8 +137,9 @@ internal class TeamSync(context: Context, private val access: TeamAccess, val st
                     if (obj.optString("id").isBlank()) { obj.put("id", UUID.randomUUID().toString()); assigned = true }
                     if (!access.manages && MaintenanceRecords.isEquipment(obj)) continue
                     val recordKey = obj.getString("id")
-                    val wire = proposed("item", group, recordKey, store.encode((if (TeamPolicy.AUTOMATIC_ATTACHMENTS) obj else TeamContent.textOnly(obj)).toString()),
+                    val wire = proposed("item", group, recordKey, obj.toString(),
                         RecordArchive.archived(obj))
+                    wire.put("conteudo",SyncBaseline.content(store,wire))
                     if (obj.has("__syncBase")) wire.put("__syncBase", obj.getLong("__syncBase"))
                     now[id("item", group, recordKey)] = wire
                 }
@@ -136,14 +148,27 @@ internal class TeamSync(context: Context, private val access: TeamAccess, val st
                 now[id("preferencia", name, key)] = proposed("preferencia", name, key, store.encode(raw))
             }
         }
+        return now
+    }
+    private fun adoptMatchingBaselines() = synchronized(store.lock) {
+        if(applying||!active()) return@synchronized
+        val edit=local.edit()
+        for((key,current) in currentRecords()) {
+            val server=remote[key]?:continue
+            val queued=local.getString("q_$key",null)?.let(::JSONObject)
+            if(SyncBaseline.mayAdopt(store,current,server,local.contains("b_$key"),queued,local.contains("c_$key"))) {
+                // Keep the actual server author/revision. No record/file rewrite or notification.
+                edit.putString("b_$key",server.toString()).remove("q_$key")
+            }
+        }
+        check(edit.commit())
+    }
+    private fun scan() {
+        if (applying || !active()) return
+        val now=currentRecords()
         for ((key, value) in now) {
             val old = base(key)
-            val previousContent = old?.let {
-                val decoded = store.decode(it.optString("conteudo"))
-                if (it.optString("tipo") == "item")
-                    store.encode(MaintenanceRecords.withArchiveState(JSONObject(decoded), it.optBoolean("excluido")).toString())
-                else store.encode(decoded)
-            }
+            val previousContent = old?.let {SyncBaseline.content(store,it)}
             if (old == null || old.optBoolean("excluido") != value.optBoolean("excluido") || !BetaRecordCodec.sameContent(previousContent, value.getString("conteudo"))) queue(key, value)
         }
         for (key in local.all.keys.filter { it.startsWith("e_item_") && it.removePrefix("e_item_") !in now })
@@ -177,7 +202,7 @@ internal class TeamSync(context: Context, private val access: TeamAccess, val st
                     check(active())
                     val doc = tx.get(records.document(key))
                     val revision = (doc.get("versao") as? Number)?.toLong() ?: 0L
-                    val existing = if (doc.exists()) BetaRecordCodec.fromWire(doc.data.orEmpty()) else null
+                    val existing = if (doc.exists()) SyncBaseline.decode(key,doc.data.orEmpty(),store.team) else null
                     if (RecordDeletion.alreadyDeleted(change, existing)) return@runTransaction existing!!
                     val existingEquipment = change.getString("grupo") == "pendencias" &&
                         try { MaintenanceRecords.isEquipment(JSONObject(change.getString("conteudo"))) } catch (_: Exception) { false }
@@ -218,7 +243,7 @@ internal class TeamSync(context: Context, private val access: TeamAccess, val st
         val pending = local.all.keys.count { it.startsWith("q_") }
         val conflicts = local.all.keys.count { it.startsWith("c_") }
         val errors = local.all.keys.count { it.startsWith("e_") }
-        if (errors > 0) announce("$errors registros ou anexos permanecem somente neste aparelho. Toque em Sincronização.")
+        if (errors > 0) announce("$errors registros ou anexos precisam de revisão. Toque em Sincronização.")
         else if (conflicts == 0) announce(if (pending == 0) "Registros sincronizados • compartilhamento por imagem" else "$pending alterações aguardando envio")
     }
     private fun flushNotificationOutbox() {
@@ -384,15 +409,16 @@ internal class TeamSync(context: Context, private val access: TeamAccess, val st
     fun diagnostics(): String = "${TeamPolicy.label(store.team)}\n" +
         "${local.all.keys.count { it.startsWith("q_") }} alterações aguardando envio\n" +
         "${local.all.keys.count { it.startsWith("c_") }} conflitos preservados\n" +
-        "${local.all.keys.count { it.startsWith("e_") }} registros ou arquivos acima do limite de envio\n" +
+        "${local.all.keys.count { it.startsWith("e_") }} registros ou arquivos precisam de revisão\n" +
         (if (TeamPolicy.AUTOMATIC_ATTACHMENTS) "Anexos automáticos quando há conexão. " else "Plano gratuito: anexos ficam neste aparelho; compartilhe os registros por imagem. ") +
         "Alterações simultâneas preservam uma cópia local."
     fun useSharedCopies() { execute {
         for (key in local.all.keys.filter { it.startsWith("c_") }) {
             val id = key.removePrefix("c_")
             val doc = Tasks.await(records.document(id).get(Source.SERVER), 15, TimeUnit.SECONDS)
+            val data=if(doc.exists()) SyncBaseline.decode(id,doc.data.orEmpty(),store.team) else null
             local.edit().remove(key).remove("q_$id").remove("b_$id").commit()
-            if (doc.exists()) remote[id] = BetaRecordCodec.fromWire(doc.data.orEmpty())
+            if (data!=null) remote[id] = data
         }
         applyRemote()
     } }
