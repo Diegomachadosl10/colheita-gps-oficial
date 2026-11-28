@@ -22,9 +22,11 @@ def checked_files(folder, download_blobs=False):
         raise ValueError('Versão inválida')
     if not re.fullmatch(r'[0-9a-f]{40}', meta['sourceCommit']):
         raise ValueError('Commit inválido')
-    expected = {f'DM-AGRO-{version}.apk', 'dm-agro-update.json', 'SHA256.txt',
-                f'DM-AGRO-{version}-codigo.zip', f'DM-AGRO-{version}-dm-agro-login.bundle'}
-    if set(meta['files']) != expected:
+    required = {f'DM-AGRO-{version}.apk', 'dm-agro-update.json', 'SHA256.txt'}
+    with_source = required | {f'DM-AGRO-{version}-codigo.zip', f'DM-AGRO-{version}-dm-agro-login.bundle'}
+    # An application update needs only these three public files. Code/history
+    # archives are optional and must never be added to a package implicitly.
+    if set(meta['files']) not in (required, with_source):
         raise ValueError('O pacote contém arquivos não autorizados')
     for name, info in meta['files'].items():
         path = folder / name

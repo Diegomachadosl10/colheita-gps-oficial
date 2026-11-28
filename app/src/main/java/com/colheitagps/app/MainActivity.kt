@@ -3975,6 +3975,7 @@ class MainActivity : Activity() {
         if (mapa == null) return
         if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             gpsTracker?.stop()
+            mapa?.gpsDesatualizado()
             local = null
             status?.text = "Permita a localização precisa do aplicativo"
             if (solicitarPermissao) requestPermissions(arrayOf(
@@ -3984,7 +3985,7 @@ class MainActivity : Activity() {
         }
         val tracker = gpsTracker ?: MapLocationTracker(this) { location, fresh, message ->
             local = location?.takeIf { fresh }
-            location?.let { mapa?.atualizarGps(it.latitude, it.longitude, fresh) }
+            location?.let { mapa?.atualizarGps(it.latitude, it.longitude, fresh, it.accuracy) }
             status?.text = message
         }.also { gpsTracker = it }
         tracker.start()
@@ -4081,6 +4082,7 @@ class MapaView(context: Context) : View(context) {
     private var gpsLat: Double? = null
     private var gpsLon: Double? = null
     private var gpsFresh = true
+    private var gpsAccuracyMeters = 0f
 
     private val pontos = mutableListOf<PointF>()
     private val areas = mutableListOf<MutableList<PointF>>()
@@ -4297,12 +4299,15 @@ class MapaView(context: Context) : View(context) {
             .show()
     }
 
-    fun atualizarGps(lat: Double, lon: Double, fresh: Boolean = true) {
+    fun atualizarGps(lat: Double, lon: Double, fresh: Boolean = true, accuracyMeters: Float = 0f) {
         gpsLat = lat
         gpsLon = lon
         gpsFresh = fresh
+        gpsAccuracyMeters = accuracyMeters
         invalidate()
     }
+
+    fun gpsDesatualizado() { gpsFresh = false; invalidate() }
 
     private fun gpsPixel(): PointF? {
         val b = imagem ?: return null
@@ -4471,7 +4476,11 @@ class MapaView(context: Context) : View(context) {
             c.drawCircle(
                 p.x, p.y, max(12f, 6f * resources.displayMetrics.density) / escala,
                 Paint(3).apply {
-                    color = if (gpsFresh) 0xFF1674E8.toInt() else 0xFF7D8B98.toInt()
+                    color = when {
+                        !gpsFresh -> 0xFF7D8B98.toInt()
+                        gpsAccuracyMeters > MapLocationFixes.PRECISE_ACCURACY_M -> 0xFFD48612.toInt()
+                        else -> 0xFF1674E8.toInt()
+                    }
                 }
             )
         }

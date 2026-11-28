@@ -1,5 +1,7 @@
 # DM AGRO Professional — Beta
 
+- Em 28/11/2026, a correção urgente de GPS foi publicada separadamente na estável **2.2.8/código 40** (PR #1; testes nativos sem internet). O Beta incorpora a correção e usa **2.3.0/código 41**, ainda não distribuído. Nunca oferecer código menor que o instalado; os documentos antigos com código 39 são evidências históricas. A atualização GPS não autoriza trocar os dados dos usuários pelo namespace Beta. O publicador aceita o pacote mínimo APK/manifesto/SHA256: não anexar código/histórico implicitamente.
+
 - Desenvolvimento nesta fase: branch `dm-agro-professional-beta`, baseada na versão estável 2.2.7. `dm-agro-login` é a linha de produção; `main` contém uma base antiga. Não trocar silenciosamente a base por `main`.
 - A auditoria e o plano foram apresentados. Diego autorizou continuar o desenvolvimento por etapas, deixando **somente nossa equipe/empresa no Beta por enquanto**. Não criar seletor, cadastro de outras empresas nem cobranças nesta fase. Consulte `docs/beta/ETAPA-1-EQUIPE.md` e `docs/beta/PLANO-TECNICO.md`; multiempresa permanece futuro.
 - Não publicar releases, mudar o manifesto estável de atualização, implantar regras/Worker ou migrar dados de produção sem autorização para essa ação. Criar uma branch Beta não autoriza publicar para todos.

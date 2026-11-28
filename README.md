@@ -4,7 +4,7 @@ Android nativo. Produção em **dm-agro-login**; desenvolvimento em **dm-agro-pr
 
 ## DM AGRO Professional — Beta para nossa equipe
 
-Desenvolvimento isolado em **dm-agro-professional-beta**, somente para nossa equipe/empresa por enquanto. [Auditoria de 26/11/2026](docs/beta/AUDITORIA-2026-11-26.md), [plano técnico por etapas](docs/beta/PLANO-TECNICO.md) e [primeira implementação de isolamento e permissões](docs/beta/ETAPA-1-EQUIPE.md). A versão interna 2.3.0/código 39 ainda não foi distribuída; servidor, notificações e canal Beta dependem de preparação/homologação. A produção permanece 2.2.7, sem implantação de regras/Worker ou migração de dados reais.
+Desenvolvimento isolado em **dm-agro-professional-beta**, somente para nossa equipe/empresa por enquanto. [Auditoria de 26/11/2026](docs/beta/AUDITORIA-2026-11-26.md), [plano técnico por etapas](docs/beta/PLANO-TECNICO.md) e [primeira implementação de isolamento e permissões](docs/beta/ETAPA-1-EQUIPE.md). A versão interna 2.3.0/código 41 ainda não foi distribuída; servidor, notificações e canal Beta dependem de preparação/homologação. A correção estável de GPS **2.2.8/código 40** foi publicada separadamente em 28/11 e incorporada ao código Beta, sem implantação de regras/Worker ou migração de dados reais.
 
 [Entrega 2 — estoque livre e PDF opcional](docs/beta/ENTREGA-2-ESTOQUE-PDF.md): observações por lote, preservação do texto original nas mensagens, fotos escolhidas por lote e PDF separado com confirmação de envio. Relatórios de turno, novos indicadores e a revisão visual completa continuam pendentes.
 

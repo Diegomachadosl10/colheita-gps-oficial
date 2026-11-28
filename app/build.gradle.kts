@@ -13,7 +13,7 @@ android {
         applicationId = "com.colheitagps.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 39
+        versionCode = 41 // Stable GPS correction 2.2.8 uses 40; never distribute a lower code.
         versionName = "2.3.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
