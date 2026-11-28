@@ -21,3 +21,13 @@ Também foram conferidos 30 ZIPs de código das releases e o APK atual 2.2.8: ne
 O arquivo privado que existia em `/workspace/dm-agro-build-tools/assinatura-permanente/dm-agro.keystore` e o keystore de debug padrão não estão presentes neste ambiente. A API do ambiente o informa conectado/em execução; isso não prova retenção dos arquivos do runtime anterior. Não afirmar perda definitiva de todas as cópias, nem tentar recriar a chave a partir do certificado público do APK.
 
 O próximo passo de recuperação é localizar uma cópia original em arquivos privados do titular ou recuperar o workspace anterior pelo provedor. Se for encontrado um arquivo com nome compatível, conferir seu certificado contra `scripts/android-signing.sha256` antes de considerá-lo a assinatura correta. Manter a chave fora do chat, Git, logs e artefatos públicos. A versão estável permanece disponível e nenhuma atualização substituta foi distribuída.
+
+### Conferência adicional e pedido ao provedor
+
+Diego informou que não encontrou o arquivo no celular. A busca somente por nomes nas pastas acessíveis `/workspace`, `/tmp` e na home do usuário do agente também não encontrou arquivos `.keystore`, `.jks`, `.p12` ou `.pfx`. A busca por esses nomes no Google Drive conectado, incluindo arquivos acessíveis compartilhados, não retornou candidato. Não foram lidos conteúdos dos mapas encontrados por termos amplos nem adicionados seus dados ao repositório.
+
+Não há, nas ferramentas disponíveis nesta conversa, uma operação para restaurar um snapshot dos arquivos do runtime anterior. A existência de backup pelo provedor ainda não foi confirmada. O pedido abaixo está preparado para o titular encaminhar ao suporte da OpenAI; nenhum chamado foi aberto ou mensagem enviada em seu nome:
+
+> Na tarefa de desenvolvimento do DM AGRO, o ambiente voltou sem os arquivos anteriores. Preciso verificar se há backup ou snapshot do arquivo `/workspace/dm-agro-build-tools/assinatura-permanente/dm-agro.keystore`, usado na assinatura da versão 2.2.8 em 28/11/2026. É possível recuperá-lo no workspace privado? Não enviar o conteúdo da chave pelo chat. O objetivo é preservar a assinatura dos aplicativos já instalados, não criar uma nova chave.
+
+A recuperação pelo provedor não é garantida. Enquanto não houver uma cópia válida, não é possível produzir uma nova atualização Android compatível com a assinatura fixada. Isso não remove o aplicativo atual nem altera seus dados. O desenvolvimento e a homologação restantes do Beta continuam separados dessa pendência de distribuição.
