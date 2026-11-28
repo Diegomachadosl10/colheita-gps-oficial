@@ -13,8 +13,9 @@ android {
         applicationId = "com.colheitagps.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 38
-        versionName = "2.2.7"
+        versionCode = 40 // 39 is reserved for the unpublished Professional Beta.
+        versionName = "2.2.8"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     testOptions { unitTests.isIncludeAndroidResources = true }
@@ -42,6 +43,8 @@ dependencies {
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.robolectric:robolectric:4.14.1")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
 
     // Firebase
     implementation(platform("com.google.firebase:firebase-bom:33.7.0"))
