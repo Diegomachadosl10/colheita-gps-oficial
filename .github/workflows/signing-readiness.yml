@@ -1,0 +1,33 @@
+name: Conferir assinatura permanente sem gerar APK
+
+on:
+  push:
+    branches: [dm-agro-professional-beta]
+    paths:
+      - '.github/workflows/signing-readiness.yml'
+      - '.github/scripts/check-signing.py'
+      - '.github/scripts/test_check_signing.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  signing-readiness:
+    if: github.repository == 'Diegomachadosl10/colheita-gps-oficial' && github.ref == 'refs/heads/dm-agro-professional-beta'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Testar o diagnóstico sem credencial real
+        run: python3 -m unittest discover -s .github/scripts -p 'test_check_signing.py'
+      - name: Conferir somente disponibilidade e certificado
+        env:
+          ANDROID_UPDATE_KEYSTORE_BASE64: ${{ secrets.ANDROID_UPDATE_KEYSTORE_BASE64 }}
+        run: python3 .github/scripts/check-signing.py

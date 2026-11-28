@@ -27,3 +27,9 @@ A recaptura ajuda a detectar mudanças, mas não substitui a suspensão coordena
 Os testes adicionados cobrem cópia/recuperação com mapa e foto marcada/original, arquivo pendente e conflito, reabertura sem a origem, repetição, alteração durante cópia, origem inválida, usuário/papel/equipe sem acesso, mapas pessoais, tipos/imutabilidade, corrupção e ZIP malformado/link simbólico.
 
 Um teste instrumentado usa pastas e preferências com prefixo exclusivo e dados sintéticos para exercitar gravação/sincronização no disco, reabertura e restauração em Android nativo, sem tocar no cadastro, dados operacionais ou autenticação do aplicativo. Resultados serão registrados após execução no Actions; preparar o teste não prova sua aprovação.
+
+## Resultado executado
+
+[Actions 46172120333](https://github.com/Diegomachadosl10/colheita-gps-oficial/actions/runs/46172120333), código `e768a1ba7dec14522bfa681529702360b1b67a61`: quatro jobs aprovados. O XML do artefato de auditoria confirma **393 testes Android**, zero falhas/erros/ignorados, e lint sem erros, com 136 avisos. Os arquivos novos não apresentam ocorrências nesse relatório de lint. São 18 casos novos, com os nove cenários executados nas APIs 28 e 35.
+
+O log nativo confirma início e fim de **quatro testes em Android API 35**, com build aprovado. O checkpoint foi reaberto e restaurado nesse emulador, junto com as verificações anteriores de PDF/compartilhamento, Keystore e GPS sem redes. Serviços/publicador e regras também passaram. Nenhum APK, regra, dado real ou serviço foi publicado por essa validação.
