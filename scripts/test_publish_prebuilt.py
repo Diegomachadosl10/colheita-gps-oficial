@@ -41,6 +41,26 @@ class PrebuiltPackageTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 publisher.checked_files(folder)
 
+    def test_application_update_does_not_require_publishing_source_or_repository_history(self):
+        with tempfile.TemporaryDirectory() as temp:
+            folder = Path(temp)
+            meta = self.package(folder)
+            for name in list(meta['files']):
+                if name.endswith(('.zip', '.bundle')):
+                    del meta['files'][name]
+                    (folder/name).unlink()
+            (folder/'publication.json').write_text(json.dumps(meta))
+            checked = publisher.checked_files(folder)
+            self.assertEqual({'DM-AGRO-2.0.0.apk', 'dm-agro-update.json', 'SHA256.txt'}, set(checked['files']))
+
+    def test_an_incomplete_or_unexpected_archive_set_remains_rejected(self):
+        with tempfile.TemporaryDirectory() as temp:
+            folder = Path(temp)
+            meta = self.package(folder)
+            del meta['files']['DM-AGRO-2.0.0-dm-agro-login.bundle']
+            (folder/'publication.json').write_text(json.dumps(meta))
+            with self.assertRaises(ValueError): publisher.checked_files(folder)
+
     def test_public_assets_can_be_transferred_by_git_object_without_committing_binaries(self):
         with tempfile.TemporaryDirectory() as temp:
             folder = Path(temp)
