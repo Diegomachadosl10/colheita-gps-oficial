@@ -1,5 +1,9 @@
 # DM AGRO — Colheita GPS
 
+## Versão 2.2.8 — GPS offline
+
+[Atualização 2.2.8 disponível no aplicativo](https://github.com/Diegomachadosl10/colheita-gps-oficial/releases/tag/v2.2.8), código 40. [Correção de GPS por satélite e retomada](docs/GPS-OFFLINE-2.2.8.md), verificada com redes desligadas no Android nativo, 289 testes Android e a assinatura permanente. Mantém mapas, pinturas e os demais dados; instalar por cima, sem desinstalar. A Professional Beta segue separada na branch de desenvolvimento.
+
 Android, ramificação de trabalho **dm-agro-login**. A `main` permanece intacta.
 
 ## Versão 2.2.7

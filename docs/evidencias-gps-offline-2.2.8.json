@@ -1,0 +1,52 @@
+{
+  "sourceCommit": "dd6aadd40fdd944e67401f5d655df535bdf62c02",
+  "version": "2.2.8",
+  "versionCode": 40,
+  "applicationId": "com.colheitagps.app",
+  "tests": {
+    "tests": 289,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "lintErrors": 0,
+  "lintWarnings": 123,
+  "nativeOfflineTest": {
+    "runId": 46114463001,
+    "jobId": 140885050688,
+    "tests": 1,
+    "conclusion": "success",
+    "androidApi": 35,
+    "wifiDisabled": true,
+    "mobileDataDisabled": true,
+    "activeNetworkAbsent": true,
+    "syntheticGps": true,
+    "physicalReceptionTested": false
+  },
+  "workerTests": 18,
+  "pythonTests": 9,
+  "publication": {
+    "runId": 46115317909,
+    "jobId": 140887719854,
+    "conclusion": "success",
+    "releaseId": 461342222,
+    "url": "https://github.com/Diegomachadosl10/colheita-gps-oficial/releases/tag/v2.2.8",
+    "assets": [
+      "DM-AGRO-2.2.8.apk",
+      "dm-agro-update.json",
+      "SHA256.txt"
+    ],
+    "sourceArchivesPublished": false,
+    "publicUnauthenticatedDownloadVerified": true,
+    "apkSha256": "bd461aeab7ddb5375eb301995e814dcb4d42217f670052d27f0bca7e6e9bd55a",
+    "apkSizeBytes": 13121381,
+    "manifestSha256": "6ca3c48fe1b0a5bc2859a8398dc6ff1271b69031636873fc76e26fcf7c90db05",
+    "certificateSha256": "d6bff2432575da5928e07127ef565b19c8148f53c2c0047de3f2bb7ce003b3a6"
+  },
+  "autoReview": {
+    "sourceArchiveAttemptRejected": true,
+    "reducedThreeFileAlternativeApproved": true
+  },
+  "firebaseDeployed": false,
+  "userDataMigrated": false
+}
