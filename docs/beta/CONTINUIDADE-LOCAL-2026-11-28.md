@@ -27,3 +27,9 @@ Isso reforça o cliente; não substitui as regras do Firebase nem homologa o ser
 ## Validação
 
 A suíte local executou **375 testes Android**, com zero falhas, erros ou casos ignorados. Os 28 casos novos (14 cenários nas APIs 28 e 35) cobrem inventário sem escrita, mídia pendente, originais encadeados, mapas pessoais, caminhos/ciclos inválidos, mudança de conteúdo, estados de arquivamento/conclusão, ordem de pontos, autoria/revisão e documentos de outra equipe ou identidade forjada. São dados sintéticos, sem conta real criada nem conexão com o Firebase de produção.
+
+Também passaram `assembleDebug`, `assembleDebugAndroidTest` e `lintDebug`: zero erros de lint e 128 avisos. Isso não representa distribuição de APK.
+
+No [Actions 46141372481](https://github.com/Diegomachadosl10/colheita-gps-oficial/actions/runs/46141372481), sobre `c122c6c79de9439a2f03b2214efaaaa38f6fb05f`, passaram 69 testes de regras em emuladores, 18 testes do Worker estável, 21 do Worker Beta, 14 Python e os três testes nativos Android API 35. Estes validam PDF/compartilhamento, autorização offline no Keystore e GPS com redes desligadas; não medem a recepção física de satélites no campo.
+
+Os quatro jobs ficaram aprovados. A primeira tentativa Android parou **antes dos testes**, no download de Guava pelo Maven Central, com HTTP 429. Somente esse job foi repetido, com o mesmo código; a repetição aprovou compilação, testes e lint. Não houve troca de dependência, supressão de teste ou publicação para contornar a falha de rede.

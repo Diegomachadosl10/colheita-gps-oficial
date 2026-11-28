@@ -4,6 +4,8 @@ Este plano acompanha a [auditoria inicial](AUDITORIA-2026-11-26.md). Diego autor
 
 A primeira implementação está descrita em [Etapa 1 — nossa equipe](ETAPA-1-EQUIPE.md). A [entrega 2](ENTREGA-2-ESTOQUE-PDF.md) acrescenta texto livre/observações no estoque e PDF opcional nos módulos existentes. A [entrega 3](ENTREGA-3-AVISOS.md) prepara o serviço de notificações Beta e o protocolo Android, ainda sem implantação/ativação. Os demais itens abaixo continuam sendo planejamento, salvo quando explicitamente implementados nesses documentos. O contrato multiempresa apresentado adiante fica reservado para o futuro.
 
+A [continuidade local de 28/11](CONTINUIDADE-LOCAL-2026-11-28.md) prepara o inventário somente para leitura de registros, mapas pessoais, mídia, rascunhos e filas legadas, além de evitar conflitos artificiais na primeira comparação de registros idênticos com o servidor. Não conclui a cópia local, a migração do servidor ou o corte dos clientes antigos.
+
 ## Princípios de entrega
 
 1. Evoluir a base funcional, sem reescrever tudo de uma vez nem voltar à `main` antiga.
