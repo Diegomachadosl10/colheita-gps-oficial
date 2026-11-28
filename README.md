@@ -6,11 +6,13 @@ Android nativo. Produção em **dm-agro-login**; desenvolvimento em **dm-agro-pr
 
 Desenvolvimento isolado em **dm-agro-professional-beta**, somente para nossa equipe/empresa por enquanto. [Auditoria de 26/11/2026](docs/beta/AUDITORIA-2026-11-26.md), [plano técnico por etapas](docs/beta/PLANO-TECNICO.md) e [primeira implementação de isolamento e permissões](docs/beta/ETAPA-1-EQUIPE.md). A versão interna 2.3.0/código 41 ainda não foi distribuída; servidor, notificações e canal Beta dependem de preparação/homologação. A correção estável de GPS **2.2.8/código 40** foi publicada separadamente em 28/11 e incorporada ao código Beta, sem implantação de regras/Worker ou migração de dados reais.
 
-[Entrega 2 — estoque livre e PDF opcional](docs/beta/ENTREGA-2-ESTOQUE-PDF.md): observações por lote, preservação do texto original nas mensagens, fotos escolhidas por lote e PDF separado com confirmação de envio. Relatórios de turno, novos indicadores e a revisão visual completa continuam pendentes.
+[Entrega 2 — estoque livre e PDF opcional](docs/beta/ENTREGA-2-ESTOQUE-PDF.md): observações por lote, preservação do texto original nas mensagens, fotos escolhidas por lote e PDF separado com confirmação de envio. Relatórios e indicadores foram acrescentados na continuidade de 27/11, abaixo; a revisão visual completa continua pendente.
 
 [Entrega 3 — preparação dos avisos Beta](docs/beta/ENTREGA-3-AVISOS.md): Worker separado, protocolo próprio, avisos por frente e progresso de envio testados com respostas simuladas. A ativação permanece desligada; ainda não houve implantação, envio FCM real ou distribuição de APK. [Roteiro futuro pelo celular](backend/BETA.md).
 
 [Continuidade de 27/11/2026](docs/beta/CONTINUIDADE-2026-11-27.md): relatórios de turno, indicadores com abrangência explícita, feedback, autorização offline protegida por até 24 horas e planejador de migração sem escrita no servidor. Diego autorizou a publicação da entrega final pelo aplicativo. A versão completa e a transição ainda não estão homologadas; não foi publicada uma atualização parcial.
+
+[Continuidade local de 28/11/2026](docs/beta/CONTINUIDADE-LOCAL-2026-11-28.md): inventário de origem somente para leitura, preservação de mídia/rascunhos/filas e comparação inicial sem reenviar registros idênticos. A cópia local, o corte e a migração real continuam pendentes.
 
 ## Versão 2.2.7
 
