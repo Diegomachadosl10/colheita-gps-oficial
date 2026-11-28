@@ -14,6 +14,8 @@ Desenvolvimento isolado em **dm-agro-professional-beta**, somente para nossa equ
 
 [Continuidade local de 28/11/2026](docs/beta/CONTINUIDADE-LOCAL-2026-11-28.md): inventário de origem somente para leitura, preservação de mídia/rascunhos/filas e comparação inicial sem reenviar registros idênticos. A cópia local, o corte e a migração real continuam pendentes.
 
+[Checkpoint privado e recuperação em quarentena](docs/beta/CHECKPOINT-LOCAL-2026-11-28.md): cópia local verificável de arquivos, preferências e filas, sem instalar os dados recuperados ou ativar migração. A validação executou 393 testes Android e quatro testes nativos, com todos os jobs aprovados. O [diagnóstico separado da assinatura](docs/beta/ASSINATURA-DIAGNOSTICO.md) confirmou que a chave permanente ainda não está disponível no segredo esperado do GitHub; a distribuição continua bloqueada até recuperá-la e concluir a transição do Beta.
+
 ## Versão 2.2.7
 
 [Atualização 2.2.7 publicada para todos](https://github.com/Diegomachadosl10/colheita-gps-oficial/releases/tag/v2.2.7), código 38, com manifesto público, download e assinatura verificados. [Entrada sem verificação repetida](docs/ENTRADA-2.2.7.md): sessão aprovada reaproveitada entre entrada e início, abertura discreta, administrador direto no aplicativo e acompanhamento das permissões em segundo plano.
